@@ -1,5 +1,5 @@
 # GenesisX
-A technically feasible "digital life" capable of autonomous thinking, exploration, evolution, and possessing its own personality
+AI Agent & Companion. A technically feasible "digital life" capable of autonomous thinking, exploration, evolution, possessing its own personality, and retaining long-term memory.
 
 ---
 
