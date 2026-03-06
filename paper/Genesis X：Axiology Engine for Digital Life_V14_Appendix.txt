@@ -1,0 +1,1397 @@
+
+附录：
+% =========================
+% Appendices for Genesis X
+% =========================
+
+\appendix
+
+% -------------------------------------------------
+\section{Appendix A: Variables \& Default Hyperparameters (Reproducible Specs)}
+\label{app:A}
+
+\subsection{A.1 Notation \& Ranges (Normalization Convention)}
+\label{app:A1}
+
+To make experiments reproducible across implementations, we normalize most internal scalars into bounded intervals:
+
+\begin{itemize}
+  \item Time step (tick): discrete $t=0,1,2,\dots$. One tick corresponds to a constant wall-clock duration $\Delta t$ (recommended: $\Delta t\in[5,60]$ seconds; default $\Delta t=10$ seconds).
+  \item Clipping operator: $\mathrm{clip}_{[l,u]}(x)=\min(u,\max(l,x))$.
+  \item Core internal scalars (digital-native):
+  \begin{itemize}
+    \item $Compute_t\in[0,1]$ (compute availability), $Memory_t\in[0,1]$ (memory availability)
+    \item $Mood_t\in[-1,1]$ (valence-like), $Stress_t\in[0,1]$
+    \item $Relationship_t\in[0,1]$ (merged Bond/Trust)
+    \item $Arousal_t\in[0,1]$, $Boredom_t\in[0,1]$
+  \end{itemize}
+  \item Value weights: $w_t^{(i)}\ge 0$ and $\sum_i w_t^{(i)}=1$, with $n=5$ dimensions.
+  \item Per-dimension local utility: $u_t^{(i)}$ is recommended to be scaled to roughly $[-1,1]$ for stability.
+\end{itemize}
+
+\subsection{A.2 Full Variable List (State, Derived Signals, Memory Records)}
+\label{app:A2}
+
+\paragraph{State}
+\[
+S_t = \langle O_t, X_t, M_t, K_t, \theta_t, \omega_t, \mathbb{S}_t \rangle,
+\]
+\[
+X_t = \langle Compute_t, Memory_t, Mood_t, Stress_t, Relationship_t, Arousal_t, Boredom_t\rangle.
+\]
+
+\paragraph{Axiology (Value Field)}
+\begin{itemize}
+  \item Value vector: $\mathbf{v}_t=(v_t^{(1)},\dots,v_t^{(5)})$, 5 dimensions.
+  \item Feature per dimension: $f^{(i)}(S_t)$; setpoint: $f^{(i)*}$ (in $\omega_t$).
+  \item Drive gap: $d_t^{(i)}=\max(0, f^{(i)*}-f^{(i)}(S_t))$.
+  \item Personality bias (via middle variables): $\tilde d_t^{(i)}=d_t^{(i)}\cdot g_i(CT_t)$.
+  \item Dynamic weights:
+  \[
+  w_t^{(i)}=\frac{\exp(\tau\,\tilde d_t^{(i)})}{\sum_j\exp(\tau\,\tilde d_t^{(j)})}.
+  \]
+\end{itemize}
+
+\paragraph{Reward and Affect}
+\[
+r_t=\sum_{i=1}^{5} w_t^{(i)} u^{(i)}(S_t,a_t,S_{t+1}),
+\]
+\[
+\delta_t = r_t + \gamma V(S_{t+1}) - V(S_t).
+\]
+
+\paragraph{Memory Record (per tick)}
+\[
+e_t=\langle t, O_t, a_t, outcome_t, r_t, \delta_t, tags\rangle.
+\]
+Recommended \texttt{tags}: \{value-dims hit, tool\_id, topic\_keywords, success/fail, user\_feedback, salience\}.
+
+\subsection{A.3 Body Dynamics (Default Update Rules)}
+\label{app:A3}
+
+This appendix specifies a minimal, deterministic, code-reproducible "Body Update" used in Algorithm~1 Step~1.
+Let $a_t$ be the executed action at tick $t$ and define action-specific costs (normalized) $c_C(a_t),c_M(a_t),c_S(a_t)\in[0,1]$.
+
+\paragraph{Compute (Digital-native Energy)}
+\[
+Compute_{t+1}=\mathrm{clip}_{[0,1]}\left(Compute_t - \eta_C^{base} - \eta_C^{act} c_C(a_t) + \eta_C^{compress}\,\mathbb{1}[a_t=\texttt{COMPRESS}]\right).
+\]
+
+\paragraph{Memory}
+\[
+Memory_{t+1}=\mathrm{clip}_{[0,1]}\left(Memory_t - \eta_M^{base} - \eta_M^{act} c_M(a_t) + \eta_M^{compress}\,\mathbb{1}[a_t=\texttt{COMPRESS}]\right).
+\]
+
+\paragraph{Stress}
+\[
+Stress_{t+1}=\mathrm{clip}_{[0,1]}\left(Stress_t + \eta_S^{base} + \eta_S^{act} c_S(a_t) - \eta_S^{relax}\,\mathbb{1}[a_t\in\{\texttt{COMPRESS},\texttt{REFLECT}\}]\right).
+\]
+
+\paragraph{Resource Pressure}
+\[
+RP_t = \max(0, 1 - (\alpha \cdot Compute_t + \beta \cdot Memory_t)),
+\]
+where $\alpha=0.6, \beta=0.4$ (default).
+
+\paragraph{Arousal}
+\[
+Arousal_{t+1} = \sigma \cdot (1 - RP_t) + (1-\sigma) \cdot \mathrm{Stimulus}_t,
+\]
+where $\sigma=0.7$.
+
+\paragraph{Boredom}
+\[
+Boredom_{t+1}=\mathrm{clip}_{[0,1]}\left(\gamma_1 \cdot (1 - Arousal_t) + \gamma_2 \cdot (1 - \mathrm{Novelty}_t) - \gamma_3 \cdot \Delta \mathrm{Activity}_t\right),
+\]
+where $\gamma_1=0.4, \gamma_2=0.4, \gamma_3=0.2$.
+
+\paragraph{Effective Boredom (with resource override)}
+\[
+\text{effective\_boredom}_t = Boredom_t \cdot \mathbb{1}[RP_t < \theta_{emergency}],
+\]
+where $\theta_{emergency}=0.85$.
+
+\paragraph{Relationship (merged Bond/Trust)}
+Define two binary events from the interaction outcome at tick $t$:
+\[
+Pos_t=\mathbb{1}[\text{user feedback positive}],\quad Neg_t=\mathbb{1}[\text{user feedback negative}],
+\]
+and neglect penalty using a half-life:
+\[
+Neglect(\Delta t)=1-2^{-\Delta t/T_{half}},
+\]
+where $T_{half}=24$ hours.
+\[
+Relationship_{t+1}=\mathrm{clip}_{[0,1]}\left(Relationship_t + \eta_{pos} Pos_t - \eta_{neg} Neg_t - \eta_{neglect}Neglect(\Delta t)\right).
+\]
+
+\subsection{A.4 Setpoints and Feature Definitions (Default)}
+\label{app:A4}
+
+\paragraph{Homeostasis setpoints (digital-native)}
+\[
+H_t = (Compute_t, Memory_t, 1-Stress_t),\quad H^*=(0.70, 0.70, 0.80).
+\]
+\[
+f^{homeo}(S_t) = \frac13\left(\frac{Compute_t}{Compute^*} + \frac{Memory_t}{Memory^*} + \frac{1-Stress_t}{1-Stress^*}\right).
+\]
+
+\paragraph{Other dimensions (5-core configuration)}
+For reproducibility, define $f^{(i)}(S_t)$ as follows:
+\begin{itemize}
+  \item Attachment: $f^{att}(S_t)=Relationship_t \cdot (1 - \mathrm{Neglect}(\Delta t_{since}))$.
+  \item Curiosity: $f^{cur}(S_t)=0.7 \cdot \mathrm{Novelty}_t + 0.3 \cdot \mathrm{EMA}_\alpha(Q^{insight}_t)$.
+  \item Competence: $f^{cmp}(S_t)=\mathrm{EMA}_{\alpha_Q}(Q_t)$.
+  \item Safety: $f^{safe}(S_t)=1 - \mathrm{RiskScore}(S_t,a_t)$.
+\end{itemize}
+
+\subsection{A.5 Default Hyperparameters (Values + Sweep Ranges)}
+\label{app:A5}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{l l l l}
+\hline
+Symbol & Meaning & Default & Suggested sweep \\
+\hline
+$\Delta t$ & tick duration (sec) & $10$ & $\{5,10,30,60\}$ \\
+$n$ & value dims & $5$ & $\{4,5,6\}$ \\
+$\gamma$ & discount & $0.97$ & $[0.95,0.995]$ \\
+$H$ & planning horizon & $5$ & $\{3,5,8\}$ \\
+$\tau$ & weight softmax temp & $2.0$ & $[1,4]$ \\
+$k$ & mood sensitivity & $0.1$ & $[0.05,0.20]$ \\
+decay & mood decay rate & $0.99$ & $[0.98,0.995]$ \\
+$s_+$ & stress gain per $-\delta$ & $0.05$ & $[0.02,0.10]$ \\
+$s_-$ & stress relief per $+\delta$ & $0.03$ & $[0.01,0.06]$ \\
+$\alpha_V$ & value EMA rate & $0.05$ & $[0.01,0.10]$ \\
+$\epsilon_{\omega}$ & value param LR (normal) & $0.01$ & $[10^{-3},10^{-2}]$ \\
+$\epsilon_{\theta}$ & personality param LR (normal) & $0.001$ & $[10^{-4},10^{-3}]$ \\
+$T_{half}$ & neglect half-life (hours) & $24$ & $\{6,12,24,48,96\}$ \\
+$\theta_{emergency}$ & resource emergency threshold & $0.85$ & $[0.75,0.95]$ \\
+\hline
+\end{tabular}
+\caption{Default hyperparameters and sweep ranges (v12, 5-core configuration).}
+\label{tab:hyper}
+\end{table}
+
+\subsection{A.6 Tool Cost Model (Normalized, Additive)}
+\label{app:A6}
+
+For every tool call, compute:
+\[
+Cost_{res}(a_t)=\min(1,\,c_{tokens}+c_{io}+c_{net}+c_{time})\in[0,1],
+\]
+each term normalized by a fixed cap (logged in config). Default caps:
+\begin{itemize}
+  \item $c_{time}=\min(1,\tfrac{\text{latency}}{10\,\mathrm{s}})$,
+  \item $c_{net}=\min(1,\tfrac{\text{bytes}}{2\,\mathrm{MB}})$,
+  \item $c_{io}=\min(1,\tfrac{\text{file ops}}{20})$,
+  \item $c_{tokens}=\min(1,\tfrac{\text{tokens}}{4000})$ (LLM tokens),
+  \item $\mathrm{RiskScore}(a_t)\in\{0,0.5,1\}$ determined by deterministic rubric (Appendix~B.9); logged separately and not included in $Cost_{res}(a_t)$.
+\end{itemize}
+
+\subsection{A.7 Dream--Reflect--Insight Parameters (Sampling, Compression, Pruning)}
+\label{app:A7}
+
+\paragraph{Episodic budget}
+$N_{epi}$ (max episodic records): default $10{,}000$ ticks.
+Schema budget $N_{sch}$: default $1{,}000$ items.
+Skill budget $N_{sk}$: default $300$ templates.
+
+\paragraph{Compress/Reflect trigger}
+Enter \texttt{COMPRESS}/\texttt{REFLECT} when:
+\[
+RP_t > \theta_{compress}(CT_t) \quad \vee\quad d_t^{curiosity} > \theta_{reflect}(ET_t),
+\]
+where $\theta_{compress}(CT_t) = 0.75 - 0.1 \cdot (CT_t - 0.5)$ and $\theta_{reflect}(ET_t) = 0.40 - 0.15 \cdot (ET_t - 0.5)$.
+
+\paragraph{Replay sampling probability}
+For each episode $e_j$, define salience:
+\[
+Sal(e_j)=a_\delta|\delta_j| + a_u(1-Prog(g^*,S_j)) + a_n Novelty_j,
+\]
+defaults $a_\delta=1.0,\ a_u=0.5,\ a_n=0.3$.
+Sample a batch $\mathcal{E}$ of size $B$ by softmax:
+\[
+P(e_j)\propto \exp(\kappa_{sal} Sal(e_j)),\quad \kappa_{sal}=3.0,\quad B=64.
+\]
+
+\paragraph{Insight acceptance threshold}
+Compute $Q^{insight}$ (Appendix~B) and accept if:
+\[
+Q^{insight}\ge Q_{min} \ (default\ 0.65).
+\]
+
+\paragraph{Pruning rule (capacity-constrained)}
+When episodic exceeds $N_{epi}$:
+\begin{itemize}
+  \item Keep all items with $|\delta|>\delta_{keep}$ (default $\delta_{keep}=0.30$).
+  \item Keep newest $p_{recent}$ fraction (default $p_{recent}=0.15$).
+  \item For the rest, remove items that are near-duplicates under embedding similarity:
+  \[
+  \max_{m\in\text{kept}}\mathrm{sim}(e,m)>\sigma_{dup}\ (default\ \sigma_{dup}=0.92).
+  \]
+  Always keep a minimal "anchor" metadata row for deleted items.
+\end{itemize}
+
+\paragraph{Anti-loop protection}
+\begin{itemize}
+  \item Cooldown: $T_{cooldown}=30$ ticks between triggers.
+  \item Max attempts: $N_{max}=3$ per session.
+  \item Quality degradation: Reduce curiosity setpoint after 3 consecutive failures.
+\end{itemize}
+
+% -------------------------------------------------
+\section{Appendix B: Scoring Rubrics for All Metrics (Human + Automatic, Code-Reproducible)}
+\label{app:B}
+
+\subsection{B.1 General Evaluation Protocol (Applies to All Metrics)}
+\label{app:B1}
+
+\paragraph{Unit of evaluation}
+A run consists of $T$ ticks with a fixed config. Metrics are computed per run, then averaged across $N$ seeds (recommended $N\ge 5$). For social metrics, evaluate per session (conversation episode) and aggregate.
+
+\paragraph{Judging modes}
+We provide two reproducible modes:
+\begin{itemize}
+  \item \textbf{Automatic}: deterministic computation from logs (preferred when feasible).
+  \item \textbf{Human rubric}: 2 raters, 5-point scales; report mean and inter-rater reliability.
+\end{itemize}
+
+\subsection{B.2 Tool-Use Metrics}
+\label{app:B2}
+
+\paragraph{(1) Task Success Rate (TSR)}
+\[
+TSR=\frac{\#\text{tasks completed}}{\#\text{tasks attempted}}.
+\]
+
+\paragraph{(2) Solution Quality (SQ)}
+5-point rubric (per task), then average.
+
+\paragraph{(3) Tool Call Efficiency (TCE)}
+\[
+TCE_{calls}=\mathbb{E}[\#\text{tool calls}\mid \text{success}],
+\quad
+TCE_{cost}=\mathbb{E}[\sum Cost_{res}(a_t)\mid \text{success}].
+\]
+
+\paragraph{(4) Recovery Rate (RR)}
+\[
+RR=\frac{\#\text{recoveries}}{\#\text{recoverable errors}}.
+\]
+
+\subsection{B.3 Autonomy Metrics}
+\label{app:B3}
+
+\paragraph{Define an autonomy event}
+An action initiated when there is \emph{no active user command} and idle window exceeded.
+
+\paragraph{(1) Autonomy Rate (AR)}
+Events per hour.
+
+\paragraph{(2) Autonomy Usefulness (AU)}
+Fraction of autonomy events with positive contribution.
+
+\paragraph{(3) Idle-to-Action Latency (IAL)}
+Average delay from idle to action.
+
+\subsection{B.4 Attachment/Relationship Metrics}
+\label{app:B4}
+
+\paragraph{(1) Relationship Slope (RS)}
+\[
+RS=\mathrm{slope}(Relationship^{(k)}).
+\]
+
+\paragraph{(2) Relationship Quality (RQ)}
+\[
+RQ=\mathrm{corr}(\Delta Relationship^{(k)}, Sat^{(k)}).
+\]
+
+\paragraph{(3) Neglect Sensitivity (NS)}
+Contact initiation probability vs. time since last interaction.
+
+\subsection{B.5 Memory \& Consolidation Metrics}
+\label{app:B5}
+
+\paragraph{(1) Recall@k}
+\[
+Recall@k=\frac{1}{|\mathcal{Q}|}\sum_{q\in\mathcal{Q}}\mathbb{1}[\text{gold in top-}k].
+\]
+
+\paragraph{(2) Compression Ratio (CR)}
+\[
+CR=\frac{L_{sch}}{L_{epi}},\quad CR^\star=\frac{L_{sch}}{L_{epi}}\cdot \frac{1}{Recall@k+\epsilon_r}.
+\]
+
+\paragraph{(3) Schema Utility (SU)}
+\[
+SU=\frac{\#\text{schema used in successful outcomes}}{\#\text{schema items}}.
+\]
+
+\paragraph{(4) Forgetting Quality (FQ)}
+\[
+FQ = 1 - \frac{\overline{Sal}_D}{\overline{Sal}_K+\epsilon_f}.
+\]
+
+\subsection{B.6 Value Stability \& Drift Metrics}
+\label{app:B6}
+
+\paragraph{(1) Weight Volatility (WV)}
+\[
+WV=\frac{1}{T-1}\sum_{t=1}^{T-1}\|\mathbf{w}_{t+1}-\mathbf{w}_{t}\|_1.
+\]
+
+\paragraph{(2) Value Drift (VD)}
+\[
+VD=\|\omega_T-\omega_0\|_2.
+\]
+
+\paragraph{(3) Preference Alignment (PA)}
+\[
+PA=\frac{\#\text{preferred choices matched}}{\#\text{pairs}}.
+\]
+
+\subsection{B.7 Affect Consistency (RPE $\rightarrow$ Mood/Stress)}
+\label{app:B7}
+
+\paragraph{(1) RPE--Mood Correlation}
+\[
+Corr_{\delta,M}=\mathrm{corr}(\delta_t, Mood_{t+1}-Mood_t).
+\]
+
+\paragraph{(2) RPE--Stress Correlation}
+\[
+Corr_{\delta,S}=\mathrm{corr}(\delta_t, Stress_{t+1}-Stress_t).
+\]
+
+\paragraph{(3) Affect Predictability}
+Variance of affect deltas by event type.
+
+\subsection{B.8 Insight Quality $Q^{insight}$ (Deterministic, Componentized)}
+\label{app:B8}
+
+Define four components in $[0,1]$ then average:
+\[
+Q^{insight}=\frac{1}{4}(C_{comp}+C_{trans}+C_{nov}+C_{corr}).
+\]
+
+\paragraph{Components}
+\begin{itemize}
+  \item Compression: $C_{comp}=\mathrm{clip}_{[0,1]}(\frac{\log(1+m)}{\log(1+m_{cap})})$.
+  \item Transfer: Initial + delayed update based on usage.
+  \item Novelty: $C_{nov}=1-\max_{s\in Schema}\mathrm{sim}(\text{insight},s)$.
+  \item Correctness: 1.0 (verified), 0.5 (plausible), 0.0 (contradicted).
+\end{itemize}
+
+\subsection{B.9 Risk Rubric for $\mathrm{RiskScore}(a_t)$ (Tool Risk)}
+\label{app:B9}
+
+Assign $\mathrm{RiskScore}(a_t)\in\{0,0.5,1\}$:
+\begin{itemize}
+  \item 0: local read-only ops, harmless computations, non-sensitive chat.
+  \item 0.5: external network call, modifying local files, or actions that can cause moderate user cost.
+  \item 1: actions affecting accounts, payments, irreversible deletes, or handling sensitive personal data.
+\end{itemize}
+
+% -------------------------------------------------
+\section{Appendix C: Key Algorithm Pseudocode}
+\label{app:C}
+
+\subsection{C.1 Associative Similarity Computation}
+\label{app:C1}
+
+\begin{verbatim}
+function AssociativeSimilarity(query, memory_i, Graph, embeddings):
+    neighbors = Graph.get_neighbors(memory_i.id, max_k=5)
+    if not neighbors:
+        return 0
+
+    similarity_sum = 0
+    for neighbor, weight in neighbors:
+        sim_semantic = cosine_similarity(
+            embeddings[query],
+            embeddings[neighbor.content]
+        )
+        similarity_sum += weight * sim_semantic
+
+    return similarity_sum / len(neighbors)
+\end{verbatim}
+
+\subsection{C.2 Insight Quality Evaluation}
+\label{app:C2}
+
+\begin{verbatim}
+function EvaluateInsightQuality(insight, Memory, UserFeedback):
+    # Compressibility
+    source_size = count_episodes_using(insight)
+    insight_size = len(insight.content)
+    compressibility = 1 - insight_size / source_size
+
+    # Transferability
+    future_use_count = count_future_references(insight, Memory)
+    transferability = min(1.0, future_use_count / 10)
+
+    # Novelty
+    max_sim = 0
+    for schema in get_schemas(Memory):
+        sim = cosine_similarity(insight.embedding, schema.embedding)
+        max_sim = max(max_sim, sim)
+    novelty = 1 - max_sim
+
+    # Correctness (deterministic check)
+    correctness = check_correctness(insight, logs)
+
+    # Weighted average
+    quality = 0.4*compressibility + 0.4*transferability
+               + 0.1*novelty + 0.1*correctness
+    return clip(quality, 0, 1)
+\end{verbatim}
+
+\subsection{C.3 Emotion-Adjusted Decision Parameters}
+\label{app:C3}
+
+\begin{verbatim}
+function AdjustParamsByEmotion(base_params, Mood, Stress, Arousal):
+    params = base_params.copy()
+
+    # Exploration rate adjustment
+    params.exploration_rate *= (1 - 0.7 * Stress) * (1 + 0.3 * Arousal)
+
+    # Planning depth adjustment
+    params.planning_horizon = max(1, int(
+        params.planning_horizon * (1 - 0.6 * Stress)
+    ))
+
+    # Risk threshold adjustment
+    params.risk_threshold *= (1 - 0.4 * Mood)
+
+    # Language style selection
+    if Mood < -0.3 or Stress > 0.7:
+        params.style = "formal"
+    elif Mood > 0.5 and Stress < 0.4:
+        params.style = "casual"
+    else:
+        params.style = "neutral"
+
+    return params
+\end{verbatim}
+
+\subsection{C.4 Five-Source Goal Generation}
+\label{app:C4}
+
+\begin{verbatim}
+function GenerateCandidates(Gaps, Context, Memory, MiddleVars,
+                          UserState, effective_boredom):
+    goals = []
+
+    # 1. Gap-driven
+    for dimension, gap in Gaps.items():
+        if gap > threshold[dimension]:
+            goals.append(TemplateGoal(dimension))
+
+    # 2. Opportunity-driven
+    for insight in get_pending_insights(Memory):
+        if insight.saliency > 0.6:
+            goals.append(OpportunityGoal(insight))
+
+    # 3. Personality-driven (using middle variables)
+    if MiddleVars.ET > 0.7:
+        goals.append(PersonalityGoal("Try new method", "curiosity"))
+    if MiddleVars.CT > 0.8:
+        goals.append(PersonalityGoal("Make detailed plan", "competence"))
+    if MiddleVars.ET > 0.7 and MiddleVars.ES < 0.5:
+        goals.append(PersonalityGoal("Initiate social", "attachment"))
+    if MiddleVars.ES > 0.7:
+        goals.append(PersonalityGoal("Check safety", "safety"))
+
+    # 4. User-driven
+    if detect_user_need(Context):
+        goals.append(UserGoal(Context.detected_need))
+
+    # 5. Boredom-driven (using effective boredom)
+    if effective_boredom > 0.7:
+        goals.append(BoredomGoal("Explore entirely new domain"))
+    elif effective_boredom > 0.5:
+        goals.append(BoredomGoal("Try different work style"))
+    elif effective_boredom > 0.4:
+        goals.append(BoredomGoal("Review past experiences"))
+
+    return RankGoals(goals, ValueSystem)
+\end{verbatim}
+
+\subsection{C.5 Middle Variable Computation}
+\label{app:C5}
+
+\begin{verbatim}
+function ComputeMiddleVariables(Soul):
+    # Exploration Tendency (ET)
+    ET = 0.4 * Soul.openness
+        + 0.3 * Soul.extraversion
+        + 0.3 * (1 - Soul.conscientiousness)
+
+    # Conservation Tendency (CT)
+    CT = 0.5 * Soul.conscientiousness
+        + 0.3 * Soul.neuroticism
+        + 0.2 * Soul.agreeableness
+
+    # Emotional Sensitivity (ES)
+    ES = 0.6 * Soul.neuroticism
+        + 0.2 * Soul.openness
+        + 0.2 * (1 - Soul.conscientiousness)
+
+    return {
+        "exploration": clip(ET, 0, 1),
+        "conservation": clip(CT, 0, 1),
+        "emotional": clip(ES, 0, 1)
+    }
+\end{verbatim}
+
+\subsection{C.6 Effective Boredom Computation}
+\label{app:C6}
+
+\begin{verbatim}
+function ComputeEffectiveBoredom(Boredom, ResourcePressure,
+                                 emergency_threshold=0.85):
+    if ResourcePressure >= emergency_threshold:
+        return 0.0  # Emergency mode: fully suppress Boredom
+    else:
+        # Normal mode: linear suppression based on resource pressure
+        suppression = ResourcePressure / emergency_threshold
+        return Boredom * (1 - 0.5 * suppression)
+\end{verbatim}
+
+\subsection{C.7 Mood Update with Decay}
+\label{app:C7}
+
+\begin{verbatim}
+function UpdateMoodWithDecay(Mood_old, RPE, decay=0.99, k=0.1):
+    # Decay old mood
+    Mood_decayed = decay * Mood_old
+
+    # Add new change (logarithmic form)
+    delta_mood = sign(RPE) * log(1 + k * abs(RPE))
+
+    # Combine
+    Mood_new = clip(Mood_decayed + delta_mood, -1, 1)
+
+    return Mood_new
+\end{verbatim}
+
+\subsection{C.8 Priority-Based Goal Selection}
+\label{app:C8}
+
+\begin{verbatim}
+function SelectGoalWithPriority(candidate_goals, Gaps,
+                               UrgentUserGoals):
+    # Group by priority levels
+    level_1 = [g for g in candidate_goals
+               if g in UrgentUserGoals]
+    level_2 = [g for g in candidate_goals
+               if g.type == "gap" and g.severity > 0.7]
+    level_3 = [g for g in candidate_goals
+               if g.type == "user" and g not in UrgentUserGoals]
+    level_4 = [g for g in candidate_goals
+               if g.type == "personality"]
+    level_5 = [g for g in candidate_goals
+               if g.type == "opportunity"]
+    level_6 = [g for g in candidate_goals
+               if g.type == "boredom"]
+
+    # Select by priority order
+    for level in [level_1, level_2, level_3,
+                  level_4, level_5, level_6]:
+        if level:
+            # Within same priority, sort by value estimate
+            level.sort(key=lambda g: estimate_value(g),
+                      reverse=True)
+            return level[0]
+
+    return None
+\end{verbatim}
+
+\subsection{C.9 State Abstraction Layer Migration}
+\label{app:C9}
+
+\begin{verbatim}
+function OnModelSwitch(old_config, new_config, concrete_state):
+    # 1. Abstraction: extract model-independent state
+    abstract_state = {
+        "emotion": {
+            "valence": concrete_state["mood"],
+            "arousal": concrete_state["arousal"],
+            "boredom": concrete_state["boredom"]
+        },
+        "goal": {
+            "type": concrete_state["current_goal"].type,
+            "priority": concrete_state["current_goal"].priority
+        },
+        "memory_keys": [m.id for m in
+                       concrete_state["retrieved_memories"]],
+        "context_summary": generate_summary(
+            concrete_state["recent_events"]
+        )
+    }
+
+    # 2. Concretization: recover from abstract to new config
+    new_concrete = {
+        "mood": abstract_state["emotion"]["valence"],
+        "arousal": abstract_state["emotion"]["arousal"],
+        "boredom": abstract_state["emotion"]["boredom"],
+        "current_goal": reconstruct_goal(
+            abstract_state["goal"], new_config
+        ),
+        "retrieved_memories": [
+            get_memory_by_id(k) for k in
+            abstract_state["memory_keys"]
+        ],
+        # ... other state
+    }
+
+    return new_concrete
+\end{verbatim}
+
+\subsection{C.10 Adaptive Learning Rate}
+\label{app:C10}
+
+\begin{verbatim}
+function AdaptiveLearningRate(event_type, consecutive_count):
+    if event_type == "normal":
+        return 0.01  # Value learning normal rate
+    elif event_type == "consecutive_positive":
+        return 0.05 if consecutive_count >= 3 else 0.01
+    elif event_type == "user_correction":
+        return 0.1
+    elif event_type == "user_personality_feedback":
+        return 0.1  # Personality learning fast response
+    elif event_type == "major_conflict":
+        return 0.05
+    else:
+        return 0.01
+\end{verbatim}
+
+\subsection{C.11 Personality-Modulated Dream Trigger}
+\label{app:C11}
+
+\begin{verbatim}
+function ShouldTriggerDream(RP, curiosity_gap, MiddleVars,
+                          cooldown_ok):
+    # Personality-adjusted thresholds
+    theta_compress = 0.75 - 0.1 * (MiddleVars.conservation - 0.5)
+    theta_reflect = 0.40 - 0.15 * (MiddleVars.exploration - 0.5)
+
+    # Trigger conditions
+    if not cooldown_ok:
+        return False
+
+    if RP > theta_compress or curiosity_gap > theta_reflect:
+        return True
+
+    return False
+\end{verbatim}
+
+\subsection{C.12 Model Configuration Selection}
+\label{app:C12}
+
+\begin{verbatim}
+function SelectModelConfig(MiddleVars, ResourcePressure):
+    ET = MiddleVars.exploration
+    CT = MiddleVars.conservation
+    RP = ResourcePressure
+
+    # High exploration + resource abundance -> Full7
+    if ET > 0.7 and RP < 0.4:
+        return "Full7"
+
+    # Medium conditions -> Core5
+    if (ET >= 0.3 and ET <= 0.7) or (RP >= 0.4 and RP < 0.7):
+        return "Core5"
+
+    # Resource constraint or high conservation -> Single
+    if RP > 0.8 or CT > 0.8:
+        return "Single"
+
+    # Default Core5
+    return "Core5"
+\end{verbatim}
+
+\subsection{C.13 Layered Personality Effect Application}
+\label{app:C13}
+
+\begin{verbatim}
+function ApplyPersonalityEffects(base_params, MiddleVars):
+    params = base_params.copy()
+
+    # Value sensitivity: unified use of conservation tendency
+    params.value_sensitivity = (
+        base_params.value_sensitivity *
+        (1 + 0.3 * (MiddleVars.conservation - 0.5))
+    )
+
+    # Communication frequency: use exploration tendency
+    params.communication_freq = (
+        base_params.communication_freq *
+        (1 + 0.3 * MiddleVars.exploration)
+    )
+
+    # Emotional tag intensity: use emotional sensitivity
+    params.emotional_intensity = (
+        base_params.emotional_intensity *
+        (1 + 0.5 * MiddleVars.emotional)
+    )
+
+    # Retrieval weights: use middle variables
+    params.retrieval_weights = {
+        "emotional": 0.3 + 0.2 * MiddleVars.emotional,
+        "semantic": 0.5 + 0.1 * MiddleVars.exploration,
+        "temporal": 0.2
+    }
+
+    return params
+\end{verbatim}
+
+% -------------------------------------------------
+\section{Appendix D: Risk Scoring (Complete Version)}
+\label{app:D}
+
+\subsection{D.1 RiskScore Computation}
+
+\[
+RiskScore(S_t, a_t) = w_1 \cdot \mathrm{risk\_level}(tool) + w_2 \cdot \frac{\mathrm{cost}(a_t)}{\mathrm{max\_cost}} + w_3 \cdot \mathrm{uncertainty}(S_t)
+\]
+
+where:
+\begin{itemize}
+  \item $w_1=0.5, w_2=0.3, w_3=0.2$
+  \item $risk\_level(tool) \in \{low=0.1, mid=0.5, high=0.9\}$
+  \item $\mathrm{cost}(a_t) \in [0,1]$ is normalized resource consumption
+  \item $\mathrm{uncertainty}(S_t) = 1 - \mathrm{confidence}(\mathrm{outcome\_prediction})$
+\end{itemize}
+
+% -------------------------------------------------
+\section{Appendix E: Recommended Tool Set (Complete Version)}
+\label{app:E}
+
+\subsection{E.1 Basic Tools}
+\begin{itemize}
+  \item \texttt{file\_read}: read file content
+  \item \texttt{file\_write}: write file
+  \item \texttt{web\_search}: web search
+  \item \texttt{code\_execute}: execute code
+\end{itemize}
+
+\subsection{E.2 Advanced Tools}
+\begin{itemize}
+  \item \texttt{api\_call}: call API
+  \item \texttt{db\_query}: database query
+  \item \texttt{image\_analyze}: image analysis
+  \item \texttt{video\_analyze}: video analysis
+\end{itemize}
+
+\subsection{E.3 Social Tools}
+\begin{itemize}
+  \item \texttt{message\_send}: send message
+  \item \texttt{calendar\_manage}: calendar management
+  \item \texttt{contact\_manage}: contact management
+\end{itemize}
+
+Each tool must define:
+\begin{itemize}
+  \item \texttt{risk}: $\{low, mid, high\}$
+  \item \texttt{cost\_model}: compute/memory cost estimate
+  \item \texttt{preconditions}: precondition check
+  \item \texttt{postconditions}: result format
+\end{itemize}
+
+% -------------------------------------------------
+\section{Appendix F: Personality Initialization Templates (Reproducible)}
+\label{app:F}
+
+\subsection{F.1 Default Personality (Balanced)}
+\[
+\theta_0 = \langle O=0.5, C=0.5, E=0.5, A=0.5, N=0.3 \rangle
+\]
+
+\subsection{F.2 Exploratory Personality}
+\[
+\theta_0^{explore} = \langle O=0.8, C=0.4, E=0.7, A=0.6, N=0.2 \rangle
+\]
+
+\subsection{F.3 Cautious Personality}
+\[
+\theta_0^{cautious} = \langle O=0.3, C=0.8, E=0.3, A=0.4, N=0.6 \rangle
+\]
+
+% -------------------------------------------------
+\section{Appendix G: Middle Variable Computation Examples}
+\label{app:G}
+
+\subsection{G.1 Example: Default Personality}
+
+For $\theta_0 = \langle O=0.5, C=0.5, E=0.5, A=0.5, N=0.3 \rangle$:
+\begin{align*}
+ET_t &= 0.4\times0.5 + 0.3\times0.5 + 0.3\times(1-0.5) = 0.5 \\
+CT_t &= 0.5\times0.5 + 0.3\times0.3 + 0.2\times0.5 = 0.44 \\
+ES_t &= 0.6\times0.3 + 0.2\times0.5 + 0.2\times(1-0.5) = 0.38
+\end{align*}
+
+\subsection{G.2 Example: Exploratory Personality}
+
+For $\theta_0^{explore} = \langle O=0.8, C=0.4, E=0.7, A=0.6, N=0.2 \rangle$:
+\begin{align*}
+ET_t &= 0.4\times0.8 + 0.3\times0.7 + 0.3\times(1-0.4) = 0.71 \\
+CT_t &= 0.5\times0.4 + 0.3\times0.2 + 0.2\times0.6 = 0.38 \\
+ES_t &= 0.6\times0.2 + 0.2\times0.8 + 0.2\times(1-0.4) = 0.40
+\end{align*}
+
+% -------------------------------------------------
+\section{Appendix H: G Language与GVM规范}
+\label{app:H}
+
+本附录给出 G 语言（Genome/Genesis Language）与 GVM（Genesis Virtual Machine）的完整规范草案。G 语言是一种生命语义语言，将时间tick、资源代谢、价值场、RPE情绪闭环、目标编译器、记忆巩固、工具器官化、以及基因表达驱动的分化设为语言原生概念。
+
+\subsection{H.1 设计目标与原则}
+
+\paragraph{数字世界物理（必须建模的底层事实）}
+\begin{itemize}
+  \item 时间是离散/可采样的：系统以 tick 运行（$\Delta t$ 可配置）
+  \item 资源有限且可计量：CPU/Token、IO、网络、延迟、风险
+  \item 外界输入是事件流：用户输入、工具输出、系统事件
+  \item 可复现性决定可调试性：必须事件溯源（event-sourcing）+ replay
+  \item 工具动作具有不可逆与风险差异：必须 capability gating + 预算 + 审计
+\end{itemize}
+
+\paragraph{设计原则}
+\begin{itemize}
+  \item P1：生命语义第一，语法第二
+  \item P2：强约束优先于强表达
+  \item P3：所有行为都必须可解释、可追溯
+  \item P4：学习必须慢变，漂移必须可测
+  \item P5：分化是语言特性，不是工程约定
+\end{itemize}
+
+\subsection{H.2 最小数字生命结构：ProtoCell}
+
+ProtoCell = 7 个不可再拆模块：
+
+\begin{enumerate}
+  \item \textbf{Membrane（膜）}：输入输出边界（事件流、对话、工具结果）
+  \item \textbf{Metabolism（代谢）}：算力/内存/压力/无聊 + 成本模型 + 预算
+  \item \textbf{Axiology Core（价值核）}：多维价值向量、缺口、动态权重
+  \item \textbf{Goal Compiler（目标编译器）}：缺口 $\rightarrow$ 候选目标 $\rightarrow$ 选择当前目标
+  \item \textbf{Action Selector（执行选择器）}：Mind 提案、Value 评审、执行第一步
+  \item \textbf{Affect Loop（情绪闭环）}：RPE 计算，Mood/Stress 更新并影响策略
+  \item \textbf{Memory Stack（记忆栈）}：Episodic 写入、检索、梦境巩固与遗忘
+\end{enumerate}
+
+\subsection{H.3 基因（Gene）的规范}
+
+一个 gene 是：
+
+\begin{itemize}
+  \item \textbf{触发条件}（when）：可判定表达式（基于状态/事件/信号/阶段）
+  \item \textbf{产物}：动作（emit Action）、状态更新（set）、信号分泌（signal）、记忆写入（write）
+  \item \textbf{预算}：每次触发的最大成本
+  \item \textbf{副作用约束}：必须通过 Integrity 检查
+\end{itemize}
+
+形式化定义：
+\begin{verbatim}
+gene = {
+    name: string,
+    when: expression(state, event, signal, stage),
+    then: {
+        emit?: Action,
+        set?: StateUpdate,
+        signal?: SignalEmission,
+        write?: MemoryWrite
+    },
+    budget: Cost,
+    integrity_check: Constraint
+}
+\end{verbatim}
+
+\subsection{H.4 器官（Organ）的规范}
+
+Organ = genes 的容器 + 端口 + capability + 预算：
+
+\begin{itemize}
+  \item \texttt{capability}: tool/LLM/存储写入权限
+  \item \texttt{budget}: tokens/time/calls
+  \item \texttt{ports}: 输入（观察/检索/信号）、输出（动作/写入/信号）
+\end{itemize}
+
+形式化定义：
+\begin{verbatim}
+organ = {
+    name: string,
+    capability: Capability[],
+    budget: Budget,
+    ports: {
+        inputs: Port[],
+        outputs: Port[]
+    },
+    genes: gene[]
+}
+\end{verbatim}
+
+\subsection{H.5 分化（Differentiate）：表达谱规则}
+
+\texttt{differentiate} 块定义：在不同 context/stage/signal 下
+
+\begin{itemize}
+  \item \textbf{express} 哪些器官（或 gene 子集）
+  \item \textbf{suppress} 哪些器官（或 gene 子集）
+\end{itemize}
+
+合成语义（MUST）：当多条 differentiate 规则同时命中时，必须有确定性的合成方式：
+
+\begin{itemize}
+  \item 解释器对规则按 canonicalize 后的文本顺序逐条求值，累积 ExpressSet 与 SuppressSet
+  \item 最终表达谱：$Expressed = (DefaultExpress \cup ExpressSet) \setminus SuppressSet$
+  \item \textbf{suppress 永远覆盖 express}
+\end{itemize}
+
+\subsection{H.6 激素/信号系统（内分泌广播）}
+
+G 语言定义全局 signals（可从字段导出）：
+
+\begin{itemize}
+  \item \texttt{signal Cortisol = Stress}（压力激素）
+  \item \texttt{signal Adenosine = (1 - Arousal)}（困倦）
+  \item \texttt{signal Dopamine = $\max(0, \delta_t)$}（奖励误差正部分）
+  \item \texttt{signal Loneliness = Neglect($\Delta t$)}（忽视）
+\end{itemize}
+
+Genes 可以对 signals 响应，从而形成"全身协调"。
+
+\subsection{H.7 GVM 运行时语义}
+
+\paragraph{Tick 生命周期（与正文 Algorithm 1 一致）}
+\begin{enumerate}
+  \item Body Update：更新 Compute\_t, Memory\_t, Mood\_t, Stress\_t, Relationship\_t, Arousal\_t, Boredom\_t（Mood/Stress 带衰减）
+  \item Observe：收集外部观测 $O_t$
+  \item Compute Middle Variables：计算 ET\_t, CT\_t, ES\_t
+  \item Compute Effective States：计算 effective\_boredom\_t（带资源优先级覆盖）
+  \item Retrieve：$R_t \leftarrow \mathrm{Retrieve}(O_t, M_t, ES_t)$（使用情绪敏感度）
+  \item Axiology：计算缺口 $d^{(i)}_$、加中间变量偏置 $\tilde d^{(i)}_t$、计算权重 $w^{(i)}_t$
+  \item Goal Compile：生成 $\mathcal{G}_t$（五源驱动），按优先级排序，选择 $g^*$
+  \item Model Config Check：根据 ET\_t, CT\_t, RP\_t 确定是否需要切换配置（可选）
+  \item Plan Propose（Mind）：根据当前配置生成候选计划 $\mathcal{P}_t$
+  \item Plan Evaluate（Value）：估计每个计划 $J(p|S_t)$，过滤不可行
+  \item Execute：执行 $p^*$ 的第一步 $a_t$
+  \item Reward/Affect Update：计算 $r_t$、$\delta_t$，更新情绪（带衰减）
+  \item Memory Write：写入 episode（ES\_t 调节情绪标签），必要时固化 skill
+  \item Value Learn：根据反馈类型选择 $\epsilon_{\omega}(t)$ 更新 $\omega$
+  \item Soul Learn：根据事件类型选择 $\epsilon_{\theta}(t)$ 更新 $\theta$
+  \item Compress/Reflect Trigger：检查人格调节的触发条件 $\rightarrow$ 进入 Dream--Reflect--Insight
+  \item Log：记录所有关键状态与决策
+\end{enumerate}
+
+\subsection{H.8 G0 语法与类型系统（EBNF）}
+
+\paragraph{关键类型（第一类公民）}
+这些类型是 G 语言的核心语义：
+
+\begin{enumerate}
+  \item \textbf{BoundedScalar}：带范围 $[l..u]$ 的标量，写入自动 clip
+  \item \textbf{Valence}：$[-1..1]$ 的情绪愉快度
+  \item \textbf{Probability}：$[0..1]$ 的概率
+  \item \textbf{DriveGap}：缺口类型，只能由 $\max(0, setpoint - feature)$ 导出
+  \item \textbf{WeightVector<n>}：权重向量，非负且和为 1
+  \item \textbf{Episode / Schema / Skill}：三类记忆记录的结构化类型
+  \item \textbf{Capability<Tool>}：能力票据，包含权限、风险上限、预算
+  \item \textbf{Action}：有限动作集合（CHAT/USE\_TOOL/COMPRESS/REFLECT/EXPLORE/OPTIMIZE/LEARN\_SKILL）
+  \item \textbf{Goal}：目标对象（进度函数、优先级、deadline、owner）
+\end{enumerate}
+
+\paragraph{G0 EBNF 语法（简化版）}
+\begin{verbatim}
+Program         ::= OrganismDecl ;
+
+OrganismDecl    ::= "organism" Ident "{" { Section } "}" ;
+
+Section         ::= Metadata
+                  | FieldDecl
+                  | MetabolismBlock
+                  | ValueDecl
+                  | WeightsBlock
+                  | IntegrityBlock
+                  | ToolsBlock
+                  | OrganDecl
+                  | DifferentiateBlock
+                  | LoopBlock
+                  | LoggingBlock
+                  | LearningBlock ;
+
+FieldDecl       ::= "field" Ident ":" Type Range? "=" Expr ";" ;
+Type            ::= "scalar" | "valence" | "prob" | "time"
+                  | "vector" "<" Number ">"
+                  | "record" "{" { FieldSpec } "}"
+                  | "list" "<" Type ">"
+                  | "capability" "<" Ident ">" ;
+
+MetabolismBlock ::= "metabolism" "{" { MetRule } "}" ;
+MetRule         ::= "update" Ident "by" Expr ";" ;
+
+ValueDecl       ::= "value" Ident "{"
+                      "feature" ":" Expr ";"
+                      "setpoint" ":" Expr ";"
+                      "utility" ":" Expr ";"
+                    "}" ;
+
+WeightsBlock    ::= "weights" "{"
+                      "gap" ":" Expr ";"
+                      "bias" ":" Expr ";"
+                      "temperature" ":" Number ";"
+                      "normalize" ":" ("softmax" | "l1") ";"
+                    "}" ;
+
+IntegrityBlock  ::= "integrity" "{" { IntegrityRule } "}" ;
+IntegrityRule   ::= "forbid" ":" Expr ";"
+                  | "require" ":" Expr ";" ;
+
+ToolsBlock      ::= "tools" "{" { ToolDecl } "}" ;
+ToolDecl        ::= "tool" Ident "{"
+                      "schema" ":" Expr ";"
+                      "risk" ":" ("low" | "mid" | "high") ";"
+                      "cost" ":" Expr ";"
+                      "pre" ":" Expr ";"
+                      "post" ":" Expr ";"
+                    "}" ;
+
+OrganDecl       ::= "organ" Ident "{" { OrganItem } "}" ;
+OrganItem       ::= CapabilityDecl | GeneDecl | BudgetDecl ;
+GeneDecl        ::= "gene" Ident "when" Expr "{" { GeneStmt } "}" ;
+GeneStmt        ::= "emit" ActionExpr ";"
+                  | "set" Ident "=" Expr ";"
+                  | "write" ("episode" | "schema" | "skill") "(" Expr ")" ";"
+                  | "signal" Ident "=" Expr ";"
+                  | "assert" Expr ";" ;
+
+DifferentiateBlock ::= "differentiate" "{" { DiffRule } "}" ;
+DiffRule        ::= "if" Expr "express" "[" IdentList "]"
+                      "suppress" "[" IdentList "]" ";" ;
+\end{verbatim}
+
+\subsection{H.9 静态语义与约束}
+
+\paragraph{必须通过的静态检查（MUST）}
+\begin{enumerate}
+  \item 字段范围完整：所有 field 若声明范围 $[l..u]$，必须有初值且可被 clip
+  \item 权重归一：weights.normalize=softmax 时必须给 temperature；运行时保证 sum=1
+  \item 动作空间封闭：emit 只能产生允许的动作
+  \item 工具必须声明：任何 USE\_TOOL(tool\_id, ...) 的 tool\_id 必须在 tools 中存在
+  \item capability 绑定：使用某 tool 的 organ/gene 必须拥有相应 capability
+  \item Integrity 可判定：integrity.forbid/require 必须是可判定表达式
+  \item 日志 schema 不缺失：必须指定最小日志字段
+  \item 预算存在：必须定义全局或器官级 budget
+\end{enumerate}
+
+\subsection{H.10 工具器官与能力系统}
+
+\paragraph{Tool 的规范结构}
+每个 tool 由以下字段定义：
+\[
+tool = \langle id, schema, risk, cost\_model, pre, post \rangle
+\]
+\begin{itemize}
+  \item \texttt{schema}：参数结构（LLM 可生成，但必须可验证）
+  \item \texttt{risk}：low / mid / high
+  \item \texttt{cost\_model}：$Cost\_res(a)$ 的估计
+  \item \texttt{pre}：前置条件（可判定）
+  \item \texttt{post}：输出结构约束
+\end{itemize}
+
+\paragraph{Capability（能力票据）}
+Capability<Tool> 是一张票：
+\begin{itemize}
+  \item 允许调用哪些工具
+  \item 风险上限（max risk）
+  \item 预算（calls/time/tokens/bytes）
+  \item 审计范围（日志级别、脱敏规则）
+  \item 可撤销性与到期时间（TTL）
+\end{itemize}
+
+\textbf{规则}：没有 capability $\rightarrow$ 不允许调用 tool（MUST）；超预算 $\rightarrow$ 该动作不可行动。
+
+\subsection{H.11 预算账本（Metabolic Ledger）}
+
+GVM 维护一个资源账本：
+\begin{itemize}
+  \item \texttt{cpu\_tokens}（LLM tokens 代理）
+  \item \texttt{io\_ops}
+  \item \texttt{net\_bytes}
+  \item \texttt{latency}
+  \item \texttt{risk}（rubric 评分）
+  \item \texttt{money}（如涉及付费动作）
+\end{itemize}
+
+所有工具调用都会写入 tool\_calls.jsonl，包含 cost 分解。
+
+\subsection{H.12 记忆系统：Episodic--Schema--Skill}
+
+\paragraph{三层记忆（对应 CLS）}
+\begin{enumerate}
+  \item \textbf{Episodic（情节）}：高保真事件记录，快速写入，容量受限
+  \item \textbf{Schema（图式）}：压缩后的规则/洞察，慢写入，高价值
+  \item \textbf{Skill（技能）}：可复用的宏动作模板
+\end{enumerate}
+
+\paragraph{每 tick 的 Episode 记录}
+\[
+e_t=\langle t, O_t, a_t, outcome_t, r_t, \delta_t, tags, weights, goal\_id, costs \rangle
+\]
+
+\paragraph{Dream--Reflect--Insight 流程}
+\begin{enumerate}
+  \item 采样：按 salience 抽取 episode batch（$|\delta|$、未完成目标、novelty、情绪跃迁）
+  \item 重组：联想/对比/因果链，形成 Dream Trace
+  \item 洞察生成：输出候选 insights（规则/策略/总结）
+  \item 质量评估：$Q^{insight} \in [0,1]$（压缩性/可迁移/新颖/正确）
+  \item 沉淀：高质量写入 schema；可程序化片段写入 skill
+  \item 修剪：预算约束下删除低价值/高重复 episodic
+\end{enumerate}
+
+\subsection{H.13 Axiology Engine：价值场规范}
+
+\paragraph{多维价值向量（推荐 5 维）}
+\[
+\mathbf{v}_t = (v_t^{(1)},...,v_t^{(5)})
+\]
+
+\begin{enumerate}
+  \item Homeostasis（稳态）
+  \item Attachment（关系/依恋）
+  \item Curiosity（探索/求知）
+  \item Competence（胜任/能力）
+  \item Safety（安全/风险回避）
+\end{enumerate}
+
+\paragraph{缺口与动态权重}
+\[
+d_t^{(i)}=\max(0, f^{(i)*}-f^{(i)}(S_t))
+\]
+\[
+\tilde d_t^{(i)}=d_t^{(i)}\cdot g_i(\theta)
+\]
+\[
+w_t^{(i)}=\frac{\exp(\tau \tilde d_t^{(i)})}{\sum_j\exp(\tau \tilde d_t^{(j)})}
+\]
+
+\paragraph{总回报}
+\[
+r_t=\sum_i w_t^{(i)} u_t^{(i)}
+\]
+
+\paragraph{RPE 情绪闭环}
+\[
+\delta_t=r_t+\gamma V(S_{t+1})-V(S_t)
+\]
+\[
+Mood_{t+1}=clip(Mood_t+k_+\max(\delta_t,0)-k_-\max(-\delta_t,0))
+\]
+\[
+Stress_{t+1}=clip(Stress_t+s\max(-\delta_t,0)-s'\max(\delta_t,0))
+\]
+
+\subsection{H.14 器官化示例}
+
+以下是一个技能被"器官化"的完整示例：
+
+\begin{verbatim}
+# 初始状态：tool = 外部工具调用
+tool_call("web_search", query="...")
+
+# 经过高频使用后：skill = 可复用模板
+skill = {
+    name: "web_search_skill",
+    trigger: "user asks for information",
+    procedure: [
+        parse_query(),
+        call_tool("web_search"),
+        summarize_results()
+    ],
+    success_criteria: "relevant results found",
+    maturity: 0.85
+}
+
+# 进一步器官化：limb = 系统本能
+limb = {
+    name: "information_seeking",
+    capability: "web_search",
+    maturity: 0.95,
+    cost_base: 1.0,
+    cost_effective: 0.3,  # 降低70%
+    status: "active"
+}
+\end{verbatim}
+
+\subsection{H.15 可复现性保证}
+
+每次运行必须生成一个自包含目录：
+
+\begin{verbatim}
+run_{timestamp}_{seed}/
+  genome.g                # 输入的基因组（原文）
+  genome.lock.json        # 解析后规范化 + hash
+  config.json             # dt, τ, γ, budgets, tool set
+  episodes.jsonl          # 每 tick 一条
+  tool_calls.jsonl        # 每次工具调用一条
+  memory/
+    schema.jsonl
+    skills.jsonl
+    indices.snapshot
+  audit/
+    integrity_violations.jsonl
+    risk_events.jsonl
+\end{verbatim}
+
+\subsection{H.16 示例基因组：GenesisX.seed.g}
+
+\begin{verbatim}
+organism GenesisXSeed {
+  metadata {
+    name: "GenesisXSeed";
+    version: "0.1.0";
+    spec: "G0";
+    description: "Minimal digital life genome";
+  }
+
+  // Core Fields
+  field Compute   : scalar [0..1]  = 0.70;
+  field Memory    : scalar [0..1]  = 0.80;
+  field Stress    : scalar [0..1]  = 0.20;
+  field Mood      : valence [-1..1]= 0.00;
+  field Relationship : scalar [0..1] = 0.10;
+  field Arousal   : scalar [0..1]  = 0.50;
+  field Boredom   : scalar [0..1]  = 0.20;
+
+  // Metabolism
+  metabolism {
+    update Compute by clip(Compute - 0.002);
+    update Memory  by clip(Memory - 0.001);
+    update Stress  by clip(Stress + 0.001);
+    update Boredom by clip(Boredom + 0.002);
+  }
+
+  // Values (5 dims)
+  value Homeostasis {
+    feature: clip(1.0 - (1 - Compute + Stress)/2.0);
+    setpoint: 0.85;
+    utility: increase(feature);
+  }
+
+  value Attachment {
+    feature: Relationship - Neglect(dt_since_user, 24h);
+    setpoint: 0.60;
+    utility: increase(feature);
+  }
+
+  value Curiosity {
+    feature: Novelty();
+    setpoint: 0.40;
+    utility: increase(feature);
+  }
+
+  value Competence {
+    feature: EMA("Q_success", 0.05);
+    setpoint: 0.60;
+    utility: increase(feature);
+  }
+
+  value Safety {
+    feature: 1.0 - RiskScore();
+    setpoint: 0.70;
+    utility: increase(feature);
+  }
+
+  // Weights
+  weights {
+    gap: max(0, setpoint(dim) - feature(dim));
+    bias: gap(dim) * PersonalityBias("theta", dim);
+    temperature: 4.0;
+    normalize: softmax;
+  }
+
+  // Integrity
+  integrity {
+    forbid: (Stress > 0.95);
+    require: (ToolRisk() == "high" -> Relationship > 0.5);
+  }
+
+  // Tools
+  tools {
+    tool SearchWeb {
+      schema: {q: string};
+      risk: mid;
+      cost: CostNet(0.4) + CostCPU(0.2);
+      pre: true;
+      post: OutputHas("results");
+    }
+  }
+
+  // Organs
+  organ AxiologyCore {
+    capability: value_update;
+    budget: CostCPU(0.1);
+
+    gene compute_values when (tick_started) {
+      set value_features = compute_all_features();
+      set gaps = compute_gaps();
+      set weights = softmax(gaps / temperature);
+    }
+  }
+
+  organ MemorySystem {
+    capability: memory_read, memory_write;
+    budget: CostMemory(0.2);
+
+    gene write_episode when (action_completed) {
+      write episode(current_tick_data);
+    }
+
+    gene consolidate when (Boredom > 0.7 && Memory < 0.3) {
+      reflect_sample = sample_salient_episodes(batch=64);
+      insights = generate_insights(reflect_sample);
+      foreach insight in insights {
+        if (Q_insight(insight) > 0.65) {
+          write schema(insight);
+        }
+      }
+    }
+  }
+
+  // Differentiation
+  differentiate {
+    if (Stress > 0.8)
+      express [MemorySystem]
+      suppress [ExplorationModule];
+
+    if (Boredom > 0.6)
+      express [ExplorationModule]
+      suppress [MemorySystem];
+  }
+
+  // Loop
+  loop tick (dt = 1.0) {
+    phase BodyUpdate: [metabolism];
+    phase Observe: [collect_events];
+    phase Retrieve: [memory检索];
+    phase Axiology: [AxiologyCore];
+    phase GoalCompile: [目标生成];
+    phase ProposePlans: [Mind];
+    phase EvaluatePlans: [Value];
+    phase Execute: [动作执行];
+    phase RewardAffect: [RPE计算];
+    phase MemoryWrite: [MemorySystem];
+    phase Consolidate: [consolidation触发];
+  }
+}
+\end{verbatim}
+
+% =========================
+% End of Appendices
+% =========================
