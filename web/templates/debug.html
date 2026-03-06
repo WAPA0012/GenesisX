@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Genesis X Debug Page</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #1a1a2e; color: #eee; }
+        .section { background: #16213e; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
+        h1 { color: #00d4ff; }
+        h2 { color: #a855f7; margin-top: 0; }
+        .status { padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .status.ok { background: #064e3b; }
+        .status.error { background: #7f1d1d; }
+        .data { background: #0f172a; padding: 15px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
+        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; background: #6366f1; color: white; }
+        button:hover { background: #4f46e5; }
+        .organ-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .organ { padding: 10px; background: #1e293b; border-radius: 4px; text-align: center; border: 1px solid #334155; }
+        .organ.active { background: #065f46; border-color: #10b981; }
+        .organ.inactive { background: #7f1d1d; border-color: #991b1b; }
+    </style>
+</head>
+<body>
+    <h1>Genesis X Debug Page</h1>
+
+    <div class="section">
+        <h2>Connection Test</h2>
+        <div id="connection-status">Testing...</div>
+    </div>
+
+    <div class="section">
+        <h2>System Status</h2>
+        <button onclick="fetchStatus()">Refresh Status</button>
+        <div class="data" id="status-data">Loading...</div>
+    </div>
+
+    <div class="section">
+        <h2>Organs Control</h2>
+        <div class="organ-grid" id="organs-display">
+            <!-- Organs will be rendered here -->
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Console Log</h2>
+        <div class="data" id="console-log"></div>
+    </div>
+
+    <script>
+        const logEl = document.getElementById('console-log');
+        const statusEl = document.getElementById('status-data');
+        const organsEl = document.getElementById('organs-display');
+
+        function log(msg, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `[${time}] [${type.toUpperCase()}] ${msg}\n`;
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                statusEl.textContent = JSON.stringify(data, null, 2);
+
+                // Update organs display
+                organsEl.innerHTML = '';
+                for (const [name, info] of Object.entries(data.organs || {})) {
+                    const div = document.createElement('div');
+                    div.className = `organ ${info.active ? 'active' : 'inactive'}`;
+                    div.innerHTML = `<strong>${name}</strong><br>${info.type}<br>${info.active ? 'Active' : 'Inactive'}`;
+                    div.onclick = () => toggleOrgan(name);
+                    div.style.cursor = 'pointer';
+                    organsEl.appendChild(div);
+                }
+
+                document.getElementById('connection-status').innerHTML = '<div class="status ok">Connected to Genesis X API</div>';
+            } catch (e) {
+                log(`Error fetching status: ${e.message}`, 'error');
+                document.getElementById('connection-status').innerHTML = '<div class="status error">API Connection Failed</div>';
+            }
+        }
+
+        async function toggleOrgan(organ) {
+            log(`Toggling organ: ${organ}`, 'info');
+            try {
+                const res = await fetch('/api/organs/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ organ })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    log(`Organ ${organ} toggled successfully`, 'success');
+                    fetchStatus(); // Refresh status
+                } else {
+                    log(`Failed to toggle ${organ}: ${data.error}`, 'error');
+                }
+            } catch (e) {
+                log(`Error toggling organ: ${e.message}`, 'error');
+            }
+        }
+
+        // Auto-refresh
+        fetchStatus();
+        setInterval(fetchStatus, 3000);
+    </script>
+</body>
+</html>

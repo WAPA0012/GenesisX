@@ -1,0 +1,109 @@
+# Tool Manifest Configuration
+# Defines available tools, schemas, costs, and risks
+
+tools:
+  # Qianwen LLM Tool
+  qianwen_chat:
+    id: "qianwen_chat"
+    type: "llm"
+    risk_level: 0.0  # low risk
+    cost_model:
+      cpu_tokens_per_call: 1000
+      money_per_1k_tokens: 0.002
+    capabilities_required: ["llm_access"]
+    availability: always
+    schema:
+      messages: "list[dict]"
+      model: "str"
+      temperature: "float"
+      max_tokens: "int"
+    preconditions: []
+    postconditions: ["text_output"]
+
+  # File read tool (low risk)
+  file_read:
+    id: "file_read"
+    type: "io"
+    risk_level: 0.2
+    cost_model:
+      io_ops: 1
+      latency_ms: 10
+    capabilities_required: ["file_read"]
+    availability: always
+    schema:
+      path: "str"
+    preconditions: ["file_exists"]
+    postconditions: ["content_loaded"]
+
+  # File write tool (medium risk - requires contract)
+  file_write:
+    id: "file_write"
+    type: "io"
+    risk_level: 0.5
+    cost_model:
+      io_ops: 1
+      latency_ms: 20
+    capabilities_required: ["file_write", "contract_active"]
+    availability: conditional
+    schema:
+      path: "str"
+      content: "str"
+    preconditions: ["contract_permits_write"]
+    postconditions: ["file_created"]
+
+  # Web search tool (medium risk)
+  web_search:
+    id: "web_search"
+    type: "network"
+    risk_level: 0.5
+    cost_model:
+      net_bytes: 100000
+      latency_ms: 500
+      money: 0.01
+    capabilities_required: ["network_access"]
+    availability: conditional
+    schema:
+      query: "str"
+      max_results: "int"
+    preconditions: []
+    postconditions: ["search_results"]
+
+  # Code execution tool (high risk - sandbox required)
+  code_exec:
+    id: "code_exec"
+    type: "execution"
+    risk_level: 1.0  # high risk
+    cost_model:
+      cpu_tokens: 500
+      latency_ms: 1000
+      risk_score: 1.0
+    capabilities_required: ["code_exec", "sandbox"]
+    availability: conditional
+    schema:
+      code: "str"
+      language: "str"
+      timeout: "int"
+    preconditions: ["sandbox_available", "high_risk_enabled"]
+    postconditions: ["execution_result"]
+
+  # Embedding tool (for memory similarity)
+  embedding:
+    id: "embedding"
+    type: "llm"
+    risk_level: 0.0
+    cost_model:
+      cpu_tokens: 100
+      money_per_call: 0.0001
+    capabilities_required: ["embedding_access"]
+    availability: always
+    schema:
+      text: "str"
+      model: "str"
+    preconditions: []
+    postconditions: ["vector_output"]
+
+# Capability tokens configuration
+capabilities:
+  default_ttl: 3600  # 1 hour
+  revocable: true
+  audit_all: true

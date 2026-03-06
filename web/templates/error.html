@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>错误 - Genesis X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="error-page">
+    <div class="error-container">
+        <div class="error-content">
+            <div class="error-icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h1 class="error-title">出错了</h1>
+            <p class="error-message">{{ error or '发生了未知错误' }}</p>
+            <div class="error-actions">
+                <a href="/" class="btn btn-primary">
+                    <i class="fas fa-home"></i>
+                    返回首页
+                </a>
+                <button onclick="history.back()" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i>
+                    返回上一页
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .error-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .error-container {
+            max-width: 500px;
+            padding: 20px;
+        }
+
+        .error-content {
+            background: white;
+            padding: 48px 32px;
+            border-radius: var(--radius-lg);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        .error-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: #FFEBEE;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .error-icon i {
+            font-size: 40px;
+            color: #F44336;
+        }
+
+        .error-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+
+        .error-message {
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+            font-size: 16px;
+        }
+
+        .error-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .error-actions .btn {
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</body>
+</html>

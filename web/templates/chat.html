@@ -1,0 +1,1835 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>对话 - Genesis X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/genesis-theme.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* 对话页面特定样式 */
+        .chat-layout {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* === 侧边栏 === */
+        .chat-sidebar {
+            width: 320px;
+            background: var(--surface-glass);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            flex-shrink: 0;
+            padding: var(--space-md);
+        }
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-md);
+            margin-bottom: var(--space-lg);
+            background: var(--surface-1);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-color);
+        }
+
+        .sidebar-logo {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sidebar-logo i {
+            color: white;
+            font-size: 16px;
+        }
+
+        .sidebar-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* 状态卡片 */
+        .status-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+        }
+
+        .status-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-md);
+        }
+
+        .status-card-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-card-title i {
+            color: var(--accent-cyan);
+        }
+
+        /* 快速统计 */
+        .quick-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-sm);
+            margin-bottom: var(--space-md);
+        }
+
+        .quick-stat {
+            text-align: center;
+            padding: var(--space-sm);
+            background: var(--surface-2);
+            border-radius: var(--radius-md);
+        }
+
+        .quick-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+        }
+
+        .quick-stat-label {
+            font-size: 10px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+        }
+
+        /* 价值维度 */
+        .value-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-sm);
+        }
+
+        .value-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 212, 255, 0.1);
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            color: var(--accent-cyan);
+        }
+
+        .value-bar-container {
+            flex: 1;
+            height: 6px;
+            background: var(--surface-2);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+        }
+
+        .value-bar {
+            height: 100%;
+            border-radius: var(--radius-full);
+            transition: width var(--transition-slow);
+        }
+
+        .value-bar.homeostasis { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+        .value-bar.attachment { background: linear-gradient(90deg, #ec4899, #f472b6); }
+        .value-bar.curiosity { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+        .value-bar.competence { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .value-bar.safety { background: linear-gradient(90deg, #10b981, #34d399); }
+
+        .value-percent {
+            width: 35px;
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-tertiary);
+            text-align: right;
+        }
+
+        /* 情感状态 */
+        .emotion-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: var(--space-sm);
+        }
+
+        .emotion-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .emotion-label {
+            width: 50px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .emotion-bar {
+            flex: 1;
+            height: 4px;
+            background: var(--surface-2);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+        }
+
+        .emotion-fill {
+            height: 100%;
+            border-radius: var(--radius-full);
+            transition: width var(--transition-slow);
+        }
+
+        /* 器官网格 */
+        .organs-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-sm);
+        }
+
+        .organ-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--space-xs);
+            padding: var(--space-sm);
+            background: var(--surface-2);
+            border-radius: var(--radius-md);
+            transition: all var(--transition-base);
+        }
+
+        .organ-card.active {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .organ-icon {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .organ-card.active .organ-icon {
+            color: var(--accent-green);
+        }
+
+        .organ-status {
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: var(--radius-full);
+            font-weight: 500;
+        }
+
+        .organ-card.active .organ-status {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+        }
+
+        /* 循环阶段 */
+        .cycle-stage {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-sm);
+            background: var(--surface-2);
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .stage-spinner {
+            color: var(--primary);
+        }
+
+        /* === 活动日志 === */
+        .activity-clear-btn {
+            background: none;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            transition: all var(--transition-base);
+        }
+
+        .activity-clear-btn:hover {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        .activity-log {
+            max-height: 150px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xs);
+        }
+
+        .activity-empty {
+            text-align: center;
+            padding: var(--space-md);
+            color: var(--text-tertiary);
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--space-xs);
+            padding: var(--space-xs);
+            background: var(--surface-2);
+            border-radius: var(--radius-sm);
+            font-size: 10px;
+            animation: activity-in 0.2s ease;
+        }
+
+        @keyframes activity-in {
+            from {
+                opacity: 0;
+                transform: translateX(-5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .activity-item.thinking {
+            border-left: 2px solid var(--accent-cyan);
+        }
+
+        .activity-item.phase_change {
+            border-left: 2px solid var(--primary);
+        }
+
+        .activity-item.phase_complete {
+            border-left: 2px solid var(--accent-green);
+        }
+
+        .activity-item.tool_call {
+            border-left: 2px solid var(--accent-purple);
+        }
+
+        .activity-item.initiative {
+            border-left: 2px solid var(--accent-pink);
+        }
+
+        .activity-icon {
+            width: 14px;
+            height: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: var(--text-secondary);
+        }
+
+        .activity-item.thinking .activity-icon { color: var(--accent-cyan); }
+        .activity-item.phase_change .activity-icon { color: var(--primary); }
+        .activity-item.phase_complete .activity-icon { color: var(--accent-green); }
+        .activity-item.tool_call .activity-icon { color: var(--accent-purple); }
+        .activity-item.initiative .activity-icon { color: var(--accent-pink); }
+
+        .activity-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .activity-message {
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .activity-time {
+            color: var(--text-muted);
+            font-size: 9px;
+        }
+
+        /* === 主聊天区域 === */
+        .chat-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary);
+        }
+
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-md) var(--space-lg);
+            background: var(--surface-glass);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .chat-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+        }
+
+        .ai-avatar {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            border-radius: var(--radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .ai-avatar::after {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: var(--radius-lg);
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            opacity: 0.3;
+            animation: avatar-glow 2s ease-in-out infinite;
+            z-index: -1;
+        }
+
+        @keyframes avatar-glow {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.05); }
+        }
+
+        .ai-avatar i {
+            color: white;
+            font-size: 18px;
+        }
+
+        .ai-info h2 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .ai-status {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .quick-emotions {
+            display: flex;
+            gap: var(--space-md);
+        }
+
+        .emotion-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: var(--surface-1);
+            border-radius: var(--radius-full);
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .emotion-badge i {
+            font-size: 10px;
+        }
+
+        .emotion-badge.energy i { color: #f59e0b; }
+        .emotion-badge.mood i { color: #10b981; }
+        .emotion-badge.stress i { color: #ef4444; }
+
+        /* 导航链接按钮 */
+        .nav-link-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all var(--transition-base);
+        }
+
+        .nav-link-btn:hover {
+            background: rgba(0, 150, 255, 0.1);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .nav-link-btn i {
+            font-size: 12px;
+        }
+
+        /* 重启按钮 */
+        .restart-btn {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-full);
+            font-size: 11px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-base);
+        }
+
+        .restart-btn:hover {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        .restart-btn i {
+            font-size: 10px;
+        }
+
+        .restart-btn.spinning i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* === 消息区域 === */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-lg);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-lg);
+        }
+
+        .message {
+            display: flex;
+            gap: var(--space-md);
+            max-width: 80%;
+            animation: message-in 0.3s ease;
+        }
+
+        @keyframes message-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .message.assistant .message-avatar {
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+        }
+
+        .message.user .message-avatar {
+            background: var(--surface-2);
+        }
+
+        .message-avatar i {
+            color: white;
+            font-size: 14px;
+        }
+
+        .message.user .message-avatar i {
+            color: var(--text-secondary);
+        }
+
+        .message-bubble {
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius-lg);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .message.assistant .message-bubble {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            color: white;
+        }
+
+        .message.system {
+            align-self: center;
+            max-width: 90%;
+        }
+
+        .message.system .message-bubble {
+            background: var(--surface-2);
+            border: 1px solid var(--border-color);
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 12px;
+            padding: var(--space-sm) var(--space-md);
+        }
+
+        /* 主动消息样式 */
+        .message.initiative .message-bubble {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(168, 85, 247, 0.1));
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            position: relative;
+        }
+
+        .initiative-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border-radius: var(--radius-full);
+            font-size: 9px;
+            color: white;
+            margin-bottom: var(--space-sm);
+            animation: sparkle 2s ease-in-out infinite;
+        }
+
+        @keyframes sparkle {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+
+        .message-time {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: var(--space-xs);
+        }
+
+        /* 打字指示器 */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: var(--space-md);
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--text-tertiary);
+            border-radius: 50%;
+            animation: typing-bounce 1.4s ease-in-out infinite;
+        }
+
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing-bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-4px); }
+        }
+
+        /* 进度指示器（异步模式） */
+        .progress-indicator {
+            padding: var(--space-md);
+            min-width: 200px;
+        }
+
+        .progress-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-sm);
+            color: var(--accent-cyan);
+            font-size: 14px;
+        }
+
+        .progress-header i {
+            font-size: 16px;
+        }
+
+        .progress-text {
+            font-weight: 500;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 6px;
+            background: var(--surface-2);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+            margin-bottom: var(--space-sm);
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent-cyan));
+            border-radius: var(--radius-full);
+            transition: width 0.3s ease;
+        }
+
+        .progress-phase {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* === 输入区域 === */
+        .chat-input-area {
+            padding: var(--space-md) var(--space-lg);
+            background: var(--surface-glass);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: var(--space-md);
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: var(--space-md) var(--space-lg);
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-xl);
+            color: var(--text-primary);
+            font-size: 14px;
+            resize: none;
+            min-height: 48px;
+            max-height: 120px;
+            font-family: inherit;
+            transition: all var(--transition-base);
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 150, 255, 0.1);
+        }
+
+        .chat-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .send-button {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            border: none;
+            border-radius: var(--radius-xl);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-base);
+        }
+
+        .send-button:hover:not(:disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(0, 150, 255, 0.4);
+        }
+
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* === 响应式 === */
+        @media (max-width: 768px) {
+            .chat-sidebar {
+                display: none;
+            }
+
+            .quick-emotions {
+                display: none;
+            }
+
+            .message {
+                max-width: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-layout">
+        <!-- 侧边栏 -->
+        <aside class="chat-sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <i class="fas fa-dna"></i>
+                </div>
+                <div>
+                    <div class="sidebar-title">Genesis X</div>
+                    <div style="font-size: 11px; color: var(--text-tertiary);">数字生命系统</div>
+                </div>
+            </div>
+
+            <!-- 快速统计 -->
+            <div class="quick-stats">
+                <div class="quick-stat">
+                    <div class="quick-stat-value" id="side-tick">0</div>
+                    <div class="quick-stat-label">Tick</div>
+                </div>
+                <div class="quick-stat">
+                    <div class="quick-stat-value" id="side-stage">-</div>
+                    <div class="quick-stat-label">阶段</div>
+                </div>
+                <div class="quick-stat">
+                    <div class="quick-stat-value" id="side-memory">0</div>
+                    <div class="quick-stat-label">记忆</div>
+                </div>
+            </div>
+
+            <!-- 5维价值 -->
+            <div class="status-card">
+                <div class="status-card-header">
+                    <span class="status-card-title">
+                        <i class="fas fa-heart-pulse"></i> 5维价值系统
+                    </span>
+                </div>
+                <div class="value-item">
+                    <div class="value-icon" title="Homeostasis - 稳态">
+                        <i class="fas fa-home"></i>
+                    </div>
+                    <div class="value-bar-container">
+                        <div class="value-bar homeostasis" id="val-homeostasis" style="width: 0%"></div>
+                    </div>
+                    <div class="value-percent" id="pct-homeostasis">0%</div>
+                </div>
+                <div class="value-item">
+                    <div class="value-icon" title="Attachment - 依恋">
+                        <i class="fas fa-heart"></i>
+                    </div>
+                    <div class="value-bar-container">
+                        <div class="value-bar attachment" id="val-attachment" style="width: 0%"></div>
+                    </div>
+                    <div class="value-percent" id="pct-attachment">0%</div>
+                </div>
+                <div class="value-item">
+                    <div class="value-icon" title="Curiosity - 好奇">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <div class="value-bar-container">
+                        <div class="value-bar curiosity" id="val-curiosity" style="width: 0%"></div>
+                    </div>
+                    <div class="value-percent" id="pct-curiosity">0%</div>
+                </div>
+                <div class="value-item">
+                    <div class="value-icon" title="Competence - 能力">
+                        <i class="fas fa-star"></i>
+                    </div>
+                    <div class="value-bar-container">
+                        <div class="value-bar competence" id="val-competence" style="width: 0%"></div>
+                    </div>
+                    <div class="value-percent" id="pct-competence">0%</div>
+                </div>
+                <div class="value-item">
+                    <div class="value-icon" title="Safety - 安全">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <div class="value-bar-container">
+                        <div class="value-bar safety" id="val-safety" style="width: 0%"></div>
+                    </div>
+                    <div class="value-percent" id="pct-safety">0%</div>
+                </div>
+            </div>
+
+            <!-- 情感状态 -->
+            <div class="status-card">
+                <div class="status-card-header">
+                    <span class="status-card-title">
+                        <i class="fas fa-brain"></i> 情感状态
+                    </span>
+                </div>
+                <div class="emotion-grid">
+                    <div class="emotion-item">
+                        <span class="emotion-label"><i class="fas fa-bolt"></i> 能量</span>
+                        <div class="emotion-bar">
+                            <div class="emotion-fill" id="emotion-energy" style="width: 0%; background: linear-gradient(90deg, #f59e0b, #fbbf24);"></div>
+                        </div>
+                        <span class="value-percent" id="pct-energy">0%</span>
+                    </div>
+                    <div class="emotion-item">
+                        <span class="emotion-label"><i class="fas fa-battery-quarter"></i> 疲劳</span>
+                        <div class="emotion-bar">
+                            <div class="emotion-fill" id="emotion-fatigue" style="width: 0%; background: linear-gradient(90deg, #6366f1, #818cf8);"></div>
+                        </div>
+                        <span class="value-percent" id="pct-fatigue">0%</span>
+                    </div>
+                    <div class="emotion-item">
+                        <span class="emotion-label"><i class="fas fa-smile"></i> 情绪</span>
+                        <div class="emotion-bar">
+                            <div class="emotion-fill" id="emotion-mood" style="width: 0%; background: linear-gradient(90deg, #10b981, #34d399);"></div>
+                        </div>
+                        <span class="value-percent" id="pct-mood">0%</span>
+                    </div>
+                    <div class="emotion-item">
+                        <span class="emotion-label"><i class="fas fa-tired"></i> 压力</span>
+                        <div class="emotion-bar">
+                            <div class="emotion-fill" id="emotion-stress" style="width: 0%; background: linear-gradient(90deg, #ef4444, #f87171);"></div>
+                        </div>
+                        <span class="value-percent" id="pct-stress">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 器官状态 -->
+            <div class="status-card">
+                <div class="status-card-header">
+                    <span class="status-card-title">
+                        <i class="fas fa-microchip"></i> 6种器官
+                    </span>
+                </div>
+                <div class="organs-grid" id="organs-grid">
+                    <div class="organ-card" data-organ="mind" title="Mind - 规划">
+                        <i class="fas fa-brain organ-icon"></i>
+                        <span class="organ-status" id="organ-mind">休眠</span>
+                    </div>
+                    <div class="organ-card" data-organ="caretaker" title="Caretaker - 健康">
+                        <i class="fas fa-heartbeat organ-icon"></i>
+                        <span class="organ-status" id="organ-caretaker">休眠</span>
+                    </div>
+                    <div class="organ-card" data-organ="scout" title="Scout - 探索">
+                        <i class="fas fa-compass organ-icon"></i>
+                        <span class="organ-status" id="organ-scout">休眠</span>
+                    </div>
+                    <div class="organ-card" data-organ="builder" title="Builder - 建设">
+                        <i class="fas fa-hammer organ-icon"></i>
+                        <span class="organ-status" id="organ-builder">休眠</span>
+                    </div>
+                    <div class="organ-card" data-organ="archivist" title="Archivist - 记忆">
+                        <i class="fas fa-archive organ-icon"></i>
+                        <span class="organ-status" id="organ-archivist">休眠</span>
+                    </div>
+                    <div class="organ-card" data-organ="immune" title="Immune - 安全">
+                        <i class="fas fa-shield-virus organ-icon"></i>
+                        <span class="organ-status" id="organ-immune">休眠</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 当前阶段 -->
+            <div class="status-card">
+                <div class="status-card-header">
+                    <span class="status-card-title">
+                        <i class="fas fa-cog"></i> 循环阶段
+                    </span>
+                </div>
+                <div class="cycle-stage" id="cycle-stage">
+                    <i class="fas fa-circle-notch fa-spin stage-spinner"></i>
+                    <span id="stage-text">加载中...</span>
+                </div>
+            </div>
+
+            <!-- 实时活动日志 -->
+            <div class="status-card" style="margin-top: auto;">
+                <div class="status-card-header">
+                    <span class="status-card-title">
+                        <i class="fas fa-bolt"></i> 实时活动
+                    </span>
+                    <button class="activity-clear-btn" id="activity-clear-btn" title="清空日志">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                <div class="activity-log" id="activity-log">
+                    <div class="activity-empty" id="activity-empty">
+                        <span style="color: var(--text-tertiary); font-size: 11px;">等待活动...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 底部链接 -->
+            <div style="margin-top: var(--space-md);">
+                <a href="/dashboard" class="btn btn-secondary" style="width: 100%; justify-content: center;">
+                    <i class="fas fa-chart-line"></i> 查看仪表盘
+                </a>
+            </div>
+        </aside>
+
+        <!-- 主聊天区域 -->
+        <main class="chat-main">
+            <!-- 头部 -->
+            <header class="chat-header">
+                <div class="chat-title">
+                    <a href="/" style="color: var(--text-secondary); text-decoration: none;">
+                        <i class="fas fa-arrow-left"></i>
+                    </a>
+                    <div class="ai-avatar">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="ai-info">
+                        <h2>Genesis X</h2>
+                        <div class="ai-status">
+                            <div class="status-dot"></div>
+                            <span>在线</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="quick-emotions">
+                    <a href="/monitor" class="nav-link-btn" title="运行监控">
+                        <i class="fas fa-desktop"></i>
+                    </a>
+                    <a href="/dashboard" class="nav-link-btn" title="仪表盘">
+                        <i class="fas fa-chart-line"></i>
+                    </a>
+                    <a href="/settings" class="nav-link-btn" title="设置">
+                        <i class="fas fa-cog"></i>
+                    </a>
+                    <div class="emotion-badge energy">
+                        <i class="fas fa-bolt"></i>
+                        <span id="header-energy">--%</span>
+                    </div>
+                    <div class="emotion-badge mood">
+                        <i class="fas fa-smile"></i>
+                        <span id="header-mood">--%</span>
+                    </div>
+                    <div class="emotion-badge stress">
+                        <i class="fas fa-tired"></i>
+                        <span id="header-stress">--%</span>
+                    </div>
+                    <button class="restart-btn" id="restart-btn" title="重启系统">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- 消息列表 -->
+            <div class="chat-messages" id="chat-messages">
+                <div class="message system">
+                    <div class="message-bubble">
+                        欢迎使用 Genesis X 数字生命系统！我是基于 5 维价值系统的数字生命，很高兴与您交流。
+                    </div>
+                </div>
+            </div>
+
+            <!-- 输入区域 -->
+            <div class="chat-input-area">
+                <form class="chat-input-wrapper" id="chat-form">
+                    <textarea
+                        id="chat-input"
+                        class="chat-input"
+                        placeholder="输入消息..."
+                        rows="1"
+                    ></textarea>
+                    <button type="submit" class="send-button" id="send-button">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+
+        // ==================== WebSocket 连接 ====================
+        let ws = null;
+        let wsConnected = false;
+        let wsReconnectTimer = null;
+        let wsReconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+        const WS_URL = 'ws://127.0.0.1:5001';
+
+        // 当前的流式响应状态
+        let currentStreamMessage = null;
+        let currentStreamBubble = null;
+
+        function connectWebSocket() {
+            if (wsConnected) return;
+
+            try {
+                ws = new WebSocket(WS_URL);
+
+                ws.onopen = function() {
+                    console.log('WebSocket connected');
+                    wsConnected = true;
+                    wsReconnectAttempts = 0;
+                    updateConnectionStatus(true);
+
+                    // 连接成功后请求当前状态
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'get_state' }));
+                    }
+                };
+
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (e) {
+                        console.error('Failed to parse WebSocket message:', e);
+                    }
+                };
+
+                ws.onclose = function(event) {
+                    console.log('WebSocket disconnected:', event.code, event.reason);
+                    wsConnected = false;
+                    updateConnectionStatus(false);
+                    scheduleReconnect();
+                };
+
+                ws.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                };
+            } catch (e) {
+                console.error('Failed to connect WebSocket:', e);
+                scheduleReconnect();
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'connected':
+                    console.log('WebSocket server acknowledged connection');
+                    break;
+
+                case 'pong':
+                    // 心跳响应
+                    break;
+
+                case 'chat_response':
+                    // 完整的聊天响应
+                    removeTypingIndicator();
+                    if (currentStreamBubble) {
+                        currentStreamBubble.remove();
+                        currentStreamBubble = null;
+                    }
+                    addMessage('assistant', data.response);
+                    updateSidebarState();
+                    // 重新启用输入
+                    chatInput.disabled = false;
+                    sendButton.disabled = false;
+                    chatInput.focus();
+                    break;
+
+                case 'stream_start':
+                    // 开始流式响应
+                    currentStreamMessage = '';
+                    removeTypingIndicator();
+                    currentStreamBubble = createStreamBubble();
+                    break;
+
+                case 'stream_chunk':
+                    // 流式内容片段
+                    if (currentStreamBubble) {
+                        currentStreamMessage += data.content;
+                        updateStreamBubble(currentStreamBubble, currentStreamMessage);
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }
+                    break;
+
+                case 'stream_end':
+                    // 流式响应结束
+                    if (currentStreamBubble) {
+                        currentStreamBubble.classList.remove('streaming');
+                        currentStreamBubble = null;
+                    }
+                    currentStreamMessage = null;
+                    updateSidebarState();
+                    // 重新启用输入
+                    chatInput.disabled = false;
+                    sendButton.disabled = false;
+                    chatInput.focus();
+                    break;
+
+                case 'state_update':
+                    // 状态更新
+                    if (data.state) {
+                        updateHeaderState(data.state);
+                    }
+                    break;
+
+                case 'error':
+                    removeTypingIndicator();
+                    addMessage('system', '错误: ' + data.message);
+                    // 重新启用输入
+                    chatInput.disabled = false;
+                    sendButton.disabled = false;
+                    chatInput.focus();
+                    break;
+
+                default:
+                    console.log('Unknown WebSocket message type:', data.type);
+            }
+        }
+
+        function createStreamBubble() {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant streaming';
+
+            const avatar = '<div class="message-avatar"><i class="fas fa-robot"></i></div>';
+            const bubble = '<div class="message-bubble stream-content"></div>';
+
+            messageDiv.innerHTML = avatar + bubble;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            return messageDiv.querySelector('.stream-content');
+        }
+
+        function updateStreamBubble(bubble, content) {
+            // 简单的转义，保持 HTML 标签（如果有格式化需求）
+            bubble.textContent = content;
+        }
+
+        function removeTypingIndicator() {
+            const typing = chatMessages.querySelector('.typing-message');
+            if (typing) {
+                typing.remove();
+            }
+        }
+
+        function scheduleReconnect() {
+            if (wsReconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                console.log('Max reconnect attempts reached, giving up');
+                return;
+            }
+
+            if (wsReconnectTimer) {
+                clearTimeout(wsReconnectTimer);
+            }
+
+            const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 10000);
+            wsReconnectAttempts++;
+
+            console.log(`Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts})`);
+            wsReconnectTimer = setTimeout(connectWebSocket, delay);
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusDot = document.querySelector('.status-dot');
+            const statusText = document.querySelector('.ai-status span');
+
+            if (connected) {
+                statusDot.classList.add('online');
+                statusDot.classList.remove('offline');
+                statusText.textContent = '在线';
+            } else {
+                statusDot.classList.remove('online');
+                statusDot.classList.add('offline');
+                statusText.textContent = '离线';
+            }
+        }
+
+        function updateHeaderState(state) {
+            if (state.energy !== undefined) {
+                document.getElementById('header-energy').textContent = Math.round(state.energy * 100) + '%';
+            }
+            if (state.mood !== undefined) {
+                document.getElementById('header-mood').textContent = Math.round(state.mood * 100) + '%';
+            }
+            if (state.stress !== undefined) {
+                document.getElementById('header-stress').textContent = Math.round(state.stress * 100) + '%';
+            }
+        }
+
+        function sendViaWebSocket(message) {
+            if (wsConnected && ws.readyState === WebSocket.OPEN) {
+                // 使用流式模式发送
+                ws.send(JSON.stringify({
+                    type: 'stream_chat',
+                    message: message
+                }));
+                return true;
+            }
+            return false;
+        }
+
+        // 页面加载时尝试连接 WebSocket
+        connectWebSocket();
+
+        // 定期发送心跳
+        setInterval(() => {
+            if (wsConnected && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
+
+        // 阶段名称映射
+        const cycleStageNames = {
+            'init': '初始化',
+            'body_update': '身体更新',
+            'observe': '观察',
+            'retrieve': '检索记忆',
+            'axiology': '价值计算',
+            'goal_compile': '目标编译',
+            'organ_proposals': '器官提案',
+            'plan_evaluate': '计划评估',
+            'safety_check': '安全检查',
+            'execute': '执行动作',
+            'reward_affect': '奖赏情感',
+            'memory_write': '写入记忆',
+            'invariants': '不变量检查',
+            'value_learn': '价值学习',
+            'sleep_reflect_trigger': '睡眠反思',
+            'persist_override': '持久化覆盖'
+        };
+
+        // 添加消息
+        function addMessage(type, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+
+            const avatar = type === 'user' ?
+                '<div class="message-avatar"><i class="fas fa-user"></i></div>' :
+                '<div class="message-avatar"><i class="fas fa-robot"></i></div>';
+
+            messageDiv.innerHTML = `
+                ${avatar}
+                <div class="message-bubble">${escapeHtml(content)}</div>
+            `;
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // 显示打字指示器
+        function showTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message assistant typing-message';
+            typingDiv.innerHTML = `
+                <div class="message-avatar"><i class="fas fa-robot"></i></div>
+                <div class="message-bubble">
+                    <div class="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                </div>
+            `;
+            chatMessages.appendChild(typingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return typingDiv;
+        }
+
+        // 显示进度指示器（异步模式）
+        function showProgressIndicator() {
+            const progressDiv = document.createElement('div');
+            progressDiv.className = 'message assistant progress-message';
+            progressDiv.innerHTML = `
+                <div class="message-avatar"><i class="fas fa-robot"></i></div>
+                <div class="message-bubble">
+                    <div class="progress-indicator">
+                        <div class="progress-header">
+                            <i class="fas fa-brain fa-spin"></i>
+                            <span class="progress-text">正在思考...</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-phase">初始化中...</div>
+                    </div>
+                </div>
+            `;
+            chatMessages.appendChild(progressDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return progressDiv;
+        }
+
+        // 更新进度指示器
+        function updateProgressIndicator(indicator, message, progress) {
+            if (!indicator) return;
+
+            const progressBar = indicator.querySelector('.progress-bar');
+            const progressText = indicator.querySelector('.progress-text');
+            const progressPhase = indicator.querySelector('.progress-phase');
+
+            if (progressBar) {
+                progressBar.style.width = Math.round(progress * 100) + '%';
+            }
+            if (progressText && progress > 0) {
+                progressText.textContent = Math.round(progress * 100) + '%';
+            }
+            if (progressPhase) {
+                progressPhase.textContent = message || '处理中...';
+            }
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 发送消息
+        async function sendMessage(message) {
+            if (!message || !message.trim()) return;
+
+            addMessage('user', message);
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+
+            chatInput.disabled = true;
+            sendButton.disabled = true;
+
+            // 优先使用 WebSocket（流式响应）
+            if (wsConnected && ws.readyState === WebSocket.OPEN) {
+                // WebSocket 模式不需要打字指示器，会收到 stream_start
+                ws.send(JSON.stringify({
+                    type: 'stream_chat',
+                    message: message
+                }));
+
+                // WebSocket 模式下，在收到响应后重新启用输入
+                // 由 handleWebSocketMessage 中的 stream_end 处理
+                return;
+            }
+
+            // 降级到 HTTP 异步模式（带进度显示）
+            const progressIndicator = showProgressIndicator();
+
+            try {
+                // 发送异步请求
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, user: 'User', async: true })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                    progressIndicator.remove();
+                    addMessage('system', '错误: ' + data.error);
+                    chatInput.disabled = false;
+                    sendButton.disabled = false;
+                    return;
+                }
+
+                // 连接 SSE 进度流
+                const eventSource = new EventSource(data.progress_url);
+                let assistantMessage = null;
+
+                eventSource.onmessage = function(event) {
+                    try {
+                        const progressData = JSON.parse(event.data);
+
+                        if (progressData.event === 'progress') {
+                            // 更新进度显示
+                            updateProgressIndicator(
+                                progressIndicator,
+                                progressData.message,
+                                progressData.progress
+                            );
+                        } else if (progressData.event === 'response') {
+                            // 收到响应
+                            progressIndicator.remove();
+                            assistantMessage = progressData.response;
+                            addMessage('assistant', assistantMessage);
+                            eventSource.close();
+                            updateSidebarState();
+                            // 重新启用输入框
+                            chatInput.disabled = false;
+                            sendButton.disabled = false;
+                            chatInput.focus();
+                        } else if (progressData.event === 'error') {
+                            // 错误
+                            progressIndicator.remove();
+                            addMessage('system', '错误: ' + progressData.error);
+                            eventSource.close();
+                            // 重新启用输入框
+                            chatInput.disabled = false;
+                            sendButton.disabled = false;
+                        } else if (progressData.event === 'complete') {
+                            // 完成
+                            eventSource.close();
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse SSE data:', e);
+                    }
+                };
+
+                eventSource.onerror = function(error) {
+                    console.error('SSE error:', error);
+                    progressIndicator.remove();
+                    if (!assistantMessage) {
+                        addMessage('system', '连接中断，请重试');
+                    }
+                    eventSource.close();
+                    chatInput.disabled = false;
+                    sendButton.disabled = false;
+                };
+
+                // 当 SSE 关闭时重新启用输入
+                eventSource.addEventListener('complete', () => {
+                    chatInput.disabled = false;
+                    sendButton.disabled = false;
+                    chatInput.focus();
+                });
+
+            } catch (error) {
+                progressIndicator.remove();
+                addMessage('system', '错误: ' + error.message);
+                chatInput.disabled = false;
+                sendButton.disabled = false;
+            }
+        }
+
+        // 更新侧边栏状态
+        async function updateSidebarState() {
+            try {
+                const [statusRes, metricsRes] = await Promise.all([
+                    fetch('/api/status'),
+                    fetch('/api/metrics')
+                ]);
+
+                const status = await statusRes.json();
+                const metrics = await metricsRes.json();
+
+                const tick = status.tick || 0;
+
+                // 快速统计
+                document.getElementById('side-tick').textContent = tick;
+
+                let stage = '胚胎';
+                if (tick >= 5000) stage = '长老';
+                else if (tick >= 500) stage = '成年';
+                else if (tick >= 100) stage = '幼年';
+                document.getElementById('side-stage').textContent = stage;
+                document.getElementById('side-memory').textContent = metrics.episodic_count || 0;
+
+                // 情感状态
+                const energy = Math.round((status.energy || 0) * 100);
+                const mood = Math.round((status.mood || 0) * 100);
+                const stress = Math.round((status.stress || 0) * 100);
+                const fatigue = Math.round((status.fatigue || 0) * 100);
+
+                document.getElementById('emotion-energy').style.width = energy + '%';
+                document.getElementById('pct-energy').textContent = energy + '%';
+                document.getElementById('emotion-fatigue').style.width = fatigue + '%';
+                document.getElementById('pct-fatigue').textContent = fatigue + '%';
+                document.getElementById('emotion-mood').style.width = mood + '%';
+                document.getElementById('pct-mood').textContent = mood + '%';
+                document.getElementById('emotion-stress').style.width = stress + '%';
+                document.getElementById('pct-stress').textContent = stress + '%';
+
+                document.getElementById('header-energy').textContent = energy + '%';
+                document.getElementById('header-mood').textContent = mood + '%';
+                document.getElementById('header-stress').textContent = stress + '%';
+
+                // 价值维度
+                const values = status.values || {};
+                const dimensions = ['homeostasis', 'attachment', 'curiosity', 'competence', 'safety'];
+                dimensions.forEach(dim => {
+                    const val = Math.round((values[dim] || 0) * 100);
+                    document.getElementById(`val-${dim}`).style.width = val + '%';
+                    document.getElementById(`pct-${dim}`).textContent = val + '%';
+                });
+
+                // 器官状态
+                const organs = status.organs || {};
+                const organIds = ['mind', 'caretaker', 'scout', 'builder', 'archivist', 'immune'];
+                organIds.forEach(organ => {
+                    const card = document.querySelector(`.organ-card[data-organ="${organ}"]`);
+                    const statusEl = document.getElementById(`organ-${organ}`);
+                    const isActive = organs[organ]?.active !== false;
+
+                    if (isActive) {
+                        card.classList.add('active');
+                        statusEl.textContent = '活跃';
+                    } else {
+                        card.classList.remove('active');
+                        statusEl.textContent = '休眠';
+                    }
+                });
+
+                // 循环阶段
+                const currentStage = status.current_stage || 'init';
+                const stageName = cycleStageNames[currentStage] || currentStage;
+                document.getElementById('stage-text').textContent = stageName;
+
+            } catch (e) {
+                console.error('Status update failed:', e);
+            }
+        }
+
+        // 自动调整输入框高度
+        chatInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        // 键盘快捷键
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        // 表单提交
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage(chatInput.value);
+        });
+
+        // 加载历史消息
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/messages');
+                const messages = await response.json();
+
+                messages.forEach(msg => {
+                    if (msg.type === 'user' || msg.type === 'assistant') {
+                        addMessage(msg.type, msg.content);
+                    }
+                });
+
+                updateSidebarState();
+            } catch (e) {
+                console.error('Failed to load history:', e);
+            }
+        }
+
+        // 重启系统
+        async function restartSystem() {
+            const restartBtn = document.getElementById('restart-btn');
+            restartBtn.classList.add('spinning');
+            restartBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/restart-system', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // 清空聊天区域
+                    chatMessages.innerHTML = `
+                        <div class="message system">
+                            <div class="message-bubble">
+                                系统已重启，代码更新已生效！✨
+                            </div>
+                        </div>
+                    `;
+                    updateSidebarState();
+                } else {
+                    addMessage('system', '重启失败: ' + (data.error || '未知错误'));
+                }
+            } catch (error) {
+                addMessage('system', '重启错误: ' + error.message);
+            } finally {
+                restartBtn.classList.remove('spinning');
+                restartBtn.disabled = false;
+            }
+        }
+
+        // 绑定重启按钮 - 确保按钮存在
+        const restartBtn = document.getElementById('restart-btn');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', restartSystem);
+        } else {
+            console.error('重启按钮未找到');
+        }
+
+        // ==================== 主动消息轮询 ====================
+        // 检查数字生命是否有主动想说的话
+        let lastInitiativeCheck = 0;
+        const INITIATIVE_CHECK_INTERVAL = 5000; // 每5秒检查一次
+
+        async function checkInitiativeMessage() {
+            // 如果用户正在输入，不打断
+            if (chatInput === document.activeElement && chatInput.value.trim()) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/initiative');
+                const data = await response.json();
+
+                if (data.has_message && data.message) {
+                    const msg = data.message;
+
+                    // 添加特殊标记显示这是主动消息
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message assistant initiative';
+
+                    const avatar = '<div class="message-avatar"><i class="fas fa-robot"></i></div>';
+
+                    // 添加一个小徽章表示这是主动消息
+                    const initiativeBadge = '<span class="initiative-badge"><i class="fas fa-sparkles"></i> 主动</span>';
+
+                    messageDiv.innerHTML = `
+                        ${avatar}
+                        <div class="message-bubble">
+                            ${initiativeBadge}
+                            ${escapeHtml(msg.content || msg)}
+                        </div>
+                    `;
+
+                    chatMessages.appendChild(messageDiv);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                    // 更新侧边栏状态
+                    updateSidebarState();
+                }
+            } catch (e) {
+                console.error('Failed to check initiative:', e);
+            }
+        }
+
+        // 启动主动消息检查
+        setInterval(checkInitiativeMessage, INITIATIVE_CHECK_INTERVAL);
+
+        // ==================== 实时活动日志 ====================
+        const activityLog = document.getElementById('activity-log');
+        const activityEmpty = document.getElementById('activity-empty');
+        let activityLogIndex = 0;
+        const maxActivityItems = 20;
+
+        // 活动类型图标映射
+        const activityIcons = {
+            'thinking': '<i class="fas fa-brain"></i>',
+            'phase_change': '<i class="fas fa-play-circle"></i>',
+            'phase_complete': '<i class="fas fa-check-circle"></i>',
+            'tool_call': '<i class="fas fa-cog"></i>',
+            'initiative': '<i class="fas fa-sparkles"></i>',
+            'organ_activation': '<i class="fas fa-bolt"></i>',
+            'memory_write': '<i class="fas fa-database"></i>'
+        };
+
+        // 活动类型名称映射
+        const activityNames = {
+            'thinking': '思考中',
+            'phase_change': '阶段变化',
+            'phase_complete': '阶段完成',
+            'tool_call': '工具调用',
+            'initiative': '主动对话',
+            'organ_activation': '器官激活',
+            'memory_write': '记忆写入'
+        };
+
+        function addActivityItem(log) {
+            // 隐藏空状态
+            if (activityEmpty) {
+                activityEmpty.style.display = 'none';
+            }
+
+            const item = document.createElement('div');
+            item.className = `activity-item ${log.type}`;
+            item.innerHTML = `
+                <div class="activity-icon">${activityIcons[log.type] || '<i class="fas fa-circle"></i>'}</div>
+                <div class="activity-content">
+                    <div class="activity-message" title="${escapeHtml(log.message)}">${escapeHtml(log.message)}</div>
+                    <div class="activity-time">${formatActivityTime(log.timestamp)}</div>
+                </div>
+            `;
+
+            activityLog.appendChild(item);
+
+            // 限制显示数量
+            const items = activityLog.querySelectorAll('.activity-item');
+            if (items.length > maxActivityItems) {
+                items[0].remove();
+            }
+
+            // 滚动到底部
+            activityLog.scrollTop = activityLog.scrollHeight;
+        }
+
+        function formatActivityTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            if (diff < 60000) return '刚刚';
+            if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+            return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function fetchActivityLogs() {
+            try {
+                const response = await fetch(`/api/activity/logs?since=${activityLogIndex}`);
+                const data = await response.json();
+
+                if (data.logs && data.logs.length > 0) {
+                    data.logs.forEach(log => addActivityItem(log));
+                    activityLogIndex += data.logs.length;
+                }
+            } catch (e) {
+                console.error('Failed to fetch activity logs:', e);
+            }
+        }
+
+        // 清空活动日志
+        document.getElementById('activity-clear-btn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/activity/clear', { method: 'POST' });
+                activityLog.innerHTML = '<div class="activity-empty" id="activity-empty"><span style="color: var(--text-tertiary); font-size: 11px;">等待活动...</span></div>';
+                activityLogIndex = 0;
+            } catch (e) {
+                console.error('Failed to clear logs:', e);
+            }
+        });
+
+        // 定期获取活动日志
+        setInterval(fetchActivityLogs, 1000);  // 每秒检查一次
+
+        // 初始化
+        loadHistory();
+        setInterval(updateSidebarState, 2000);
+        fetchActivityLogs();  // 初始加载
+    </script>
+</body>
+</html>

@@ -1,0 +1,2385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>控制中心 - Genesis X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/genesis-theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/navigation.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Dashboard Layout - 调整以适应统一导航栏 */
+        .dashboard-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr 380px;
+            grid-template-rows: 1fr;
+            height: calc(100vh - 56px);
+            margin-top: 56px;
+            gap: 0;
+        }
+
+        .dashboard-header {
+            grid-column: 1 / -1;
+            background: var(--surface-glass);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--space-lg);
+            position: relative;
+            z-index: 100;
+        }
+
+        .dashboard-header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border-highlight), transparent);
+        }
+
+        .dashboard-sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+            padding: var(--space-md);
+        }
+
+        .dashboard-main {
+            background: var(--bg-primary);
+            overflow-y: auto;
+            padding: var(--space-lg);
+        }
+
+        .dashboard-right {
+            background: var(--surface-glass);
+            backdrop-filter: blur(20px);
+            border-left: 1px solid var(--border-color);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Logo */
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .logo-icon::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent, rgba(255,255,255,0.2));
+        }
+
+        .logo-icon i {
+            color: white;
+            font-size: 18px;
+            z-index: 1;
+        }
+
+        .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .logo-text span {
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+
+        /* Sidebar */
+        .sidebar-section {
+            margin-bottom: var(--space-lg);
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            margin-bottom: var(--space-sm);
+            padding-left: var(--space-sm);
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: 10px 12px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--transition-base);
+            margin-bottom: 4px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .sidebar-item:hover {
+            background: var(--surface-2);
+            color: var(--text-primary);
+        }
+
+        .sidebar-item.active {
+            background: linear-gradient(135deg, rgba(0, 150, 255, 0.2), rgba(168, 85, 247, 0.2));
+            color: var(--accent-cyan);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+
+        .sidebar-item i {
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Dashboard Cards */
+        .dash-card {
+            background: var(--surface-1);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-lg);
+            transition: all var(--transition-base);
+        }
+
+        .dash-card:hover {
+            border-color: var(--border-highlight);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .dash-card-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: var(--space-md);
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            color: var(--text-primary);
+        }
+
+        .dash-card-title i {
+            color: var(--accent-cyan);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: var(--space-md);
+            margin-bottom: var(--space-lg);
+        }
+
+        .stat-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: all var(--transition-base);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--accent-cyan));
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Status Bars */
+        .status-bars {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-md);
+        }
+
+        .status-bar-item {
+            text-align: center;
+        }
+
+        .status-bar-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+
+        .status-bar-value {
+            color: var(--accent-cyan);
+            font-weight: 600;
+        }
+
+        .status-bar-track {
+            height: 6px;
+            background: var(--surface-2);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+        }
+
+        .status-bar-fill {
+            height: 100%;
+            border-radius: var(--radius-full);
+            transition: width var(--transition-slow);
+            position: relative;
+        }
+
+        .status-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        /* Value System Display */
+        .value-system-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: var(--space-sm);
+        }
+
+        .value-card {
+            background: var(--surface-2);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-sm);
+            text-align: center;
+            transition: all var(--transition-base);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .value-card::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            transition: width var(--transition-slow);
+        }
+
+        .value-card.homeostasis::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+        .value-card.attachment::before { background: linear-gradient(90deg, #ec4899, #f472b6); }
+        .value-card.curiosity::before { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+        .value-card.competence::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .value-card.safety::before { background: linear-gradient(90deg, #10b981, #34d399); }
+
+        .value-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .value-name {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .value-name-cn {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .value-percent {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-top: 4px;
+        }
+
+        /* Mode Controls */
+        .mode-control {
+            display: flex;
+            gap: var(--space-lg);
+        }
+
+        .mode-section {
+            flex: 1;
+        }
+
+        .mode-section-title {
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: var(--space-sm);
+            color: var(--text-primary);
+        }
+
+        .mode-toggle {
+            display: flex;
+            background: var(--surface-2);
+            border-radius: var(--radius-md);
+            padding: 4px;
+            gap: 4px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all var(--transition-base);
+            color: var(--text-secondary);
+        }
+
+        .mode-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            color: white;
+            box-shadow: 0 2px 10px rgba(0, 150, 255, 0.3);
+        }
+
+        .mode-desc {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-top: var(--space-sm);
+        }
+
+        /* Runtime Mode Grid */
+        .runtime-modes {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: var(--space-sm);
+        }
+
+        .runtime-mode-btn {
+            padding: var(--space-sm);
+            border: 1px solid var(--border-color);
+            background: var(--surface-1);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            text-align: center;
+            transition: all var(--transition-base);
+            color: var(--text-secondary);
+        }
+
+        .runtime-mode-btn:hover {
+            border-color: var(--border-highlight);
+            color: var(--text-primary);
+        }
+
+        .runtime-mode-btn.active {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+        }
+
+        .runtime-mode-btn i {
+            display: block;
+            font-size: 18px;
+            margin-bottom: 4px;
+        }
+
+        .runtime-mode-btn span {
+            font-size: 11px;
+        }
+
+        /* Organ Grid */
+        .organ-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-md);
+        }
+
+        .organ-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            text-align: center;
+            transition: all var(--transition-base);
+            position: relative;
+        }
+
+        .organ-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--radius-md);
+            background: radial-gradient(circle at center, rgba(0, 212, 255, 0.1), transparent 70%);
+            opacity: 0;
+            transition: opacity var(--transition-base);
+        }
+
+        .organ-card:hover::after {
+            opacity: 1;
+        }
+
+        .organ-card.active {
+            border-color: var(--accent-green);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        }
+
+        .organ-card.inactive {
+            opacity: 0.5;
+        }
+
+        .organ-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto var(--space-sm);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            background: var(--surface-2);
+            color: var(--text-tertiary);
+        }
+
+        .organ-card.active .organ-icon {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+        }
+
+        .organ-name {
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+
+        .organ-status {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            margin-top: 4px;
+        }
+
+        /* Connection Status */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: 6px 12px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-badge.online {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-badge.offline {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .status-badge.online .status-dot {
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        }
+
+        /* Chat Panel */
+        .chat-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .chat-header {
+            padding: var(--space-md);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .chat-header h3 {
+            margin: 0;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .chat-header p {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin: 4px 0 0;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-md);
+        }
+
+        .chat-input-area {
+            padding: var(--space-md);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: var(--space-sm);
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px 16px;
+            background: var(--surface-2);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-full);
+            outline: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all var(--transition-base);
+        }
+
+        .chat-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+
+        .chat-send-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-base);
+        }
+
+        .chat-send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: var(--shadow-glow);
+        }
+
+        /* Chat Message */
+        .chat-message {
+            display: flex;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-md);
+            animation: message-appear 0.3s ease;
+        }
+
+        @keyframes message-appear {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-message.user {
+            flex-direction: row-reverse;
+        }
+
+        .chat-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .chat-message.user .chat-avatar {
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+        }
+
+        .chat-message.assistant .chat-avatar {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+        }
+
+        .chat-message.system .chat-avatar {
+            background: var(--surface-2);
+        }
+
+        .chat-bubble {
+            max-width: 80%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .chat-message.user .chat-bubble {
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-message.assistant .chat-bubble {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-bottom-left-radius: 4px;
+        }
+
+        .chat-message.system .chat-bubble {
+            background: var(--surface-2);
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        /* Parameter Sliders */
+        .param-control {
+            margin-bottom: var(--space-md);
+        }
+
+        .param-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--space-sm);
+        }
+
+        .param-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .param-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--accent-cyan);
+        }
+
+        .param-slider {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: var(--surface-2);
+            border-radius: var(--radius-full);
+            outline: none;
+        }
+
+        .param-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 212, 255, 0.3);
+        }
+
+        /* Log Viewer */
+        .log-viewer {
+            background: #0d1117;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .log-timestamp {
+            color: var(--text-muted);
+        }
+
+        .log-level-info { color: var(--accent-cyan); }
+        .log-level-warning { color: var(--accent-orange); }
+        .log-level-error { color: #ef4444; }
+        .log-level-debug { color: var(--text-muted); }
+
+        .log-message {
+            color: var(--text-secondary);
+        }
+
+        /* Episode Cards */
+        .episode-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            margin-bottom: var(--space-sm);
+            transition: all var(--transition-base);
+        }
+
+        .episode-card:hover {
+            border-color: var(--border-highlight);
+        }
+
+        .episode-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--space-sm);
+        }
+
+        .episode-tick {
+            font-weight: 600;
+            color: var(--accent-cyan);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .episode-reward {
+            font-size: 12px;
+        }
+
+        .episode-reward.positive { color: var(--accent-green); }
+        .episode-reward.negative { color: #ef4444; }
+
+        .episode-content {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Panel Visibility */
+        .panel-content {
+            display: none;
+        }
+
+        .panel-content.active {
+            display: block;
+            animation: fade-in 0.3s ease;
+        }
+
+        @keyframes fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Placeholder State */
+        .placeholder-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-xl);
+            color: var(--text-tertiary);
+            text-align: center;
+        }
+
+        .placeholder-state i {
+            font-size: 48px;
+            margin-bottom: var(--space-md);
+            opacity: 0.5;
+        }
+
+        .placeholder-state p {
+            margin: 4px 0;
+        }
+
+        /* Info Box */
+        .info-box {
+            background: var(--surface-2);
+            border-left: 3px solid var(--accent-cyan);
+            border-radius: var(--radius-sm);
+            padding: var(--space-md);
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .info-box p {
+            margin: 4px 0;
+        }
+
+        .info-box strong {
+            color: var(--text-primary);
+        }
+
+        /* Action Buttons Grid */
+        .action-buttons {
+            display: flex;
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+        }
+
+        .action-buttons .btn {
+            flex: 1;
+        }
+
+        /* Version Info */
+        .version-info {
+            background: var(--surface-2);
+            border-radius: var(--radius-md);
+            padding: var(--space-sm) var(--space-md);
+            font-size: 12px;
+        }
+
+        .version-info .version-label {
+            color: var(--text-muted);
+        }
+
+        .version-info .version-number {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: var(--space-xl);
+            color: var(--text-tertiary);
+        }
+
+        .empty-state i {
+            font-size: 32px;
+            margin-bottom: var(--space-sm);
+            opacity: 0.5;
+        }
+
+        /* Loading Spinner */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .dashboard-layout {
+                grid-template-columns: 240px 1fr 320px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-layout {
+                grid-template-columns: 1fr;
+                grid-template-rows: 60px 1fr;
+            }
+
+            .dashboard-sidebar {
+                display: none;
+            }
+
+            .dashboard-right {
+                display: none;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .status-bars {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .value-system-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .organ-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 统一导航栏将通过 navigation.js 自动注入 -->
+
+    <div class="dashboard-layout">
+
+        <!-- Sidebar -->
+        <aside class="dashboard-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">数据查看</div>
+                <div class="sidebar-item" data-panel="episodes">
+                    <i class="fas fa-history"></i>
+                    <span>Episode 历史</span>
+                </div>
+                <div class="sidebar-item" data-panel="memory-search">
+                    <i class="fas fa-search"></i>
+                    <span>记忆搜索</span>
+                </div>
+                <div class="sidebar-item" data-panel="organs-detail">
+                    <i class="fas fa-cogs"></i>
+                    <span>器官控制</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">运行控制</div>
+                <div class="sidebar-item active" data-panel="overview">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>总览</span>
+                </div>
+                <div class="sidebar-item" data-panel="modules">
+                    <i class="fas fa-cogs"></i>
+                    <span>模块状态</span>
+                </div>
+                <div class="sidebar-item" data-panel="logs">
+                    <i class="fas fa-file-alt"></i>
+                    <span>日志</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">配置</div>
+                <div class="sidebar-item" data-panel="memory">
+                    <i class="fas fa-database"></i>
+                    <span>记忆配置</span>
+                </div>
+                <div class="sidebar-item" data-panel="runtime">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>运行参数</span>
+                </div>
+                <a href="/settings" style="text-decoration: none; color: inherit;">
+                    <div class="sidebar-item">
+                        <i class="fas fa-cog"></i>
+                        <span>完整设置</span>
+                    </div>
+                </a>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">信息</div>
+                <div class="version-info">
+                    <div class="version-label">版本</div>
+                    <div class="version-number">1.0.1</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="dashboard-main" id="main-content">
+            <!-- Overview Panel (Default) -->
+            <div class="panel-content active" id="panel-overview">
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-tick">0</div>
+                        <div class="stat-label">Tick</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-stage">-</div>
+                        <div class="stat-label">发展阶段</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-episodic">0</div>
+                        <div class="stat-label">情景记忆</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-schema">0</div>
+                        <div class="stat-label">图式记忆</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-skill">0</div>
+                        <div class="stat-label">技能记忆</div>
+                    </div>
+                </div>
+
+                <!-- State Monitor -->
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-heartbeat"></i>
+                        状态监控
+                    </div>
+                    <div class="status-bars">
+                        <div class="status-bar-item">
+                            <div class="status-bar-header">
+                                <span>能量</span>
+                                <span class="status-bar-value" id="val-energy">50%</span>
+                            </div>
+                            <div class="status-bar-track">
+                                <div class="status-bar-fill energy" id="bar-energy" style="width: 50%;"></div>
+                            </div>
+                        </div>
+                        <div class="status-bar-item">
+                            <div class="status-bar-header">
+                                <span>情绪</span>
+                                <span class="status-bar-value" id="val-mood">50%</span>
+                            </div>
+                            <div class="status-bar-track">
+                                <div class="status-bar-fill mood" id="bar-mood" style="width: 50%;"></div>
+                            </div>
+                        </div>
+                        <div class="status-bar-item">
+                            <div class="status-bar-header">
+                                <span>压力</span>
+                                <span class="status-bar-value" id="val-stress">30%</span>
+                            </div>
+                            <div class="status-bar-track">
+                                <div class="status-bar-fill stress" id="bar-stress" style="width: 30%;"></div>
+                            </div>
+                        </div>
+                        <div class="status-bar-item">
+                            <div class="status-bar-header">
+                                <span>疲劳</span>
+                                <span class="status-bar-value" id="val-fatigue">20%</span>
+                            </div>
+                            <div class="status-bar-track">
+                                <div class="status-bar-fill" id="bar-fatigue" style="width: 20%; background: linear-gradient(90deg, #6b7280, #9ca3af);"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Value System -->
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-balance-scale"></i>
+                        价值系统 (5维)
+                    </div>
+                    <div class="value-system-grid">
+                        <div class="value-card homeostasis">
+                            <div class="value-name">Homeostasis</div>
+                            <div class="value-name-cn">稳态</div>
+                            <div class="value-percent" id="disp-homeostasis">50%</div>
+                        </div>
+                        <div class="value-card attachment">
+                            <div class="value-name">Attachment</div>
+                            <div class="value-name-cn">依恋</div>
+                            <div class="value-percent" id="disp-attachment">50%</div>
+                        </div>
+                        <div class="value-card curiosity">
+                            <div class="value-name">Curiosity</div>
+                            <div class="value-name-cn">好奇</div>
+                            <div class="value-percent" id="disp-curiosity">50%</div>
+                        </div>
+                        <div class="value-card competence">
+                            <div class="value-name">Competence</div>
+                            <div class="value-name-cn">胜任</div>
+                            <div class="value-percent" id="disp-competence">50%</div>
+                        </div>
+                        <div class="value-card safety">
+                            <div class="value-name">Safety</div>
+                            <div class="value-name-cn">安全</div>
+                            <div class="value-percent" id="disp-safety">50%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Run Control -->
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-play-circle"></i>
+                        运行控制
+                    </div>
+                    <div class="mode-control">
+                        <div class="mode-section">
+                            <div class="mode-section-title">安全模式</div>
+                            <div class="mode-toggle">
+                                <button class="mode-btn" id="mode-safe">安全模式</button>
+                                <button class="mode-btn active" id="mode-explorer">探索模式</button>
+                            </div>
+                            <div class="mode-desc" id="mode-desc">无限制运行，可执行代码、使用所有工具</div>
+                        </div>
+                        <div class="mode-section">
+                            <div class="mode-section-title">运行模式</div>
+                            <div class="runtime-modes">
+                                <div class="runtime-mode-btn active" data-mode="work">
+                                    <i class="fas fa-briefcase"></i>
+                                    <span>工作</span>
+                                </div>
+                                <div class="runtime-mode-btn" data-mode="friend">
+                                    <i class="fas fa-user-friends"></i>
+                                    <span>社交</span>
+                                </div>
+                                <div class="runtime-mode-btn" data-mode="play">
+                                    <i class="fas fa-gamepad"></i>
+                                    <span>游戏</span>
+                                </div>
+                                <div class="runtime-mode-btn" data-mode="reflect">
+                                    <i class="fas fa-meditation"></i>
+                                    <span>反思</span>
+                                </div>
+                                <div class="runtime-mode-btn" data-mode="sleep">
+                                    <i class="fas fa-moon"></i>
+                                    <span>休眠</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="btn-start">
+                            <i class="fas fa-play"></i> 启动运行
+                        </button>
+                        <button class="btn btn-secondary" id="btn-stop" disabled>
+                            <i class="fas fa-stop"></i> 停止
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Daemon Control -->
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-rocket"></i>
+                        守护进程控制
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: var(--space-md);">
+                        守护进程是独立运行的后台服务，可通过 API 或聊天界面与之通信。
+                    </p>
+                    <div style="display: flex; gap: var(--space-sm); align-items: center; margin-bottom: var(--space-md);">
+                        <button class="btn btn-primary" id="btn-daemon-start" style="flex: 1;">
+                            <i class="fas fa-play"></i> 启动守护进程
+                        </button>
+                        <button class="btn btn-secondary" id="btn-daemon-stop" style="flex: 1;">
+                            <i class="fas fa-ban"></i> 停止守护进程
+                        </button>
+                    </div>
+                    <div class="status-badge" id="daemon-status">
+                        <span class="status-dot"></span>
+                        <span id="daemon-status-text">检查中...</span>
+                    </div>
+                </div>
+
+                <!-- Organ Status -->
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-cogs"></i>
+                        器官状态
+                    </div>
+                    <div class="organ-grid">
+                        <div class="organ-card" id="organ-mind">
+                            <div class="organ-icon"><i class="fas fa-brain"></i></div>
+                            <div class="organ-name">Mind</div>
+                            <div class="organ-status">规划</div>
+                        </div>
+                        <div class="organ-card" id="organ-caretaker">
+                            <div class="organ-icon"><i class="fas fa-heartbeat"></i></div>
+                            <div class="organ-name">Caretaker</div>
+                            <div class="organ-status">健康</div>
+                        </div>
+                        <div class="organ-card" id="organ-scout">
+                            <div class="organ-icon"><i class="fas fa-compass"></i></div>
+                            <div class="organ-name">Scout</div>
+                            <div class="organ-status">探索</div>
+                        </div>
+                        <div class="organ-card" id="organ-builder">
+                            <div class="organ-icon"><i class="fas fa-hammer"></i></div>
+                            <div class="organ-name">Builder</div>
+                            <div class="organ-status">建设</div>
+                        </div>
+                        <div class="organ-card" id="organ-archivist">
+                            <div class="organ-icon"><i class="fas fa-archive"></i></div>
+                            <div class="organ-name">Archivist</div>
+                            <div class="organ-status">记忆</div>
+                        </div>
+                        <div class="organ-card" id="organ-immune">
+                            <div class="organ-icon"><i class="fas fa-shield-alt"></i></div>
+                            <div class="organ-name">Immune</div>
+                            <div class="organ-status">安全</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Config Panel -->
+            <div class="panel-content" id="panel-memory">
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-database"></i>
+                        记忆容量配置
+                    </div>
+                    <div style="max-width: 500px;">
+                        <div class="param-control">
+                            <div class="param-header">
+                                <span class="param-name">情景记忆上限</span>
+                                <span class="param-value" id="episodic-limit-val">200000</span>
+                            </div>
+                            <input type="range" id="episodic-limit" class="param-slider" min="1000" max="500000" step="1000" value="200000">
+                        </div>
+                        <div class="param-control">
+                            <div class="param-header">
+                                <span class="param-name">图式记忆上限</span>
+                                <span class="param-value" id="schema-limit-val">10000</span>
+                            </div>
+                            <input type="range" id="schema-limit" class="param-slider" min="100" max="50000" step="100" value="10000">
+                        </div>
+                        <div class="param-control">
+                            <div class="param-header">
+                                <span class="param-name">技能记忆上限</span>
+                                <span class="param-value" id="skill-limit-val">3000</span>
+                            </div>
+                            <input type="range" id="skill-limit" class="param-slider" min="10" max="10000" step="10" value="3000">
+                        </div>
+                        <div class="param-control">
+                            <div class="param-header">
+                                <span class="param-name">整合间隔 (小时)</span>
+                                <span class="param-value" id="consolidation-val">1</span>
+                            </div>
+                            <input type="range" id="consolidation-interval" class="param-slider" min="1" max="24" step="1" value="1">
+                        </div>
+                        <div style="margin-top: var(--space-md);">
+                            <button class="btn btn-primary" id="btn-save-memory">
+                                <i class="fas fa-save"></i> 保存配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-eraser"></i>
+                        记忆操作
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary" id="btn-consolidate-memory">
+                            <i class="fas fa-compress-arrows-alt"></i> 整合记忆
+                        </button>
+                        <button class="btn btn-secondary" id="btn-export-memory">
+                            <i class="fas fa-download"></i> 导出记忆
+                        </button>
+                        <button class="btn btn-secondary" id="btn-clear-memory" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">
+                            <i class="fas fa-trash"></i> 清除所有记忆
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Runtime Panel -->
+            <div class="panel-content" id="panel-runtime">
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-sliders-h"></i>
+                        运行参数
+                    </div>
+                    <div style="max-width: 500px;">
+                        <div class="param-control">
+                            <div class="param-header">
+                                <span class="param-name">Tick 间隔 (秒)</span>
+                                <span class="param-value" id="tick-interval-val">10</span>
+                            </div>
+                            <input type="range" id="tick-interval" class="param-slider" min="1" max="60" step="1" value="10">
+                        </div>
+                        <div class="param-control">
+                            <div class="param-header">
+                                <span class="param-name">最大 Tick 数</span>
+                                <span class="param-value" id="max-ticks-val">1000000</span>
+                            </div>
+                            <input type="range" id="max-ticks" class="param-slider" min="100" max="10000000" step="100" value="1000000">
+                        </div>
+                        <div class="param-control">
+                            <div class="param-header">
+                                <span class="param-name">最大 Token/请求</span>
+                                <span class="param-value" id="max-tokens-val">4096</span>
+                            </div>
+                            <input type="range" id="max-tokens" class="param-slider" min="512" max="128000" step="512" value="4096">
+                        </div>
+                        <div style="margin-top: var(--space-md);">
+                            <button class="btn btn-primary" id="btn-save-runtime">
+                                <i class="fas fa-save"></i> 保存配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-shield-alt"></i>
+                        安全设置
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-sm) 0; border-bottom: 1px solid var(--border-color);">
+                        <div>
+                            <div style="font-weight: 500;">启用沙箱</div>
+                            <div style="font-size: 12px; color: var(--text-tertiary);">在隔离环境中执行代码</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="sandbox-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-sm) 0; margin-top: var(--space-sm);">
+                        <div>
+                            <div style="font-weight: 500;">启用高风险工具</div>
+                            <div style="font-size: 12px; color: var(--text-tertiary);">允许执行危险操作</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="highrisk-enabled" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modules Panel -->
+            <div class="panel-content" id="panel-modules">
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-cogs"></i>
+                        详细模块状态
+                    </div>
+                    <div id="modules-detail"></div>
+                </div>
+            </div>
+
+            <!-- Episodes Panel -->
+            <div class="panel-content" id="panel-episodes">
+                <div class="dash-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
+                        <div class="dash-card-title" style="margin: 0;">
+                            <i class="fas fa-history"></i>
+                            Episode 历史
+                        </div>
+                        <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                            <button class="btn btn-secondary btn-icon" id="btn-prev-episodes" style="width: 32px; height: 32px;">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <span id="episodes-page-info" style="font-size: 13px; color: var(--text-secondary); min-width: 80px; text-align: center;">第 1 页</span>
+                            <button class="btn btn-secondary btn-icon" id="btn-next-episodes" style="width: 32px; height: 32px;">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="episodes-list" style="max-height: 500px; overflow-y: auto;">
+                        <div class="empty-state">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Search Panel -->
+            <div class="panel-content" id="panel-memory-search">
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-search"></i>
+                        记忆搜索
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-md);">
+                        搜索情景记忆和语义记忆
+                    </p>
+                    <div style="display: flex; gap: var(--space-sm); margin-bottom: var(--space-md);">
+                        <input type="text" id="memory-search-input" class="input"
+                               placeholder="输入搜索关键词..."
+                               style="flex: 1;">
+                        <button class="btn btn-primary btn-icon" id="btn-memory-search" style="width: 40px; height: 40px;">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div style="margin-bottom: var(--space-md);">
+                        <label style="font-size: 13px; margin-right: var(--space-md); color: var(--text-secondary);">
+                            <input type="radio" name="memory-type" value="episodic" checked> 情景记忆
+                        </label>
+                        <label style="font-size: 13px; color: var(--text-secondary);">
+                            <input type="radio" name="memory-type" value="semantic"> 语义记忆
+                        </label>
+                    </div>
+                </div>
+                <div class="dash-card">
+                    <div class="dash-card-title" style="font-size: 14px;">
+                        搜索结果
+                    </div>
+                    <div id="memory-search-results" style="max-height: 400px; overflow-y: auto;">
+                        <div class="empty-state">
+                            <p>输入关键词开始搜索</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Organs Control Panel -->
+            <div class="panel-content" id="panel-organs-detail">
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-cogs"></i>
+                        器官控制
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-md);">
+                        手动激活特定器官（调试用）
+                    </p>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-md);" id="organ-controls">
+                    </div>
+                </div>
+                <div class="dash-card">
+                    <div class="dash-card-title">
+                        <i class="fas fa-info-circle"></i>
+                        器官说明
+                    </div>
+                    <div class="info-box">
+                        <p><strong>Mind</strong>: 主推理器官，负责工作/社交/反思模式</p>
+                        <p><strong>Caretaker</strong>: 维持稳态，优先级最高</p>
+                        <p><strong>Scout</strong>: 探索和好奇，幼年期活跃</p>
+                        <p><strong>Builder</strong>: 项目执行，成年后活跃</p>
+                        <p><strong>Archivist</strong>: 记忆整合，休眠/反思时活跃</p>
+                        <p><strong>Immune</strong>: 安全检查，否决危险操作</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Panel -->
+            <div class="panel-content" id="panel-logs">
+                <div class="dash-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
+                        <div class="dash-card-title" style="margin: 0;">
+                            <i class="fas fa-file-alt"></i>
+                            系统日志
+                        </div>
+                        <div style="display: flex; gap: var(--space-sm);">
+                            <button class="btn btn-secondary" id="btn-clear-logs" style="padding: 6px 12px; font-size: 13px;">清除</button>
+                            <button class="btn btn-secondary" id="btn-refresh-logs" style="padding: 6px 12px; font-size: 13px;">刷新</button>
+                        </div>
+                    </div>
+                    <div class="log-viewer" id="log-viewer">
+                        <div style="color: var(--text-muted); text-align: center; padding: var(--space-md);">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Panel - Chat -->
+        <aside class="dashboard-right">
+            <div class="chat-panel">
+                <div class="chat-header">
+                    <h3><i class="fas fa-comments" style="color: var(--accent-cyan);"></i> 指挥中心</h3>
+                    <p>向 Genesis X 下达指令</p>
+                </div>
+                <div class="chat-messages" id="chat-messages">
+                    <div class="placeholder-state">
+                        <i class="fas fa-robot"></i>
+                        <p>与 Genesis X 对话</p>
+                        <p style="font-size: 12px; color: var(--text-muted);">您可以指挥它执行任务、询问状态或调整参数</p>
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <div class="chat-input-wrapper">
+                        <input type="text" class="chat-input" id="chat-input" placeholder="输入指令或消息...">
+                        <button class="chat-send-btn" id="chat-send">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Toggle Switch CSS -->
+    <style>
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: var(--surface-2);
+            border-radius: var(--radius-full);
+            transition: var(--transition-base);
+        }
+
+        .toggle-slider::before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: var(--transition-base);
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+        }
+
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+    </style>
+
+    <!-- 统一导航脚本 -->
+    <script src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Dashboard Controller
+        const Dashboard = {
+            currentPanel: 'overview',
+            eventSource: null,
+            isRunning: false,
+            safeMode: false,
+            runtimeMode: 'work',
+
+            init() {
+                console.log('Dashboard initializing...');
+                this.setupNavigation();
+                this.setupControls();
+                this.setupChat();
+                this.setupSSE();
+                this.loadData();
+                this.startPolling();
+                this.checkDaemonStatus();
+                setInterval(() => this.checkDaemonStatus(), 10000);
+                console.log('Dashboard initialized');
+            },
+
+            setupNavigation() {
+                // Use event delegation on the sidebar container
+                const sidebar = document.querySelector('.dashboard-sidebar');
+                if (sidebar) {
+                    sidebar.addEventListener('click', (e) => {
+                        // Find the closest sidebar-item ancestor
+                        const item = e.target.closest('.sidebar-item');
+                        if (item) {
+                            const panel = item.dataset.panel;
+                            console.log('Sidebar item clicked, panel:', panel);
+                            if (panel) {
+                                this.showPanel(panel);
+                            }
+                        }
+                    });
+                    console.log('Navigation setup complete');
+                } else {
+                    console.error('Sidebar not found!');
+                }
+            },
+
+            showPanel(panelId) {
+                console.log('Showing panel:', panelId);
+
+                // Hide all panels
+                const panels = document.querySelectorAll('.panel-content');
+                console.log('Found panels:', panels.length);
+                panels.forEach(p => {
+                    p.classList.remove('active');
+                    p.style.display = 'none';
+                });
+
+                // Show target panel
+                const target = document.getElementById(`panel-${panelId}`);
+                console.log('Target element:', target);
+                if (target) {
+                    target.classList.add('active');
+                    target.style.display = 'block';
+                    console.log('Panel displayed:', panelId);
+                } else {
+                    console.error('Panel not found:', panelId);
+                }
+
+                // Update sidebar active state
+                document.querySelectorAll('.sidebar-item').forEach(item => {
+                    const isActive = item.dataset.panel === panelId;
+                    item.classList.toggle('active', isActive);
+                });
+
+                this.currentPanel = panelId;
+
+                // Load panel-specific data
+                if (panelId === 'logs') this.loadLogs();
+                if (panelId === 'modules') this.loadModules();
+                if (panelId === 'episodes') this.loadEpisodes();
+                if (panelId === 'organs-detail') this.loadOrganControls();
+            },
+
+            setupControls() {
+                // Mode toggle
+                document.getElementById('mode-safe').addEventListener('click', () => this.setSafeMode(true));
+                document.getElementById('mode-explorer').addEventListener('click', () => this.setSafeMode(false));
+
+                // Runtime modes
+                document.querySelectorAll('.runtime-mode-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        document.querySelectorAll('.runtime-mode-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        this.runtimeMode = btn.dataset.mode;
+                        this.updateRuntimeMode();
+                    });
+                });
+
+                // Start/Stop buttons
+                document.getElementById('btn-start').addEventListener('click', () => this.startRun());
+                document.getElementById('btn-stop').addEventListener('click', () => this.stopRun());
+
+                // Daemon buttons
+                document.getElementById('btn-daemon-start').addEventListener('click', () => this.startDaemon());
+                document.getElementById('btn-daemon-stop').addEventListener('click', () => this.stopDaemon());
+
+                // Memory config sliders
+                ['episodic-limit', 'schema-limit', 'skill-limit', 'consolidation-interval'].forEach(id => {
+                    const slider = document.getElementById(id);
+                    const val = document.getElementById(`${id}-val`);
+                    if (slider && val) {
+                        slider.addEventListener('input', (e) => val.textContent = e.target.value);
+                    }
+                });
+
+                document.getElementById('btn-save-memory').addEventListener('click', () => this.saveMemoryConfig());
+                document.getElementById('btn-consolidate-memory').addEventListener('click', () => this.consolidateMemory());
+                document.getElementById('btn-clear-memory').addEventListener('click', () => this.clearMemory());
+
+                // Runtime config sliders
+                ['tick-interval', 'max-ticks', 'max-tokens'].forEach(id => {
+                    const slider = document.getElementById(id);
+                    const val = document.getElementById(`${id}-val`);
+                    if (slider && val) {
+                        slider.addEventListener('input', (e) => val.textContent = e.target.value);
+                    }
+                });
+
+                document.getElementById('btn-save-runtime').addEventListener('click', () => this.saveRuntimeConfig());
+
+                // Log controls
+                document.getElementById('btn-refresh-logs').addEventListener('click', () => this.loadLogs());
+                document.getElementById('btn-clear-logs').addEventListener('click', () => {
+                    document.getElementById('log-viewer').innerHTML = '';
+                });
+
+                // Episodes pagination
+                this.episodesPage = 1;
+                document.getElementById('btn-prev-episodes').addEventListener('click', () => {
+                    if (this.episodesPage > 1) {
+                        this.episodesPage--;
+                        this.loadEpisodes();
+                    }
+                });
+                document.getElementById('btn-next-episodes').addEventListener('click', () => {
+                    this.episodesPage++;
+                    this.loadEpisodes();
+                });
+
+                // Memory search
+                document.getElementById('btn-memory-search').addEventListener('click', () => this.searchMemory());
+                document.getElementById('memory-search-input').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.searchMemory();
+                });
+            },
+
+            setupChat() {
+                const input = document.getElementById('chat-input');
+                const send = document.getElementById('chat-send');
+
+                send.addEventListener('click', () => this.sendChat());
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.sendChat();
+                });
+            },
+
+            setupSSE() {
+                try {
+                    this.eventSource = new EventSource('/api/stream');
+
+                    this.eventSource.onopen = () => {
+                        this.updateConnectionStatus(true);
+                    };
+
+                    this.eventSource.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            this.updateRealtime(data);
+                        } catch (e) {}
+                    };
+
+                    this.eventSource.onerror = () => {
+                        this.updateConnectionStatus(false);
+                    };
+                } catch (e) {
+                    this.updateConnectionStatus(false);
+                }
+            },
+
+            updateConnectionStatus(connected) {
+                const statusEl = document.getElementById('connection-status');
+                const textEl = document.getElementById('status-text');
+
+                if (connected) {
+                    statusEl.className = 'status-badge online';
+                    textEl.textContent = '已连接';
+                } else {
+                    statusEl.className = 'status-badge offline';
+                    textEl.textContent = '断开连接';
+                }
+            },
+
+            async loadData() {
+                await this.updateStatus();
+                await this.updateValues();
+                await this.updateOrgans();
+            },
+
+            async updateStatus() {
+                try {
+                    const response = await fetch('/api/status');
+                    const data = await response.json();
+
+                    // Update stats
+                    document.getElementById('stat-tick').textContent = data.tick || 0;
+
+                    // Update development stage based on tick count
+                    const tick = data.tick || 0;
+                    let stage = '胚胎';
+                    if (tick >= 5000) stage = '长老';
+                    else if (tick >= 500) stage = '成年';
+                    else if (tick >= 100) stage = '幼年';
+                    document.getElementById('stat-stage').textContent = stage;
+
+                    // Update state bars
+                    this.updateBar('energy', data.energy);
+                    this.updateBar('mood', data.mood);
+                    this.updateBar('stress', data.stress);
+                    this.updateBar('fatigue', data.fatigue);
+
+                } catch (e) {
+                    console.error('Failed to update status:', e);
+                }
+            },
+
+            async updateValues() {
+                try {
+                    const response = await fetch('/api/values');
+                    const values = await response.json();
+
+                    for (const [key, value] of Object.entries(values)) {
+                        const el = document.getElementById(`disp-${key}`);
+                        if (el) {
+                            el.textContent = Math.round(value * 100) + '%';
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to update values:', e);
+                }
+            },
+
+            async updateOrgans() {
+                try {
+                    const response = await fetch('/api/organs');
+                    const organs = await response.json();
+
+                    for (const [name, data] of Object.entries(organs)) {
+                        const el = document.getElementById(`organ-${name}`);
+                        if (el) {
+                            el.classList.toggle('active', data.active);
+                            el.classList.toggle('inactive', !data.active);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to update organs:', e);
+                }
+            },
+
+            async updateMetrics() {
+                try {
+                    const response = await fetch('/api/metrics');
+                    const metrics = await response.json();
+
+                    document.getElementById('stat-episodic').textContent = metrics.episodic_count || 0;
+                    document.getElementById('stat-schema').textContent = metrics.schema_count || 0;
+                    document.getElementById('stat-skill').textContent = metrics.skill_count || 0;
+                } catch (e) {}
+            },
+
+            updateRealtime(data) {
+                this.updateBar('energy', data.energy);
+                this.updateBar('mood', data.mood);
+                this.updateBar('stress', data.stress);
+                if (data.tick !== undefined) {
+                    document.getElementById('stat-tick').textContent = data.tick;
+                }
+            },
+
+            updateBar(name, value) {
+                const bar = document.getElementById(`bar-${name}`);
+                const val = document.getElementById(`val-${name}`);
+                if (bar && val) {
+                    const pct = Math.round((value || 0) * 100);
+                    bar.style.width = pct + '%';
+                    val.textContent = pct + '%';
+                }
+            },
+
+            setSafeMode(safe) {
+                this.safeMode = safe;
+                document.getElementById('mode-safe').classList.toggle('active', safe);
+                document.getElementById('mode-explorer').classList.toggle('active', !safe);
+
+                const desc = document.getElementById('mode-desc');
+                if (safe) {
+                    desc.textContent = '受限模式，禁用高风险操作和代码执行';
+                } else {
+                    desc.textContent = '无限制运行，可执行代码、使用所有工具';
+                }
+
+                // Send to backend
+                fetch('/api/set-safe-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ safe_mode: safe })
+                }).catch(e => console.error('Failed to set safe mode:', e));
+            },
+
+            async updateRuntimeMode() {
+                // Send mode update to backend
+                try {
+                    await fetch('/api/set-mode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: this.runtimeMode })
+                    });
+                } catch (e) {}
+            },
+
+            async startRun() {
+                try {
+                    const response = await fetch('/api/run/start', { method: 'POST' });
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.isRunning = true;
+                        document.getElementById('btn-start').disabled = true;
+                        document.getElementById('btn-stop').disabled = false;
+                        this.showNotification('运行已启动', 'success');
+                    } else {
+                        this.showNotification(data.error || '启动失败', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('启动出错: ' + e.message, 'error');
+                }
+            },
+
+            async stopRun() {
+                try {
+                    const response = await fetch('/api/run/stop', { method: 'POST' });
+                    if (response.ok) {
+                        this.isRunning = false;
+                        document.getElementById('btn-start').disabled = false;
+                        document.getElementById('btn-stop').disabled = true;
+                        this.showNotification('运行已停止', 'success');
+                    }
+                } catch (e) {
+                    this.showNotification('停止出错: ' + e.message, 'error');
+                }
+            },
+
+            // Daemon control
+            async checkDaemonStatus() {
+                try {
+                    const response = await fetch('/api/daemon/status');
+                    const data = await response.json();
+                    this.updateDaemonUI(data);
+                } catch (e) {
+                    console.error('Failed to check daemon status:', e);
+                }
+            },
+
+            async startDaemon() {
+                try {
+                    const response = await fetch('/api/daemon/start', { method: 'POST' });
+                    const data = await response.json();
+                    if (response.ok) {
+                        this.showNotification(data.message || '守护进程启动中...', 'success');
+                        setTimeout(() => this.checkDaemonStatus(), 2000);
+                    } else {
+                        this.showNotification(data.error || '启动失败', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('启动出错: ' + e.message, 'error');
+                }
+            },
+
+            async stopDaemon() {
+                try {
+                    const response = await fetch('/api/daemon/stop', { method: 'POST' });
+                    const data = await response.json();
+                    if (response.ok) {
+                        this.showNotification(data.message || '已发送停止信号', 'success');
+                        setTimeout(() => this.checkDaemonStatus(), 2000);
+                    } else {
+                        this.showNotification(data.error || '停止失败', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('停止出错: ' + e.message, 'error');
+                }
+            },
+
+            updateDaemonUI(data) {
+                const statusEl = document.getElementById('daemon-status');
+                const textEl = document.getElementById('daemon-status-text');
+                if (data.running) {
+                    statusEl.className = 'status-badge online';
+                    textEl.textContent = `运行中 (PID: ${data.pid})`;
+                } else {
+                    statusEl.className = 'status-badge offline';
+                    textEl.textContent = data.message || '未运行';
+                }
+            },
+
+            async saveMemoryConfig() {
+                const config = {
+                    episodic_limit: parseInt(document.getElementById('episodic-limit').value) || 200000,
+                    schema_limit: parseInt(document.getElementById('schema-limit').value) || 10000,
+                    skill_limit: parseInt(document.getElementById('skill-limit').value) || 3000,
+                    consolidation_interval: parseInt(document.getElementById('consolidation-interval').value) || 1
+                };
+
+                try {
+                    const response = await fetch('/api/config/memory', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        this.showNotification(data.message || '记忆配置已保存', 'success');
+                    } else {
+                        this.showNotification(data.error || '保存失败', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('保存出错: ' + e.message, 'error');
+                }
+            },
+
+            async saveRuntimeConfig() {
+                const config = {
+                    tick_interval: parseInt(document.getElementById('tick-interval').value) || 10,
+                    max_ticks: parseInt(document.getElementById('max-ticks').value) || 1000000,
+                    max_tokens: parseInt(document.getElementById('max-tokens').value) || 4096
+                };
+
+                // Also include security settings if they exist
+                const sandboxCheckbox = document.getElementById('sandbox-enabled');
+                if (sandboxCheckbox) {
+                    config.sandbox_mode = sandboxCheckbox.checked;
+                }
+
+                try {
+                    const response = await fetch('/api/config/runtime', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        this.showNotification(data.message || '运行参数已保存', 'success');
+                    } else {
+                        this.showNotification(data.error || '保存失败', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('保存出错: ' + e.message, 'error');
+                }
+            },
+
+            async consolidateMemory() {
+                try {
+                    this.showNotification('正在整合记忆...', 'info');
+
+                    const response = await fetch('/api/memory/consolidate', { method: 'POST' });
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        const stats = data.stats || {};
+                        let message = '记忆整合完成！';
+                        if (stats.new_schemas) message += ` 新图式: ${stats.new_schemas}`;
+                        if (stats.updated_schemas) message += ` 更新图式: ${stats.updated_schemas}`;
+                        if (stats.new_skills) message += ` 新技能: ${stats.new_skills}`;
+
+                        this.showNotification(message, 'success');
+
+                        // Refresh metrics
+                        this.loadData();
+                    } else {
+                        this.showNotification(data.error || '整合失败', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('整合出错: ' + e.message, 'error');
+                }
+            },
+
+            async clearMemory() {
+                if (!confirm('确定要清除所有记忆吗？此操作不可撤销！')) return;
+
+                try {
+                    const response = await fetch('/api/clear-memory', { method: 'POST' });
+                    if (response.ok) {
+                        this.showNotification('记忆已清除', 'success');
+                    }
+                } catch (e) {
+                    this.showNotification('清除失败: ' + e.message, 'error');
+                }
+            },
+
+            async loadLogs() {
+                const viewer = document.getElementById('log-viewer');
+                viewer.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: var(--space-md);"><i class="fas fa-spinner fa-spin"></i><p>正在加载日志...</p></div>';
+
+                try {
+                    // Try to read log file
+                    const response = await fetch('/api/logs');
+                    if (response.ok) {
+                        const logs = await response.json();
+                        this.renderLogs(logs);
+                    } else {
+                        viewer.innerHTML = '<div style="color: #ef4444; text-align: center; padding: var(--space-md);">无法加载日志</div>';
+                    }
+                } catch (e) {
+                    viewer.innerHTML = '<div style="color: #ef4444; text-align: center; padding: var(--space-md);">日志服务不可用</div>';
+                }
+            },
+
+            renderLogs(logs) {
+                const viewer = document.getElementById('log-viewer');
+                if (!logs || logs.length === 0) {
+                    viewer.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: var(--space-md);">暂无日志</div>';
+                    return;
+                }
+
+                viewer.innerHTML = logs.map(log => `
+                    <div class="log-entry">
+                        <span class="log-timestamp">${log.timestamp || ''}</span>
+                        <span class="log-level-${log.level || 'info'}">[${log.level || 'INFO'}]</span>
+                        <span class="log-message">${this.escapeHtml(log.message || '')}</span>
+                    </div>
+                `).join('');
+            },
+
+            async loadModules() {
+                const container = document.getElementById('modules-detail');
+                container.innerHTML = '<p style="text-align: center; color: var(--text-tertiary);"><i class="fas fa-spinner fa-spin"></i> 加载中...</p>';
+
+                try {
+                    const response = await fetch('/api/organs');
+                    const organs = await response.json();
+
+                    container.innerHTML = Object.entries(organs).map(([name, data]) => `
+                        <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--surface-1); border-radius: var(--radius-md); margin-bottom: 8px; border: 1px solid var(--border-color);">
+                            <div>
+                                <strong style="color: var(--text-primary);">${name}</strong>
+                                <div style="font-size: 12px; color: var(--text-tertiary);">状态: ${data.active ? '<span style="color: var(--accent-green);">活跃</span>' : '<span style="color: var(--text-muted);">休眠</span>'}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="color: var(--accent-cyan); font-family: 'JetBrains Mono', monospace;">能量: ${Math.round((data.energy || 0) * 100)}%</div>
+                            </div>
+                        </div>
+                    `).join('');
+                } catch (e) {
+                    container.innerHTML = '<p style="text-align: center; color: #ef4444;">加载失败</p>';
+                }
+            },
+
+            async loadEpisodes() {
+                const container = document.getElementById('episodes-list');
+                container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>加载中...</p></div>';
+
+                try {
+                    const response = await fetch(`/api/episodes?page=${this.episodesPage}&per_page=20`);
+                    const data = await response.json();
+
+                    if (data.episodes && data.episodes.length > 0) {
+                        document.getElementById('episodes-page-info').textContent =
+                            `第 ${data.page} 页 / 共 ${data.total_pages} 页`;
+
+                        container.innerHTML = data.episodes.map(ep => `
+                            <div class="episode-card">
+                                <div class="episode-header">
+                                    <span class="episode-tick">Tick: ${ep.tick}</span>
+                                    <span class="episode-reward ${ep.reward > 0 ? 'positive' : 'negative'}">
+                                        奖励: ${ep.reward?.toFixed(2) || 0}
+                                    </span>
+                                </div>
+                                ${ep.goal ? `<div class="episode-content" style="margin-bottom: 4px;">目标: ${this.escapeHtml(ep.goal)}</div>` : ''}
+                                ${ep.action ? `<div class="episode-content" style="margin-bottom: 4px;">行动: ${this.escapeHtml(ep.action)}</div>` : ''}
+                                ${ep.observation ? `<div class="episode-content" style="color: var(--text-muted); font-size: 11px;">${this.escapeHtml(ep.observation.substring(0, 100))}${ep.observation.length > 100 ? '...' : ''}</div>` : ''}
+                            </div>
+                        `).join('');
+
+                        // Update pagination buttons
+                        document.getElementById('btn-prev-episodes').disabled = data.page <= 1;
+                        document.getElementById('btn-next-episodes').disabled = data.page >= data.total_pages;
+                    } else {
+                        container.innerHTML = '<div class="empty-state"><p>暂无Episode记录</p></div>';
+                    }
+                } catch (e) {
+                    container.innerHTML = '<div class="empty-state" style="color: #ef4444;"><p>加载失败</p></div>';
+                }
+            },
+
+            async loadOrganControls() {
+                const container = document.getElementById('organ-controls');
+                container.innerHTML = '<p style="text-align: center; color: var(--text-tertiary);"><i class="fas fa-spinner fa-spin"></i> 加载中...</p>';
+
+                try {
+                    const response = await fetch('/api/organs');
+                    const organs = await response.json();
+
+                    const organNames = {
+                        'mind': 'Mind (推理)',
+                        'caretaker': 'Caretaker (健康)',
+                        'scout': 'Scout (探索)',
+                        'builder': 'Builder (建设)',
+                        'archivist': 'Archivist (记忆)',
+                        'immune': 'Immune (安全)'
+                    };
+
+                    container.innerHTML = Object.entries(organs).map(([name, data]) => `
+                        <div style="padding: 12px; background: var(--surface-1); border-radius: var(--radius-md); border: 1px solid ${data.active ? 'var(--accent-green)' : 'var(--border-color)'};">
+                            <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">${organNames[name] || name}</div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; color: var(--text-secondary);">
+                                <span>状态: ${data.active ? '<span style="color: var(--accent-green);">活跃</span>' : '休眠'}</span>
+                                <span>能量: ${Math.round((data.energy || 0) * 100)}%</span>
+                            </div>
+                            <button class="btn btn-secondary" style="width: 100%; padding: 6px; font-size: 12px;"
+                                    onclick="Dashboard.toggleOrgan('${name}')">
+                                ${data.active ? '停用' : '激活'}
+                            </button>
+                        </div>
+                    `).join('');
+                } catch (e) {
+                    container.innerHTML = '<p style="text-align: center; color: #ef4444;">加载失败</p>';
+                }
+            },
+
+            async toggleOrgan(organName) {
+                try {
+                    const response = await fetch('/api/organs/toggle', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ organ: organName })
+                    });
+
+                    if (response.ok) {
+                        this.showNotification(`器官 ${organName} 状态已切换`, 'success');
+                        this.loadOrganControls();
+                    } else {
+                        this.showNotification('切换失败', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('切换出错: ' + e.message, 'error');
+                }
+            },
+
+            async searchMemory() {
+                const input = document.getElementById('memory-search-input');
+                const query = input.value.trim();
+                if (!query) return;
+
+                const memoryType = document.querySelector('input[name="memory-type"]:checked').value;
+                const resultsContainer = document.getElementById('memory-search-results');
+                resultsContainer.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>搜索中...</p></div>';
+
+                try {
+                    const response = await fetch(`/api/memory/search?type=${memoryType}&q=${encodeURIComponent(query)}`);
+                    const data = await response.json();
+
+                    if (data.results && data.results.length > 0) {
+                        resultsContainer.innerHTML = data.results.map(item => `
+                            <div style="padding: 12px; background: var(--surface-1); border-radius: var(--radius-md); margin-bottom: 8px; border: 1px solid var(--border-color);">
+                                <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">
+                                    ${item.tick ? `Tick: ${item.tick}` : ''}
+                                    ${item.score ? ` | 相似度: ${(item.score * 100).toFixed(1)}%` : ''}
+                                </div>
+                                <div style="font-size: 13px; color: var(--text-secondary);">${this.escapeHtml(item.content || item.summary || '')}</div>
+                            </div>
+                        `).join('');
+                    } else {
+                        resultsContainer.innerHTML = '<div class="empty-state"><p>未找到匹配结果</p></div>';
+                    }
+                } catch (e) {
+                    resultsContainer.innerHTML = '<div class="empty-state" style="color: #ef4444;"><p>搜索失败</p></div>';
+                }
+            },
+
+            async sendChat() {
+                const input = document.getElementById('chat-input');
+                const message = input.value.trim();
+                if (!message) return;
+
+                input.value = '';
+
+                // Add user message
+                this.addChatMessage('user', message);
+
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message })
+                    });
+
+                    const data = await response.json();
+                    this.addChatMessage('assistant', data.response || '无响应');
+
+                    // Refresh data
+                    this.loadData();
+                } catch (e) {
+                    this.addChatMessage('system', '错误: ' + e.message);
+                }
+            },
+
+            addChatMessage(type, content) {
+                const container = document.getElementById('chat-messages');
+
+                // Clear placeholder
+                if (container.querySelector('.placeholder-state')) {
+                    container.innerHTML = '';
+                }
+
+                const div = document.createElement('div');
+                div.className = `chat-message ${type}`;
+
+                const avatar = type === 'user' ?
+                    '<div class="chat-avatar"><i class="fas fa-user"></i></div>' :
+                    type === 'assistant' ?
+                    '<div class="chat-avatar"><i class="fas fa-robot"></i></div>' :
+                    '<div class="chat-avatar"><i class="fas fa-info"></i></div>';
+
+                div.innerHTML = `
+                    ${avatar}
+                    <div class="chat-bubble">${this.escapeHtml(content)}</div>
+                `;
+
+                container.appendChild(div);
+                container.scrollTop = container.scrollHeight;
+            },
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            },
+
+            startPolling() {
+                setInterval(() => {
+                    this.updateStatus();
+                    this.updateMetrics();
+                }, 2000);
+            },
+
+            showNotification(message, type = 'info') {
+                // Create notification element
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 80px;
+                    right: 20px;
+                    padding: 12px 20px;
+                    background: var(--surface-1);
+                    backdrop-filter: blur(10px);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-md);
+                    box-shadow: var(--shadow-lg);
+                    z-index: 1000;
+                    animation: slideIn 0.3s ease;
+                    font-size: 14px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                `;
+
+                const colors = {
+                    success: 'var(--accent-green)',
+                    error: '#ef4444',
+                    info: 'var(--accent-cyan)',
+                    warning: 'var(--accent-orange)'
+                };
+
+                const icons = {
+                    success: 'fa-check-circle',
+                    error: 'fa-exclamation-circle',
+                    info: 'fa-info-circle',
+                    warning: 'fa-exclamation-triangle'
+                };
+
+                notification.style.borderColor = colors[type] || colors.info;
+                notification.innerHTML = `
+                    <i class="fas ${icons[type] || icons.info}" style="color: ${colors[type] || colors.info};"></i>
+                    <span>${message}</span>
+                `;
+
+                document.body.appendChild(notification);
+
+                setTimeout(() => {
+                    notification.style.animation = 'fadeOut 0.3s ease';
+                    setTimeout(() => notification.remove(), 300);
+                }, 3000);
+            }
+        };
+
+        // Add animations
+        const animationStyle = document.createElement('style');
+        animationStyle.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+            }
+        `;
+        document.head.appendChild(animationStyle);
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            Dashboard.init();
+        });
+    </script>
+</body>
+</html>

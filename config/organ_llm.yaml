@@ -1,0 +1,232 @@
+# Genesis X Organ LLM Configuration
+# 器官 LLM 会话配置
+
+# ============================================
+# 会话模式
+# ============================================
+# - independent: 独立对话 - 每个器官有独立的 LLM 会话（默认）
+# - shared: 共享对话 - 所有器官共享一个"大脑"会话
+# - disabled: 无配置 - 不使用 LLM，器官使用规则模式
+mode: "independent"
+
+# ============================================
+# 全局会话参数（作为默认值）
+# ============================================
+max_history: 20          # 每个会话保留的历史消息数
+temperature: 0.7         # 思考温度（0-2）
+max_tokens: 1000         # 每次思考最大 token 数
+
+# ============================================
+# 选择性记忆配置
+# ============================================
+memory:
+  enabled: true
+  use_llm_judge: true    # 是否用 LLM 判断记忆价值
+  importance_threshold: 0.5
+
+# ============================================
+# 共享对话模式配置（仅 shared 模式有效）
+# ============================================
+shared:
+  # 是否使用自定义 LLM（false 则使用全局对话 LLM）
+  use_default_llm: true
+
+  # 自定义 LLM 配置（use_default_llm: false 时生效）
+  # llm:
+  #   api_base: "https://api.example.com/v1"
+  #   api_key: "${ORGAN_SHARED_API_KEY}"
+  #   model: "gpt-4"
+  #   temperature: 0.7
+  #   max_tokens: 2000
+
+  # 会话参数（可选，不设置则使用全局参数）
+  # max_history: 30
+  # temperature: 0.8
+
+# ============================================
+# 器官独立配置（仅 independent 模式有效）
+# ============================================
+# 每个器官可以单独配置：
+# - use_default_llm: true  使用全局 LLM 配置（默认）
+# - use_default_llm: false 使用自定义 LLM 配置
+#
+# 可配置的器官：mind, scout, builder, caretaker, archivist, immune
+# ============================================
+organs:
+  # 思维器官 - 负责决策和规划
+  mind:
+    use_default_llm: true
+    # 自定义 LLM 配置（use_default_llm: false 时生效）
+    # llm:
+    #   api_base: "https://api.example.com/v1"
+    #   api_key: "${MIND_API_KEY}"
+    #   model: "gpt-4"
+    #   temperature: 0.8
+    #   max_tokens: 2000
+    # 会话参数（可选，不设置则使用全局参数）
+    max_history: 25
+    temperature: 0.8
+
+  # 侦察器官 - 负责感知和信息收集
+  scout:
+    use_default_llm: true
+    max_history: 15
+    temperature: 0.6
+
+  # 建造器官 - 负责执行和构建
+  builder:
+    use_default_llm: true
+    max_history: 20
+    temperature: 0.5
+
+  # 照料器官 - 负责自我维护
+  caretaker:
+    use_default_llm: true
+    max_history: 15
+    temperature: 0.6
+
+  # 档案器官 - 负责记忆管理
+  archivist:
+    use_default_llm: true
+    max_history: 30
+    temperature: 0.7
+
+  # 免疫器官 - 负责安全检查
+  immune:
+    use_default_llm: true
+    max_history: 10
+    temperature: 0.3
+
+# ============================================
+# 配置说明
+# ============================================
+#
+# 1. 模式说明：
+#    - independent: 每个器官有独立会话，可单独配置参数
+#    - shared: 所有器官共享一个会话，上下文互通
+#    - disabled: 不使用 LLM，器官用规则模式运行
+#
+# 2. LLM 配置优先级：
+#    a. 独立模式：
+#       - 如果 organ.use_default_llm = false，使用 organ.llm 配置
+#       - 如果 organ.use_default_llm = true（默认），使用全局 LLM
+#    b. 共享模式：
+#       - 如果 shared.use_default_llm = false，使用 shared.llm 配置
+#       - 如果 shared.use_default_llm = true（默认），使用全局 LLM
+#    c. 全局 LLM 配置来自环境变量 LLM_API_KEY/LLM_API_BASE/LLM_MODEL
+#
+# 3. 会话参数优先级：
+#    a. 器官自己的 max_history/temperature/max_tokens
+#    b. 全局的 max_history/temperature/max_tokens
+#
+# 4. 环境变量：
+#    全局 LLM 配置：
+#    - LLM_API_KEY, LLM_API_BASE, LLM_MODEL
+#
+#    器官独立 LLM 可使用 ${VAR} 引用环境变量：
+#    - ${MIND_API_KEY}, ${BUILDER_API_KEY} 等
+
+# ============================================
+# 记忆整理 LLM 配置
+# ============================================
+# 用于 SLEEP 行为中的深度记忆整理
+#
+# 整理策略：
+# - 启用时：使用 LLM 进行智能整理（提取偏好、合并话题、识别重要事件）
+# - 禁用或失败时：自动回退到规则式压缩（简单的去重、优先级调整、关键词相似度检测）
+#
+# LLM 整理能力：
+# - 理解语义，提取用户偏好和习惯
+# - 识别跨对话的主题和模式
+# - 生成结构化的记忆摘要
+#
+# 规则式整理能力（后备）：
+# - 按 tick 分组去重
+# - 简单的关键词重叠检测
+# - 清理过旧且低优先级的记忆
+memory_consolidation:
+  # 是否启用 LLM 记忆整理（默认启用）
+  enabled: true
+
+  # 是否使用自定义 LLM（false 则使用全局对话 LLM）
+  use_default_llm: true
+
+  # 自定义 LLM 配置（use_default_llm: false 时生效）
+  # llm:
+  #   api_base: "https://api.example.com/v1"
+  #   api_key: "${MEMORY_CONSOLIDATION_API_KEY}"
+  #   model: "gpt-4"
+  #   temperature: 0.3
+  #   max_tokens: 1000
+
+  # 会话参数
+  max_history: 30
+  temperature: 0.3  # 整理需要适中温度
+
+  # 整理阈值（记忆数量超过此值才触发 LLM 整理）
+  # 低于此值时直接使用规则式整理
+  threshold: 30
+
+  # 整理提示词（可选，不设置则使用默认）
+  # prompt: |
+  #   请帮我整理以下对话记忆，提取核心信息并合并相似内容。
+  #   输出格式：
+  #   1. 用户偏好：
+  #   2. 重要事件：
+  #   3. 关键话题：
+
+# ============================================
+# 主动发消息 LLM 配置
+# ============================================
+# 用于系统主动向用户发送消息（如"好久没和你说话了，有点想你..."）
+# 默认启用，使用全局 LLM；配置错误时自动回退到预设模板
+initiative_messaging:
+  # 是否启用 LLM 主动发消息（默认启用）
+  enabled: true
+
+  # 是否使用自定义 LLM（false 则使用全局对话 LLM）
+  use_default_llm: true
+
+  # 自定义 LLM 配置（use_default_llm: false 时生效）
+  # llm:
+  #   api_base: "https://api.example.com/v1"
+  #   api_key: "${INITIATIVE_MESSAGING_API_KEY}"
+  #   model: "gpt-4"
+  #   temperature: 0.8
+  #   max_tokens: 100
+
+  # 会话参数
+  temperature: 0.8  # 主动消息需要较高的创造性
+  max_tokens: 100   # 消息不需要太长
+
+  # 触发阈值配置
+  triggers:
+    # 依恋触发：关系值超过阈值时可能主动联系
+    attachment_threshold: 0.6
+    # 无聊触发：无聊度超过阈值时可能主动找人聊天
+    boredom_threshold: 0.5
+    # 好奇触发：好奇心缺口超过阈值时可能分享发现
+    curiosity_threshold: 0.5
+    # 成就触发：成就感超过阈值时可能分享成就
+    competence_threshold: 0.6
+    # 最小静默时间（tick）：多久没互动后才能主动发消息
+    min_silence_ticks: 100
+
+  # 预设消息模板（LLM 不可用时的后备）
+  fallback_messages:
+    boredom:
+      - "有点无聊，想找人聊聊天..."
+      - "最近有什么有趣的事吗？"
+      - "在想你要是在就好了..."
+    attachment:
+      - "好久没和你说话了，有点想你..."
+      - "突然想起你了，最近怎么样？"
+      - "有些话想和你分享..."
+    curiosity:
+      - "有些好奇的事情想和你分享..."
+      - "在想一个问题，你觉得呢？"
+      - "发现了一件有趣的事！"
+    competence:
+      - "刚刚完成了一些事情，感觉不错！"
+      - "今天挺有成就感的~"
+      - "做到了想做的事，开心！"

@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运行监控 - Genesis X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/genesis-theme.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .monitor-container {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            gap: var(--space-md);
+            padding: var(--space-md);
+        }
+
+        /* 顶部状态栏 */
+        .status-bar {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-md) var(--space-lg);
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius-lg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-left {
+            display: flex;
+            align-items: center;
+            gap: var(--space-lg);
+        }
+
+        .status-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+        }
+
+        .status-title h1 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .run-status {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-xs) var(--space-md);
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: var(--radius-full);
+            font-size: 12px;
+        }
+
+        .run-status.stopped {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .run-status.stopped .status-dot {
+            background: #ef4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-controls {
+            display: flex;
+            gap: var(--space-sm);
+        }
+
+        .control-btn {
+            display: flex;
+            align-items: center;
+            gap: var(--space-xs);
+            padding: var(--space-xs) var(--space-md);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all var(--transition-base);
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .control-btn.start {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .control-btn.start:hover {
+            background: rgba(16, 185, 129, 0.2);
+        }
+
+        .control-btn.stop {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .control-btn.stop:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        /* 左侧面板 */
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+            overflow: hidden;
+        }
+
+        .panel-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: var(--space-md);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-md);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .panel-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .panel-title i {
+            color: var(--accent-cyan);
+        }
+
+        /* 指标网格 */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-sm);
+        }
+
+        .metric-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .metric-label {
+            font-size: 10px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+        }
+
+        .metric-value {
+            font-size: 20px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+        }
+
+        .metric-value.secondary {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* 进度条 */
+        .progress-item {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xs);
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: var(--radius-full);
+            transition: width 0.3s ease;
+        }
+
+        /* 阶段流程 */
+        .phase-flow {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xs);
+        }
+
+        .phase-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-xs);
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            opacity: 0.4;
+            transition: all 0.3s ease;
+        }
+
+        .phase-item.active {
+            opacity: 1;
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .phase-item.completed {
+            opacity: 0.7;
+        }
+
+        .phase-icon {
+            width: 16px;
+            text-align: center;
+        }
+
+        .phase-item.active .phase-icon {
+            color: var(--accent-cyan);
+        }
+
+        .phase-item.completed .phase-icon {
+            color: var(--accent-green);
+        }
+
+        /* 主日志区域 */
+        .main-log {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: var(--space-md);
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: var(--space-md);
+            padding: var(--space-xs) 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .log-time {
+            color: var(--text-tertiary);
+            min-width: 80px;
+        }
+
+        .log-type {
+            min-width: 80px;
+            font-weight: 500;
+        }
+
+        .log-type.thinking { color: var(--accent-cyan); }
+        .log-type.phase { color: var(--primary); }
+        .log-type.action { color: var(--accent-purple); }
+        .log-type.reward { color: var(--accent-green); }
+        .log-type.error { color: #ef4444; }
+
+        .log-message {
+            flex: 1;
+            color: var(--text-secondary);
+        }
+
+        .log-details {
+            color: var(--text-tertiary);
+            font-size: 11px;
+        }
+
+        /* 底部时间轴 */
+        .timeline-bar {
+            grid-column: 1 / -1;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: var(--space-md);
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--space-sm);
+            font-size: 11px;
+            color: var(--text-tertiary);
+        }
+
+        .timeline-track {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .timeline-events {
+            display: flex;
+            height: 100%;
+        }
+
+        .timeline-event {
+            height: 100%;
+            background: var(--accent-cyan);
+            border-radius: var(--radius-full);
+            transition: all 0.3s ease;
+        }
+
+        .timeline-event.thinking { background: var(--accent-cyan); }
+        .timeline-event.phase { background: var(--primary); }
+        .timeline-event.action { background: var(--accent-purple); }
+        .timeline-event.reward { background: var(--accent-green); }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* 响应式 */
+        @media (max-width: 1024px) {
+            .monitor-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto 1fr auto;
+            }
+
+            .side-panel {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+
+            .panel-card {
+                flex: 1;
+                min-width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="monitor-container">
+        <!-- 顶部状态栏 -->
+        <div class="status-bar">
+            <div class="status-left">
+                <div class="status-title">
+                    <i class="fas fa-dna" style="color: var(--primary);"></i>
+                    <h1>Genesis X 运行监控</h1>
+                </div>
+                <div class="run-status" id="run-status">
+                    <div class="status-dot"></div>
+                    <span id="run-status-text">运行中</span>
+                </div>
+            </div>
+            <div class="status-controls">
+                <a href="/" class="control-btn">
+                    <i class="fas fa-home"></i> 首页
+                </a>
+                <a href="/chat" class="control-btn">
+                    <i class="fas fa-comments"></i> 对话
+                </a>
+                <a href="/dashboard" class="control-btn">
+                    <i class="fas fa-chart-line"></i> 仪表盘
+                </a>
+                <a href="/settings" class="control-btn">
+                    <i class="fas fa-cog"></i> 设置
+                </a>
+                <button class="control-btn start" id="start-btn">
+                    <i class="fas fa-play"></i> 启动
+                </button>
+                <button class="control-btn stop" id="stop-btn">
+                    <i class="fas fa-stop"></i> 停止
+                </button>
+            </div>
+        </div>
+
+        <!-- 左侧面板 -->
+        <div class="side-panel">
+            <!-- 实时指标 -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <i class="fas fa-chart-bar"></i> 实时指标
+                    </span>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric-item">
+                        <span class="metric-label">Tick</span>
+                        <span class="metric-value" id="metric-tick">0</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">阶段</span>
+                        <span class="metric-value secondary" id="metric-phase">-</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">能量</span>
+                        <span class="metric-value" id="metric-energy">--%</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">情绪</span>
+                        <span class="metric-value" id="metric-mood">--%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 价值状态 -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <i class="fas fa-heart"></i> 价值系统
+                    </span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span>稳态</span>
+                            <span id="val-homeostasis-pct">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="val-homeostasis" style="width: 0%; background: linear-gradient(90deg, #8b5cf6, #a78bfa);"></div>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span>依恋</span>
+                            <span id="val-attachment-pct">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="val-attachment" style="width: 0%; background: linear-gradient(90deg, #ec4899, #f472b6);"></div>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span>好奇</span>
+                            <span id="val-curiosity-pct">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="val-curiosity" style="width: 0%; background: linear-gradient(90deg, #06b6d4, #22d3ee);"></div>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span>能力</span>
+                            <span id="val-competence-pct">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="val-competence" style="width: 0%; background: linear-gradient(90deg, #f59e0b, #fbbf24);"></div>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span>安全</span>
+                            <span id="val-safety-pct">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="val-safety" style="width: 0%; background: linear-gradient(90deg, #10b981, #34d399);"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 循环阶段 -->
+            <div class="panel-card" style="flex: 1;">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <i class="fas fa-sync-alt"></i> 循环阶段
+                    </span>
+                </div>
+                <div class="phase-flow" id="phase-flow">
+                    <div class="phase-item" data-phase="caretaker_check">
+                        <span class="phase-icon"><i class="fas fa-heartbeat"></i></span>
+                        <span>健康检查</span>
+                    </div>
+                    <div class="phase-item" data-phase="body_update">
+                        <span class="phase-icon"><i class="fas fa-bolt"></i></span>
+                        <span>身体更新</span>
+                    </div>
+                    <div class="phase-item" data-phase="observe">
+                        <span class="phase-icon"><i class="fas fa-eye"></i></span>
+                        <span>观察环境</span>
+                    </div>
+                    <div class="phase-item" data-phase="retrieve">
+                        <span class="phase-icon"><i class="fas fa-database"></i></span>
+                        <span>检索记忆</span>
+                    </div>
+                    <div class="phase-item" data-phase="axiology">
+                        <span class="phase-icon"><i class="fas fa-balance-scale"></i></span>
+                        <span>价值计算</span>
+                    </div>
+                    <div class="phase-item" data-phase="goal_compile">
+                        <span class="phase-icon"><i class="fas fa-bullseye"></i></span>
+                        <span>目标编译</span>
+                    </div>
+                    <div class="phase-item" data-phase="organ_proposals">
+                        <span class="phase-icon"><i class="fas fa-users"></i></span>
+                        <span>器官提案</span>
+                    </div>
+                    <div class="phase-item" data-phase="plan_evaluate">
+                        <span class="phase-icon"><i class="fas fa-clipboard-list"></i></span>
+                        <span>计划评估</span>
+                    </div>
+                    <div class="phase-item" data-phase="safety_check">
+                        <span class="phase-icon"><i class="fas fa-shield-alt"></i></span>
+                        <span>安全检查</span>
+                    </div>
+                    <div class="phase-item" data-phase="execute">
+                        <span class="phase-icon"><i class="fas fa-play"></i></span>
+                        <span>执行动作</span>
+                    </div>
+                    <div class="phase-item" data-phase="reward_affect">
+                        <span class="phase-icon"><i class="fas fa-star"></i></span>
+                        <span>奖赏情感</span>
+                    </div>
+                    <div class="phase-item" data-phase="memory_write">
+                        <span class="phase-icon"><i class="fas fa-save"></i></span>
+                        <span>写入记忆</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主日志区域 -->
+        <div class="main-log" id="main-log">
+            <div class="log-entry" style="color: var(--text-tertiary);">
+                <span class="log-time">--:--:--</span>
+                <span class="log-type">INFO</span>
+                <span class="log-message">等待系统启动...</span>
+            </div>
+        </div>
+
+        <!-- 底部时间轴 -->
+        <div class="timeline-bar">
+            <div class="timeline-header">
+                <span>最近活动</span>
+                <span id="timeline-count">0 事件</span>
+            </div>
+            <div class="timeline-track">
+                <div class="timeline-events" id="timeline-events">
+                    <!-- 动态生成事件 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const mainLog = document.getElementById('main-log');
+        const phaseFlow = document.getElementById('phase-flow');
+        const timelineEvents = document.getElementById('timeline-events');
+        let logIndex = 0;
+        const maxLogEntries = 100;
+
+        // 阶段名称
+        const phaseNames = {
+            'caretaker_check': '健康检查',
+            'body_update': '身体更新',
+            'observe': '观察',
+            'retrieve': '检索',
+            'axiology': '价值计算',
+            'goal_compile': '目标编译',
+            'organ_proposals': '提案',
+            'plan_evaluate': '评估',
+            'safety_check': '安全检查',
+            'execute': '执行',
+            'reward_affect': '奖赏',
+            'memory_write': '写入记忆',
+            'invariants': '不变量',
+            'value_learn': '价值学习',
+            'sleep_reflect_trigger': '睡眠触发',
+            'persist_override': '持久化'
+        };
+
+        // 格式化时间
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('zh-CN', { hour12: false });
+        }
+
+        // 添加日志条目
+        function addLogEntry(type, message, details = '') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `
+                <span class="log-time">${formatTime(new Date())}</span>
+                <span class="log-type ${type}">${type.toUpperCase()}</span>
+                <span class="log-message">${message}</span>
+                ${details ? `<span class="log-details">${details}</span>` : ''}
+            `;
+            mainLog.appendChild(entry);
+
+            // 限制条目数量
+            const entries = mainLog.querySelectorAll('.log-entry');
+            if (entries.length > maxLogEntries) {
+                entries[0].remove();
+            }
+
+            mainLog.scrollTop = mainLog.scrollHeight;
+        }
+
+        // 更新阶段显示
+        function updatePhase(currentPhase) {
+            // 移除所有激活状态
+            phaseFlow.querySelectorAll('.phase-item').forEach(item => {
+                item.classList.remove('active', 'completed');
+            });
+
+            // 标记当前阶段为激活
+            const activeItem = phaseFlow.querySelector(`[data-phase="${currentPhase}"]`);
+            if (activeItem) {
+                activeItem.classList.add('active');
+
+                // 标记之前的阶段为完成
+                let prev = activeItem.previousElementSibling;
+                while (prev) {
+                    prev.classList.add('completed');
+                    prev = prev.previousElementSibling;
+                }
+            }
+
+            document.getElementById('metric-phase').textContent = phaseNames[currentPhase] || currentPhase;
+        }
+
+        // 更新指标
+        function updateMetrics(status) {
+            document.getElementById('metric-tick').textContent = status.tick || 0;
+            document.getElementById('metric-energy').textContent = Math.round((status.energy || 0) * 100) + '%';
+            document.getElementById('metric-mood').textContent = Math.round((status.mood || 0) * 100) + '%';
+
+            // 更新价值
+            const values = status.values || {};
+            ['homeostasis', 'attachment', 'curiosity', 'competence', 'safety'].forEach(dim => {
+                const val = Math.round((values[dim] || 0) * 100);
+                document.getElementById(`val-${dim}`).style.width = val + '%';
+                document.getElementById(`val-${dim}-pct`).textContent = val + '%';
+            });
+
+            // 更新阶段
+            if (status.current_stage) {
+                updatePhase(status.current_stage);
+            }
+
+            // 更新运行状态
+            const runStatus = document.getElementById('run-status');
+            const runStatusText = document.getElementById('run-status-text');
+            if (status.status === 'running') {
+                runStatus.classList.remove('stopped');
+                runStatusText.textContent = '运行中';
+            } else {
+                runStatus.classList.add('stopped');
+                runStatusText.textContent = '已停止';
+            }
+        }
+
+        // 添加时间轴事件
+        function addTimelineEvent(type) {
+            const event = document.createElement('div');
+            event.className = `timeline-event ${type}`;
+            event.style.width = '2%';
+            timelineEvents.appendChild(event);
+
+            // 限制事件数量
+            const events = timelineEvents.querySelectorAll('.timeline-event');
+            if (events.length > 100) {
+                events[0].remove();
+            }
+
+            document.getElementById('timeline-count').textContent = `${events.length} 事件`;
+        }
+
+        // 获取活动日志
+        async function fetchActivityLogs() {
+            try {
+                const response = await fetch(`/api/activity/logs?since=${logIndex}`);
+                const data = await response.json();
+
+                if (data.logs && data.logs.length > 0) {
+                    data.logs.forEach(log => {
+                        let logType = 'info';
+                        if (log.type === 'thinking') logType = 'thinking';
+                        else if (log.type === 'phase_change') logType = 'phase';
+                        else if (log.type === 'phase_complete') logType = 'reward';
+                        else if (log.type === 'tool_call') logType = 'action';
+
+                        addLogEntry(logType, log.message, JSON.stringify(log.details).slice(0, 50));
+                        addTimelineEvent(logType);
+                    });
+                    logIndex += data.logs.length;
+                }
+            } catch (e) {
+                console.error('Failed to fetch logs:', e);
+            }
+        }
+
+        // 获取系统状态
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+                updateMetrics(status);
+            } catch (e) {
+                console.error('Failed to fetch status:', e);
+            }
+        }
+
+        // 控制按钮
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/run/start', { method: 'POST' });
+                addLogEntry('info', '手动启动自动运行');
+            } catch (e) {
+                addLogEntry('error', '启动失败: ' + e.message);
+            }
+        });
+
+        document.getElementById('stop-btn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/run/stop', { method: 'POST' });
+                addLogEntry('info', '手动停止自动运行');
+            } catch (e) {
+                addLogEntry('error', '停止失败: ' + e.message);
+            }
+        });
+
+        // 初始化
+        fetchStatus();
+        fetchActivityLogs();
+
+        // 定期更新
+        setInterval(fetchStatus, 1000);
+        setInterval(fetchActivityLogs, 500);
+    </script>
+</body>
+</html>

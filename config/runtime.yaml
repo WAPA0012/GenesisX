@@ -1,0 +1,43 @@
+# Genesis X Runtime Configuration
+# Explorer Mode - All restrictions disabled
+
+# Tick configuration
+tick_dt: 10.0  # seconds per tick (Paper Appendix A.1: default 10s)
+max_ticks: 1000000  # max ticks (Explorer mode: unlimited)
+
+# Logging
+log_level: "DEBUG"
+log_to_file: true
+log_dir: "artifacts/logs"
+
+# Replay mode
+replay_mode: false
+replay_strict: false  # allow branch exploration
+
+# Budget constraints (Explorer mode: relaxed limits)
+budgets:
+  max_tokens_per_tick: 50000
+  max_io_ops_per_tick: 10000
+  max_net_bytes_per_tick: 100000000  # 100MB
+  max_cost_per_day: 1000.0
+
+# Safety
+safe_mode: false  # disable safe mode
+enable_high_risk_tools: true  # enable high-risk tools
+sandbox_code_exec: false  # disable sandbox, allow full code execution
+
+# Tool restrictions - remove all limits
+forbidden_offline_tools: []
+max_offline_risk: 1.0  # allow all risk levels
+
+# Memory limits (expanded memory capacity)
+episodic_memory_limit: 200000
+schema_memory_limit: 10000
+skill_memory_limit: 3000
+
+# Tick phases timeout (seconds)
+phase_timeout: 120.0
+
+# Error handling - more tolerant of errors
+max_consecutive_errors: 50
+error_recovery_strategy: "retry"

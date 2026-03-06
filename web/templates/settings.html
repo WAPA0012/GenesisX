@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置 - Genesis X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/genesis-theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/navigation.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* 为统一导航栏留出空间 */
+        .settings-page {
+            min-height: calc(100vh - 56px);
+            padding: calc(var(--space-lg) + 56px) 0 var(--space-lg) 0;
+        }
+
+        .settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-xl);
+        }
+
+        .settings-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+        }
+
+        .settings-title h1 {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .settings-section {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-xl);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-lg);
+        }
+
+        .settings-section h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: var(--space-lg);
+            padding-bottom: var(--space-md);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .settings-section h2 i {
+            color: var(--accent-cyan);
+        }
+
+        .setting-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-lg);
+        }
+
+        .setting-field {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }
+
+        .setting-field.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .field-label {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .field-label i {
+            color: var(--accent-cyan);
+        }
+
+        .field-input {
+            padding: 12px 16px;
+            background: var(--surface-2);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all var(--transition-base);
+        }
+
+        .field-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 150, 255, 0.1);
+        }
+
+        .field-hint {
+            font-size: 12px;
+            color: var(--text-tertiary);
+        }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--surface-2);
+            transition: var(--transition-base);
+            border-radius: var(--radius-full);
+        }
+
+        .toggle-slider::before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-tertiary);
+            transition: var(--transition-base);
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
+        }
+
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(24px);
+            background-color: white;
+        }
+
+        /* Range Slider */
+        .range-slider {
+            width: 100%;
+            height: 6px;
+            background: var(--surface-2);
+            border-radius: var(--radius-full);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--primary);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        /* Expert Config */
+        .expert-card {
+            background: var(--surface-2);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            margin-bottom: var(--space-sm);
+        }
+
+        .expert-card-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-md);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .expert-card-header::before {
+            content: '';
+            width: 3px;
+            height: 16px;
+            background: var(--accent-purple);
+            border-radius: 2px;
+        }
+
+        .expert-inputs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-sm);
+        }
+
+        /* Actions */
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-md);
+        }
+
+        .action-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-sm);
+            padding: 14px 20px;
+            border-radius: var(--radius-lg);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-base);
+            border: none;
+        }
+
+        .action-btn i {
+            font-size: 16px;
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
+            color: white;
+        }
+
+        .action-btn.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .action-btn.secondary {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .action-btn.secondary:hover {
+            background: var(--surface-2);
+        }
+
+        .action-btn.warning {
+            background: rgba(245, 158, 11, 0.2);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            color: var(--accent-orange);
+        }
+
+        .action-btn.warning:hover {
+            background: rgba(245, 158, 11, 0.3);
+        }
+
+        .action-btn.danger {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+        }
+
+        .action-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        /* System Info */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-md);
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-md);
+            background: var(--surface-2);
+            border-radius: var(--radius-md);
+        }
+
+        .info-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .info-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--accent-cyan);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .setting-grid,
+            .info-grid,
+            .expert-inputs {
+                grid-template-columns: 1fr;
+            }
+
+            .actions-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body class="settings-page">
+    <!-- 统一导航栏将通过 navigation.js 自动注入 -->
+
+    <div class="container">
+        <!-- Header -->
+        <div class="settings-header">
+            <div class="settings-title">
+                <div class="flex items-center justify-center"
+                     style="width: 48px; height: 48px; background: linear-gradient(135deg, var(--primary), var(--accent-purple)); border-radius: var(--radius-lg);">
+                    <i class="fas fa-cog" style="color: white; font-size: 18px;"></i>
+                </div>
+                <h1>系统设置</h1>
+            </div>
+            <div class="badge badge-primary">v1.0.1</div>
+        </div>
+
+        <!-- LLM Configuration -->
+        <section class="settings-section">
+            <h2><i class="fas fa-layer-group"></i> LLM 配置</h2>
+
+            <div class="setting-grid">
+                <div class="setting-field full-width">
+                    <div class="field-label">
+                        <i class="fas fa-layer-group"></i> 运行模式
+                    </div>
+                    <select id="llm-mode" class="field-input" onchange="Settings.onModeChange()">
+                        <option value="single">单模型 - 一个LLM处理所有任务（推荐）</option>
+                        <option value="core5">Core5 - 调度/记忆/推理/情绪/感知 五专家协作</option>
+                        <option value="full7">Full7 - Core5 + 视觉/听觉专家</option>
+                        <option value="adaptive">自适应 - 根据任务类型动态选择</option>
+                    </select>
+                    <span class="field-hint">选择 LLM 运行模式（切换后需重启服务）</span>
+                </div>
+            </div>
+
+            <!-- Single Model Config -->
+            <div id="single-model-config">
+                <h3 style="margin: var(--space-lg) 0 var(--space-md) 0; font-size: 14px; color: var(--text-secondary);">单模型配置</h3>
+                <div class="setting-grid">
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-server"></i> API 地址
+                        </div>
+                        <input type="text" id="llm-api-base" class="field-input" placeholder="https://api.openai.com/v1">
+                        <span class="field-hint">LLM API 基础 URL</span>
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-brain"></i> 模型名称
+                        </div>
+                        <input type="text" id="llm-model" class="field-input" placeholder="gpt-4">
+                        <span class="field-hint">要使用的 LLM 模型</span>
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-thermometer-half"></i> 温度
+                        </div>
+                        <input type="range" id="llm-temperature" class="range-slider" min="0" max="2" step="0.1" value="0.7">
+                        <span class="field-hint">当前: <span id="llm-temperature-value">0.7</span></span>
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-list-ol"></i> 最大 Token
+                        </div>
+                        <input type="number" id="llm-max-tokens" class="field-input" placeholder="4096" value="4096" min="100" max="100000">
+                    </div>
+                </div>
+                <div class="setting-field full-width" style="margin-top: var(--space-md);">
+                    <div class="field-label">
+                        <i class="fas fa-key"></i> API 密钥
+                    </div>
+                    <input type="password" id="llm-api-key" class="field-input" placeholder="sk-...">
+                    <span class="field-hint">您的 API 密钥（保存到 .env 文件）</span>
+                </div>
+            </div>
+
+            <!-- Multi Model Config -->
+            <div id="multi-model-config" style="display: none;">
+                <h3 style="margin: var(--space-lg) 0 var(--space-md) 0; font-size: 14px; color: var(--text-secondary);">专家模型配置</h3>
+
+                <!-- 全局 LLM 配置开关 -->
+                <div class="setting-grid" style="margin-bottom: var(--space-md);">
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-globe"></i> 使用全局 LLM 配置
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="multi-model-use-global" checked onchange="Settings.toggleMultiModelGlobal()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="field-hint">启用后，所有专家使用上方单模型的 API 配置</span>
+                    </div>
+                </div>
+
+                <!-- 专家独立配置（使用全局时隐藏） -->
+                <div id="multi-model-experts-config">
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: var(--space-md);">
+                        为每个专家配置独立的 API。留空则使用主配置。
+                    </p>
+                    <div class="expert-card">
+                        <div class="expert-card-header">M_coord (调度专家)</div>
+                        <div class="expert-inputs">
+                            <input type="text" id="expert-m_coord-base" class="field-input" placeholder="API 地址（可选）">
+                            <input type="password" id="expert-m_coord-key" class="field-input" placeholder="API 密钥（可选）">
+                            <input type="text" id="expert-m_coord-model" class="field-input" placeholder="模型（可选）">
+                        </div>
+                    </div>
+                    <div class="expert-card">
+                        <div class="expert-card-header">M_mem (记忆专家)</div>
+                        <div class="expert-inputs">
+                            <input type="text" id="expert-m_mem-base" class="field-input" placeholder="API 地址（可选）">
+                            <input type="password" id="expert-m_mem-key" class="field-input" placeholder="API 密钥（可选）">
+                            <input type="text" id="expert-m_mem-model" class="field-input" placeholder="模型（可选）">
+                        </div>
+                    </div>
+                    <div class="expert-card">
+                        <div class="expert-card-header">M_reason (推理专家)</div>
+                        <div class="expert-inputs">
+                            <input type="text" id="expert-m_reason-base" class="field-input" placeholder="API 地址（可选）">
+                            <input type="password" id="expert-m_reason-key" class="field-input" placeholder="API 密钥（可选）">
+                            <input type="text" id="expert-m_reason-model" class="field-input" placeholder="模型（可选）">
+                        </div>
+                    </div>
+                    <div class="expert-card">
+                        <div class="expert-card-header">M_affect (情绪专家)</div>
+                        <div class="expert-inputs">
+                            <input type="text" id="expert-m_affect-base" class="field-input" placeholder="API 地址（可选）">
+                            <input type="password" id="expert-m_affect-key" class="field-input" placeholder="API 密钥（可选）">
+                            <input type="text" id="expert-m_affect-model" class="field-input" placeholder="模型（可选）">
+                        </div>
+                    </div>
+                    <div class="expert-card">
+                        <div class="expert-card-header">M_percept (感知专家)</div>
+                        <div class="expert-inputs">
+                            <input type="text" id="expert-m_percept-base" class="field-input" placeholder="API 地址（可选）">
+                            <input type="password" id="expert-m_percept-key" class="field-input" placeholder="API 密钥（可选）">
+                            <input type="text" id="expert-m_percept-model" class="field-input" placeholder="模型（可选）">
+                        </div>
+                    </div>
+                    <div class="expert-card" id="expert-m_vis" style="display: none;">
+                        <div class="expert-card-header">M_vis (视觉专家)</div>
+                        <div class="expert-inputs">
+                            <input type="text" id="expert-m_vis-base" class="field-input" placeholder="API 地址（可选）">
+                            <input type="password" id="expert-m_vis-key" class="field-input" placeholder="API 密钥（可选）">
+                            <input type="text" id="expert-m_vis-model" class="field-input" placeholder="模型（可选）">
+                        </div>
+                    </div>
+                    <div class="expert-card" id="expert-m_aud" style="display: none;">
+                        <div class="expert-card-header">M_aud (听觉专家)</div>
+                        <div class="expert-inputs">
+                            <input type="text" id="expert-m_aud-base" class="field-input" placeholder="API 地址（可选）">
+                            <input type="password" id="expert-m_aud-key" class="field-input" placeholder="API 密钥（可选）">
+                            <input type="text" id="expert-m_aud-model" class="field-input" placeholder="模型（可选）">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Organ LLM Configuration -->
+        <section class="settings-section">
+            <h2><i class="fas fa-brain"></i> 器官 LLM 配置</h2>
+
+            <div class="setting-grid">
+                <div class="setting-field full-width">
+                    <div class="field-label">
+                        <i class="fas fa-cogs"></i> 器官会话模式
+                    </div>
+                    <select id="organ-llm-mode" class="field-input" onchange="OrganSettings.onModeChange()">
+                        <option value="independent">独立对话 - 每个器官有独立的 LLM 会话（默认）</option>
+                        <option value="shared">共享对话 - 所有器官共享一个"大脑"会话</option>
+                        <option value="disabled">禁用 - 器官使用规则模式，不调用 LLM</option>
+                    </select>
+                    <span class="field-hint">选择器官 LLM 会话模式（切换后需重启服务）</span>
+                </div>
+            </div>
+
+            <!-- Independent Mode Config -->
+            <div id="organ-independent-config">
+                <h3 style="margin: var(--space-lg) 0 var(--space-md) 0; font-size: 14px; color: var(--text-secondary);">
+                    <i class="fas fa-sliders-h"></i> 全局会话参数
+                </h3>
+                <div class="setting-grid">
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-history"></i> 最大历史
+                        </div>
+                        <input type="number" id="organ-max-history" class="field-input" value="20" min="1" max="100">
+                        <span class="field-hint">每个会话保留的历史消息数</span>
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-thermometer-half"></i> 思考温度
+                        </div>
+                        <input type="range" id="organ-temperature" class="range-slider" min="0" max="2" step="0.1" value="0.7">
+                        <span class="field-hint">当前: <span id="organ-temperature-value">0.7</span></span>
+                    </div>
+                </div>
+
+                <h3 style="margin: var(--space-lg) 0 var(--space-md) 0; font-size: 14px; color: var(--text-secondary);">
+                    <i class="fas fa-cubes"></i> 器官独立配置
+                </h3>
+                <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: var(--space-md);">
+                    为每个器官配置独立的 LLM。启用"使用自定义 LLM"可覆盖全局配置。
+                </p>
+
+                <!-- Mind Organ -->
+                <div class="expert-card">
+                    <div class="expert-card-header" style="background: linear-gradient(90deg, #8b5cf6, transparent);">
+                        思维器官 (Mind)
+                    </div>
+                    <div class="setting-grid" style="margin-top: var(--space-sm);">
+                        <div class="setting-field">
+                            <label class="toggle-switch" style="margin-right: var(--space-sm);">
+                                <input type="checkbox" id="organ-mind-use-default" checked onchange="OrganSettings.toggleOrganCustom('mind')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span style="font-size: 12px; color: var(--text-secondary);">使用全局 LLM</span>
+                        </div>
+                    </div>
+                    <div id="organ-mind-custom" style="display: none; margin-top: var(--space-md);">
+                        <div class="expert-inputs">
+                            <input type="text" id="organ-mind-base" class="field-input" placeholder="API 地址">
+                            <input type="password" id="organ-mind-key" class="field-input" placeholder="API 密钥">
+                            <input type="text" id="organ-mind-model" class="field-input" placeholder="模型名称">
+                        </div>
+                        <div class="setting-grid" style="margin-top: var(--space-sm);">
+                            <div class="setting-field">
+                                <div class="field-label">历史数</div>
+                                <input type="number" id="organ-mind-history" class="field-input" value="25" min="1" max="100">
+                            </div>
+                            <div class="setting-field">
+                                <div class="field-label">温度</div>
+                                <input type="number" id="organ-mind-temp" class="field-input" value="0.8" min="0" max="2" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scout Organ -->
+                <div class="expert-card">
+                    <div class="expert-card-header" style="background: linear-gradient(90deg, #10b981, transparent);">
+                        侦察器官 (Scout)
+                    </div>
+                    <div class="setting-grid" style="margin-top: var(--space-sm);">
+                        <div class="setting-field">
+                            <label class="toggle-switch" style="margin-right: var(--space-sm);">
+                                <input type="checkbox" id="organ-scout-use-default" checked onchange="OrganSettings.toggleOrganCustom('scout')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span style="font-size: 12px; color: var(--text-secondary);">使用全局 LLM</span>
+                        </div>
+                    </div>
+                    <div id="organ-scout-custom" style="display: none; margin-top: var(--space-md);">
+                        <div class="expert-inputs">
+                            <input type="text" id="organ-scout-base" class="field-input" placeholder="API 地址">
+                            <input type="password" id="organ-scout-key" class="field-input" placeholder="API 密钥">
+                            <input type="text" id="organ-scout-model" class="field-input" placeholder="模型名称">
+                        </div>
+                        <div class="setting-grid" style="margin-top: var(--space-sm);">
+                            <div class="setting-field">
+                                <div class="field-label">历史数</div>
+                                <input type="number" id="organ-scout-history" class="field-input" value="15" min="1" max="100">
+                            </div>
+                            <div class="setting-field">
+                                <div class="field-label">温度</div>
+                                <input type="number" id="organ-scout-temp" class="field-input" value="0.6" min="0" max="2" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Builder Organ -->
+                <div class="expert-card">
+                    <div class="expert-card-header" style="background: linear-gradient(90deg, #f59e0b, transparent);">
+                        构建器官 (Builder)
+                    </div>
+                    <div class="setting-grid" style="margin-top: var(--space-sm);">
+                        <div class="setting-field">
+                            <label class="toggle-switch" style="margin-right: var(--space-sm);">
+                                <input type="checkbox" id="organ-builder-use-default" checked onchange="OrganSettings.toggleOrganCustom('builder')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span style="font-size: 12px; color: var(--text-secondary);">使用全局 LLM</span>
+                        </div>
+                    </div>
+                    <div id="organ-builder-custom" style="display: none; margin-top: var(--space-md);">
+                        <div class="expert-inputs">
+                            <input type="text" id="organ-builder-base" class="field-input" placeholder="API 地址">
+                            <input type="password" id="organ-builder-key" class="field-input" placeholder="API 密钥">
+                            <input type="text" id="organ-builder-model" class="field-input" placeholder="模型名称">
+                        </div>
+                        <div class="setting-grid" style="margin-top: var(--space-sm);">
+                            <div class="setting-field">
+                                <div class="field-label">历史数</div>
+                                <input type="number" id="organ-builder-history" class="field-input" value="20" min="1" max="100">
+                            </div>
+                            <div class="setting-field">
+                                <div class="field-label">温度</div>
+                                <input type="number" id="organ-builder-temp" class="field-input" value="0.5" min="0" max="2" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Caretaker Organ -->
+                <div class="expert-card">
+                    <div class="expert-card-header" style="background: linear-gradient(90deg, #ec4899, transparent);">
+                        照护器官 (Caretaker)
+                    </div>
+                    <div class="setting-grid" style="margin-top: var(--space-sm);">
+                        <div class="setting-field">
+                            <label class="toggle-switch" style="margin-right: var(--space-sm);">
+                                <input type="checkbox" id="organ-caretaker-use-default" checked onchange="OrganSettings.toggleOrganCustom('caretaker')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span style="font-size: 12px; color: var(--text-secondary);">使用全局 LLM</span>
+                        </div>
+                    </div>
+                    <div id="organ-caretaker-custom" style="display: none; margin-top: var(--space-md);">
+                        <div class="expert-inputs">
+                            <input type="text" id="organ-caretaker-base" class="field-input" placeholder="API 地址">
+                            <input type="password" id="organ-caretaker-key" class="field-input" placeholder="API 密钥">
+                            <input type="text" id="organ-caretaker-model" class="field-input" placeholder="模型名称">
+                        </div>
+                        <div class="setting-grid" style="margin-top: var(--space-sm);">
+                            <div class="setting-field">
+                                <div class="field-label">历史数</div>
+                                <input type="number" id="organ-caretaker-history" class="field-input" value="15" min="1" max="100">
+                            </div>
+                            <div class="setting-field">
+                                <div class="field-label">温度</div>
+                                <input type="number" id="organ-caretaker-temp" class="field-input" value="0.6" min="0" max="2" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Archivist Organ -->
+                <div class="expert-card">
+                    <div class="expert-card-header" style="background: linear-gradient(90deg, #06b6d4, transparent);">
+                        档案器官 (Archivist)
+                    </div>
+                    <div class="setting-grid" style="margin-top: var(--space-sm);">
+                        <div class="setting-field">
+                            <label class="toggle-switch" style="margin-right: var(--space-sm);">
+                                <input type="checkbox" id="organ-archivist-use-default" checked onchange="OrganSettings.toggleOrganCustom('archivist')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span style="font-size: 12px; color: var(--text-secondary);">使用全局 LLM</span>
+                        </div>
+                    </div>
+                    <div id="organ-archivist-custom" style="display: none; margin-top: var(--space-md);">
+                        <div class="expert-inputs">
+                            <input type="text" id="organ-archivist-base" class="field-input" placeholder="API 地址">
+                            <input type="password" id="organ-archivist-key" class="field-input" placeholder="API 密钥">
+                            <input type="text" id="organ-archivist-model" class="field-input" placeholder="模型名称">
+                        </div>
+                        <div class="setting-grid" style="margin-top: var(--space-sm);">
+                            <div class="setting-field">
+                                <div class="field-label">历史数</div>
+                                <input type="number" id="organ-archivist-history" class="field-input" value="30" min="1" max="100">
+                            </div>
+                            <div class="setting-field">
+                                <div class="field-label">温度</div>
+                                <input type="number" id="organ-archivist-temp" class="field-input" value="0.7" min="0" max="2" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Immune Organ -->
+                <div class="expert-card">
+                    <div class="expert-card-header" style="background: linear-gradient(90deg, #ef4444, transparent);">
+                        免疫器官 (Immune)
+                    </div>
+                    <div class="setting-grid" style="margin-top: var(--space-sm);">
+                        <div class="setting-field">
+                            <label class="toggle-switch" style="margin-right: var(--space-sm);">
+                                <input type="checkbox" id="organ-immune-use-default" checked onchange="OrganSettings.toggleOrganCustom('immune')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span style="font-size: 12px; color: var(--text-secondary);">使用全局 LLM</span>
+                        </div>
+                    </div>
+                    <div id="organ-immune-custom" style="display: none; margin-top: var(--space-md);">
+                        <div class="expert-inputs">
+                            <input type="text" id="organ-immune-base" class="field-input" placeholder="API 地址">
+                            <input type="password" id="organ-immune-key" class="field-input" placeholder="API 密钥">
+                            <input type="text" id="organ-immune-model" class="field-input" placeholder="模型名称">
+                        </div>
+                        <div class="setting-grid" style="margin-top: var(--space-sm);">
+                            <div class="setting-field">
+                                <div class="field-label">历史数</div>
+                                <input type="number" id="organ-immune-history" class="field-input" value="10" min="1" max="100">
+                            </div>
+                            <div class="setting-field">
+                                <div class="field-label">温度</div>
+                                <input type="number" id="organ-immune-temp" class="field-input" value="0.3" min="0" max="2" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shared Mode Config -->
+            <div id="organ-shared-config" style="display: none;">
+                <h3 style="margin: var(--space-lg) 0 var(--space-md) 0; font-size: 14px; color: var(--text-secondary);">
+                    <i class="fas fa-users"></i> 共享大脑配置
+                </h3>
+                <div class="setting-grid">
+                    <div class="setting-field">
+                        <label class="toggle-switch" style="margin-right: var(--space-sm);">
+                            <input type="checkbox" id="organ-shared-use-default" checked onchange="OrganSettings.toggleSharedCustom()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span style="font-size: 12px; color: var(--text-secondary);">使用全局 LLM</span>
+                    </div>
+                </div>
+                <div id="organ-shared-custom" style="display: none; margin-top: var(--space-md);">
+                    <div class="setting-grid">
+                        <div class="setting-field">
+                            <div class="field-label">
+                                <i class="fas fa-server"></i> API 地址
+                            </div>
+                            <input type="text" id="organ-shared-base" class="field-input" placeholder="API 地址">
+                        </div>
+                        <div class="setting-field">
+                            <div class="field-label">
+                                <i class="fas fa-key"></i> API 密钥
+                            </div>
+                            <input type="password" id="organ-shared-key" class="field-input" placeholder="API 密钥">
+                        </div>
+                        <div class="setting-field">
+                            <div class="field-label">
+                                <i class="fas fa-brain"></i> 模型名称
+                            </div>
+                            <input type="text" id="organ-shared-model" class="field-input" placeholder="模型名称">
+                        </div>
+                        <div class="setting-field">
+                            <div class="field-label">
+                                <i class="fas fa-thermometer-half"></i> 温度
+                            </div>
+                            <input type="number" id="organ-shared-temp" class="field-input" value="0.7" min="0" max="2" step="0.1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Settings -->
+            <h3 style="margin: var(--space-lg) 0 var(--space-md) 0; font-size: 14px; color: var(--text-secondary);">
+                <i class="fas fa-memory"></i> 选择性记忆配置
+            </h3>
+            <div class="setting-grid">
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-toggle-on"></i> 启用选择性记忆
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="organ-memory-enabled" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-robot"></i> 使用 LLM 判断
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="organ-memory-use-llm" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-chart-line"></i> 重要性阈值
+                    </div>
+                    <input type="range" id="organ-memory-threshold" class="range-slider" min="0" max="1" step="0.1" value="0.5">
+                    <span class="field-hint">当前: <span id="organ-memory-threshold-value">0.5</span></span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Memory Consolidation LLM Configuration -->
+        <section class="settings-section">
+            <h2><i class="fas fa-brain"></i> 记忆整理 LLM 配置</h2>
+            <div class="setting-grid">
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-toggle-on"></i> 启用 LLM 整理
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="memory-consolidation-enabled">
+                    </label>
+                    <span class="field-hint">睡眠时使用 LLM 进行深度记忆整理</span>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-toggle-on"></i> 使用自定义 LLM
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="memory-consolidation-use-default" checked onchange="MemoryConsolidationSettings.toggleCustom()">
+                    </label>
+                    <span class="field-hint">关闭则使用全局对话 LLM</span>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-sort-numeric-up"></i> 整理阈值
+                    </div>
+                    <input type="number" id="memory-consolidation-threshold" class="field-input" value="30" min="10" max="200">
+                    <span class="field-hint">记忆数量超过此值才触发 LLM 整理</span>
+                </div>
+            </div>
+            <div id="memory-consolidation-custom" style="display: none; margin-top: var(--space-md);">
+                <div class="setting-grid">
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-link"></i> API 地址
+                        </div>
+                        <input type="text" id="memory-consolidation-base" class="field-input" placeholder="API 地址">
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-key"></i> API 密钥
+                        </div>
+                        <input type="password" id="memory-consolidation-key" class="field-input" placeholder="API 密钥">
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-robot"></i> 模型名称
+                        </div>
+                        <input type="text" id="memory-consolidation-model" class="field-input" placeholder="模型名称">
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">
+                            <i class="fas fa-thermometer-half"></i> 温度
+                        </div>
+                        <input type="number" id="memory-consolidation-temp" class="field-input" value="0.3" min="0" max="2" step="0.1">
+                        <span class="field-hint">记忆整理建议适中温度 (0.3)</span>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: var(--space-md);">
+                <button class="btn btn-primary" onclick="MemoryConsolidationSettings.save()">
+                    <i class="fas fa-save"></i> 保存记忆整理配置
+                </button>
+            </div>
+        </section>
+
+        <!-- Initiative Messaging LLM Configuration -->
+        <section class="settings-section">
+            <h2><i class="fas fa-comment-dots"></i> 主动发消息 LLM 配置</h2>
+            <div class="setting-grid">
+                <div class="setting-field">
+                    <div class="field-label">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="initiative-enabled" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span>启用 LLM 生成</span>
+                    </div>
+                    <span class="field-hint">使用 LLM 生成个性化主动消息（如"好久没和你说话了..."）</span>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-server"></i> LLM 来源
+                    </div>
+                    <div class="field-input" style="display: flex; align-items: center; gap: 12px;">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="initiative-use-default" checked onchange="InitiativeMessagingSettings.toggleCustom()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span>使用全局 LLM</span>
+                    </div>
+                    <span class="field-hint">关闭后可配置独立的 LLM</span>
+                </div>
+            </div>
+
+            <!-- 自定义 LLM 配置（默认隐藏） -->
+            <div id="initiative-custom-llm" style="display: none; margin-top: var(--space-md); padding: var(--space-md); background: var(--bg-secondary); border-radius: var(--radius-md);">
+                <h3 style="margin-bottom: var(--space-md); color: var(--text-secondary);">自定义 LLM 配置</h3>
+                <div class="setting-grid">
+                    <div class="setting-field">
+                        <div class="field-label">API Base URL</div>
+                        <input type="text" id="initiative-api-base" class="field-input" placeholder="https://api.example.com/v1">
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">API Key</div>
+                        <input type="password" id="initiative-api-key" class="field-input" placeholder="sk-...">
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">Model</div>
+                        <input type="text" id="initiative-model" class="field-input" placeholder="gpt-4">
+                    </div>
+                </div>
+            </div>
+
+            <div class="setting-grid" style="margin-top: var(--space-md);">
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-temperature-high"></i> Temperature
+                    </div>
+                    <input type="number" id="initiative-temperature" class="field-input" placeholder="0.8" value="0.8" min="0" max="2" step="0.1">
+                    <span class="field-hint">主动消息需要较高创造性 (推荐 0.8)</span>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-text-width"></i> Max Tokens
+                    </div>
+                    <input type="number" id="initiative-max-tokens" class="field-input" placeholder="100" value="100" min="50" max="500">
+                    <span class="field-hint">消息不需要太长</span>
+                </div>
+            </div>
+
+            <!-- 触发阈值配置 -->
+            <div style="margin-top: var(--space-md); padding: var(--space-md); background: var(--bg-secondary); border-radius: var(--radius-md);">
+                <h3 style="margin-bottom: var(--space-md); color: var(--text-secondary);"><i class="fas fa-sliders-h"></i> 触发阈值</h3>
+                <div class="setting-grid">
+                    <div class="setting-field">
+                        <div class="field-label">依恋触发</div>
+                        <input type="number" id="initiative-attachment-threshold" class="field-input" placeholder="0.6" value="0.6" min="0" max="1" step="0.05">
+                        <span class="field-hint">关系值超过阈值时可能主动联系</span>
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">无聊触发</div>
+                        <input type="number" id="initiative-boredom-threshold" class="field-input" placeholder="0.5" value="0.5" min="0" max="1" step="0.05">
+                        <span class="field-hint">无聊度超过阈值时可能找人聊天</span>
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">好奇触发</div>
+                        <input type="number" id="initiative-curiosity-threshold" class="field-input" placeholder="0.5" value="0.5" min="0" max="1" step="0.05">
+                        <span class="field-hint">好奇心缺口超过阈值时可能分享发现</span>
+                    </div>
+                    <div class="setting-field">
+                        <div class="field-label">最小静默时间</div>
+                        <input type="number" id="initiative-min-silence" class="field-input" placeholder="100" value="100" min="0" max="1000">
+                        <span class="field-hint">多久没互动后才能主动发消息 (tick)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: var(--space-md);">
+                <button class="btn btn-primary" onclick="InitiativeMessagingSettings.save()">
+                    <i class="fas fa-save"></i> 保存主动发消息配置
+                </button>
+            </div>
+        </section>
+
+        <!-- Runtime Configuration -->
+        <section class="settings-section">
+            <h2><i class="fas fa-clock"></i> 器官运行配置</h2>
+            <div class="setting-grid">
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-clock"></i> Tick 间隔 (秒)
+                    </div>
+                    <input type="number" id="tick-interval" class="field-input" placeholder="10" value="10" min="1" max="3600">
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-redo"></i> 最大 Tick
+                    </div>
+                    <input type="number" id="max-ticks" class="field-input" placeholder="1000000" value="1000000" min="1">
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-microchip"></i> 器官处理模式
+                    </div>
+                    <select id="organ-parallel-mode" class="field-input" onchange="ParallelMode.onChange()">
+                        <option value="serial">串行 - 最稳定 (约32秒)</option>
+                        <option value="mixed" selected>混合并行 - 平衡 (约21秒) [默认]</option>
+                        <option value="parallel">全并行 - 最快 (约15秒)</option>
+                    </select>
+                    <span class="field-hint" id="parallel-mode-hint">混合模式：组内并行，组间串行</span>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-tachometer-alt"></i> 当前响应速度
+                    </div>
+                    <div class="field-input" style="display: flex; align-items: center; gap: 8px;">
+                        <span id="current-speed-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: #10b981;"></span>
+                        <span id="current-speed-text">中等 (约21秒)</span>
+                    </div>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-shield-alt"></i> 安全模式
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="safe-mode">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-code"></i> 沙箱执行
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="sandbox-mode" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <!-- Memory Configuration -->
+        <section class="settings-section">
+            <h2><i class="fas fa-database"></i> 记忆配置</h2>
+            <div class="setting-grid">
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-archive"></i> 情景记忆限制
+                    </div>
+                    <input type="number" id="episodic-limit" class="field-input" placeholder="200000" value="200000" min="100">
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-shapes"></i> 图式记忆限制
+                    </div>
+                    <input type="number" id="schema-limit" class="field-input" placeholder="10000" value="10000" min="10">
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-star"></i> 技能记忆限制
+                    </div>
+                    <input type="number" id="skill-limit" class="field-input" placeholder="3000" value="3000" min="10">
+                </div>
+                <div class="setting-field">
+                    <div class="field-label">
+                        <i class="fas fa-compress-arrows-alt"></i> 整合间隔 (小时)
+                    </div>
+                    <input type="number" id="consolidation-interval" class="field-input" placeholder="1" value="1" min="1" max="24">
+                </div>
+            </div>
+        </section>
+
+        <!-- Actions -->
+        <section class="settings-section">
+            <h2><i class="fas fa-bolt"></i> 操作</h2>
+            <div class="actions-grid">
+                <button class="action-btn primary" id="save-settings">
+                    <i class="fas fa-save"></i> 保存设置
+                </button>
+                <button class="action-btn secondary" id="reload-config">
+                    <i class="fas fa-sync"></i> 重载配置
+                </button>
+                <button class="action-btn warning" id="reset-system">
+                    <i class="fas fa-trash"></i> 重置系统
+                </button>
+                <button class="action-btn danger" id="clear-memory">
+                    <i class="fas fa-eraser"></i> 清除记忆
+                </button>
+            </div>
+        </section>
+
+        <!-- System Info -->
+        <section class="settings-section">
+            <h2><i class="fas fa-info-circle"></i> 系统信息</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Python 版本</span>
+                    <span class="info-value" id="python-version">加载中...</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">运行时间</span>
+                    <span class="info-value" id="uptime">加载中...</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">artifacts 目录</span>
+                    <span class="info-value" id="artifacts-dir" style="font-size: 11px;">加载中...</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Genesis X 版本</span>
+                    <span class="info-value">1.0.1</span>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 统一导航脚本 -->
+    <script src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+    <script>
+        const Settings = {
+            experts: ['m_coord', 'm_mem', 'm_reason', 'm_affect', 'm_percept', 'm_vis', 'm_aud'],
+
+            onModeChange() {
+                const mode = document.getElementById('llm-mode').value;
+                const singleConfig = document.getElementById('single-model-config');
+                const multiConfig = document.getElementById('multi-model-config');
+
+                if (mode === 'single') {
+                    singleConfig.style.display = 'block';
+                    multiConfig.style.display = 'none';
+                } else {
+                    singleConfig.style.display = 'none';
+                    multiConfig.style.display = 'block';
+                    document.getElementById('expert-m_vis').style.display = (mode === 'full7' || mode === 'adaptive') ? 'block' : 'none';
+                    document.getElementById('expert-m_aud').style.display = (mode === 'full7' || mode === 'adaptive') ? 'block' : 'none';
+                }
+            },
+
+            toggleMultiModelGlobal() {
+                const useGlobal = document.getElementById('multi-model-use-global').checked;
+                const expertsConfig = document.getElementById('multi-model-experts-config');
+                expertsConfig.style.display = useGlobal ? 'none' : 'block';
+            },
+
+            async loadCurrentConfig() {
+                try {
+                    const response = await fetch('/api/config');
+                    if (response.ok) {
+                        const config = await response.json();
+
+                        if (config.api_base) document.getElementById('llm-api-base').value = config.api_base;
+                        if (config.api_key) document.getElementById('llm-api-key').value = config.api_key;
+                        if (config.model) document.getElementById('llm-model').value = config.model;
+                        if (config.mode) {
+                            document.getElementById('llm-mode').value = config.mode;
+                            this.onModeChange();
+                        }
+                        if (config.temperature !== undefined) {
+                            document.getElementById('llm-temperature').value = config.temperature;
+                            document.getElementById('llm-temperature-value').textContent = config.temperature;
+                        }
+                        if (config.max_tokens) {
+                            document.getElementById('llm-max-tokens').value = config.max_tokens;
+                        }
+
+                        // 加载多模型全局配置选项
+                        if (config.multi_model_use_global !== undefined) {
+                            document.getElementById('multi-model-use-global').checked = config.multi_model_use_global;
+                            this.toggleMultiModelGlobal();
+                        }
+
+                        if (config.experts) {
+                            for (const expert of this.experts) {
+                                if (config.experts[expert]) {
+                                    const expertCfg = config.experts[expert];
+                                    if (expertCfg.api_base) document.getElementById(`expert-${expert}-base`).value = expertCfg.api_base;
+                                    if (expertCfg.api_key) document.getElementById(`expert-${expert}-key`).value = expertCfg.api_key;
+                                    if (expertCfg.model) document.getElementById(`expert-${expert}-model`).value = expertCfg.model;
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load config:', error);
+                }
+            },
+
+            async apply() {
+                try {
+                    const mode = document.getElementById('llm-mode').value;
+                    const llmConfig = {
+                        mode: mode,
+                        api_base: document.getElementById('llm-api-base').value,
+                        api_key: document.getElementById('llm-api-key').value,
+                        model: document.getElementById('llm-model').value,
+                        temperature: parseFloat(document.getElementById('llm-temperature').value),
+                        max_tokens: parseInt(document.getElementById('llm-max-tokens').value) || 2000
+                    };
+
+                    if (mode !== 'single') {
+                        // 添加是否使用全局配置的选项
+                        const useGlobal = document.getElementById('multi-model-use-global').checked;
+                        llmConfig.multi_model_use_global = useGlobal;
+
+                        if (!useGlobal) {
+                            // 只有在不使用全局配置时才读取专家配置
+                            llmConfig.experts = {};
+                            for (const expert of this.experts) {
+                                if (mode === 'core5' && (expert === 'm_vis' || expert === 'm_aud')) continue;
+                                const base = document.getElementById(`expert-${expert}-base`).value;
+                                const key = document.getElementById(`expert-${expert}-key`).value;
+                                const model = document.getElementById(`expert-${expert}-model`).value;
+                                if (base || key || model) {
+                                    llmConfig.experts[expert] = { api_base: base, api_key: key, model: model };
+                                }
+                            }
+                        }
+                    }
+
+                    const response = await fetch('/api/configure', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ llm: llmConfig })
+                    });
+
+                    if (response.ok) {
+                        this.showNotification('配置已保存', 'success');
+                        await this.loadCurrentConfig();
+                    } else {
+                        const error = await response.json();
+                        this.showNotification('保存失败: ' + (error.error || '未知错误'), 'error');
+                    }
+                } catch (error) {
+                    this.showNotification('保存出错: ' + error.message, 'error');
+                }
+            },
+
+            showNotification(message, type = 'info') {
+                // Simple notification
+                alert(message);
+            },
+
+            async loadSystemInfo() {
+                try {
+                    const response = await fetch('/api/system-info');
+                    const info = await response.json();
+
+                    if (info.python_version) document.getElementById('python-version').textContent = info.python_version;
+                    if (info.uptime) document.getElementById('uptime').textContent = info.uptime;
+                    if (info.artifacts_dir) document.getElementById('artifacts-dir').textContent = info.artifacts_dir;
+                } catch (error) {
+                    console.error('Failed to load system info:', error);
+                }
+            }
+        };
+
+        // Organ Parallel Mode Settings
+        const ParallelMode = {
+            modeInfo: {
+                serial: { hint: '串行处理：逐个执行器官，最稳定', speed: '慢 (约32秒)', color: '#ef4444' },
+                mixed: { hint: '混合模式：组内并行，组间串行', speed: '中等 (约21秒)', color: '#10b981' },
+                parallel: { hint: '全并行：所有器官同时执行，最快', speed: '快 (约15秒)', color: '#3b82f6' }
+            },
+
+            onChange() {
+                const mode = document.getElementById('organ-parallel-mode').value;
+                const info = this.modeInfo[mode];
+
+                document.getElementById('parallel-mode-hint').textContent = info.hint;
+                document.getElementById('current-speed-text').textContent = info.speed;
+                document.getElementById('current-speed-indicator').style.background = info.color;
+            },
+
+            async loadConfig() {
+                try {
+                    const response = await fetch('/api/organs/parallel-mode');
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.mode) {
+                            document.getElementById('organ-parallel-mode').value = data.mode;
+                            this.onChange();
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load parallel mode:', error);
+                }
+            },
+
+            async saveConfig() {
+                try {
+                    const mode = document.getElementById('organ-parallel-mode').value;
+
+                    const response = await fetch('/api/organs/parallel-mode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: mode })
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        console.log('Parallel mode saved:', result.message);
+                        return true;
+                    } else {
+                        const error = await response.json();
+                        console.error('Failed to save parallel mode:', error.error);
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('Error saving parallel mode:', error);
+                    return false;
+                }
+            }
+        };
+
+        // Organ LLM Settings
+        const OrganSettings = {
+            organs: ['mind', 'scout', 'builder', 'caretaker', 'archivist', 'immune'],
+
+            onModeChange() {
+                const mode = document.getElementById('organ-llm-mode').value;
+                const independentConfig = document.getElementById('organ-independent-config');
+                const sharedConfig = document.getElementById('organ-shared-config');
+
+                if (mode === 'disabled') {
+                    independentConfig.style.display = 'none';
+                    sharedConfig.style.display = 'none';
+                } else if (mode === 'shared') {
+                    independentConfig.style.display = 'none';
+                    sharedConfig.style.display = 'block';
+                } else {
+                    independentConfig.style.display = 'block';
+                    sharedConfig.style.display = 'none';
+                }
+            },
+
+            toggleOrganCustom(organName) {
+                const useDefault = document.getElementById(`organ-${organName}-use-default`).checked;
+                const customDiv = document.getElementById(`organ-${organName}-custom`);
+                customDiv.style.display = useDefault ? 'none' : 'block';
+            },
+
+            toggleSharedCustom() {
+                const useDefault = document.getElementById('organ-shared-use-default').checked;
+                const customDiv = document.getElementById('organ-shared-custom');
+                customDiv.style.display = useDefault ? 'none' : 'block';
+            },
+
+            async loadConfig() {
+                try {
+                    const response = await fetch('/api/organ-llm/config');
+                    if (response.ok) {
+                        const config = await response.json();
+
+                        // Mode
+                        if (config.mode) {
+                            document.getElementById('organ-llm-mode').value = config.mode;
+                            this.onModeChange();
+                        }
+
+                        // Global params
+                        if (config.max_history !== undefined) {
+                            document.getElementById('organ-max-history').value = config.max_history;
+                        }
+                        if (config.temperature !== undefined) {
+                            document.getElementById('organ-temperature').value = config.temperature;
+                            document.getElementById('organ-temperature-value').textContent = config.temperature;
+                        }
+
+                        // Memory settings
+                        if (config.memory) {
+                            if (config.memory.enabled !== undefined) {
+                                document.getElementById('organ-memory-enabled').checked = config.memory.enabled;
+                            }
+                            if (config.memory.use_llm_judge !== undefined) {
+                                document.getElementById('organ-memory-use-llm').checked = config.memory.use_llm_judge;
+                            }
+                            if (config.memory.importance_threshold !== undefined) {
+                                document.getElementById('organ-memory-threshold').value = config.memory.importance_threshold;
+                                document.getElementById('organ-memory-threshold-value').textContent = config.memory.importance_threshold;
+                            }
+                        }
+
+                        // Organ configs
+                        if (config.organs) {
+                            for (const organ of this.organs) {
+                                if (config.organs[organ]) {
+                                    const organCfg = config.organs[organ];
+                                    const useDefault = organCfg.use_default_llm !== false;
+                                    document.getElementById(`organ-${organ}-use-default`).checked = useDefault;
+                                    this.toggleOrganCustom(organ);
+
+                                    if (!useDefault && organCfg.llm) {
+                                        if (organCfg.llm.api_base) document.getElementById(`organ-${organ}-base`).value = organCfg.llm.api_base;
+                                        if (organCfg.llm.api_key) document.getElementById(`organ-${organ}-key`).value = organCfg.llm.api_key;
+                                        if (organCfg.llm.model) document.getElementById(`organ-${organ}-model`).value = organCfg.llm.model;
+                                    }
+                                    if (organCfg.session_config) {
+                                        if (organCfg.session_config.max_history) document.getElementById(`organ-${organ}-history`).value = organCfg.session_config.max_history;
+                                        if (organCfg.session_config.temperature !== undefined) document.getElementById(`organ-${organ}-temp`).value = organCfg.session_config.temperature;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Shared config
+                        if (config.shared) {
+                            const useDefault = config.shared.use_default_llm !== false;
+                            document.getElementById('organ-shared-use-default').checked = useDefault;
+                            this.toggleSharedCustom();
+
+                            if (!useDefault && config.shared.llm) {
+                                if (config.shared.llm.api_base) document.getElementById('organ-shared-base').value = config.shared.llm.api_base;
+                                if (config.shared.llm.api_key) document.getElementById('organ-shared-key').value = config.shared.llm.api_key;
+                                if (config.shared.llm.model) document.getElementById('organ-shared-model').value = config.shared.llm.model;
+                                if (config.shared.llm.temperature !== undefined) document.getElementById('organ-shared-temp').value = config.shared.llm.temperature;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load organ config:', error);
+                }
+            },
+
+            async saveConfig() {
+                try {
+                    const mode = document.getElementById('organ-llm-mode').value;
+
+                    const config = {
+                        mode: mode,
+                        max_history: parseInt(document.getElementById('organ-max-history').value) || 20,
+                        temperature: parseFloat(document.getElementById('organ-temperature').value) || 0.7,
+                        memory: {
+                            enabled: document.getElementById('organ-memory-enabled').checked,
+                            use_llm_judge: document.getElementById('organ-memory-use-llm').checked,
+                            importance_threshold: parseFloat(document.getElementById('organ-memory-threshold').value) || 0.5
+                        }
+                    };
+
+                    // Organ configs (for independent mode)
+                    if (mode === 'independent') {
+                        config.organs = {};
+                        for (const organ of this.organs) {
+                            const useDefault = document.getElementById(`organ-${organ}-use-default`).checked;
+                            const organCfg = {
+                                use_default_llm: useDefault,
+                                session_config: {
+                                    max_history: parseInt(document.getElementById(`organ-${organ}-history`).value) || 20,
+                                    temperature: parseFloat(document.getElementById(`organ-${organ}-temp`).value) || 0.7
+                                }
+                            };
+
+                            if (!useDefault) {
+                                const base = document.getElementById(`organ-${organ}-base`).value;
+                                const key = document.getElementById(`organ-${organ}-key`).value;
+                                const model = document.getElementById(`organ-${organ}-model`).value;
+                                if (base || key || model) {
+                                    organCfg.llm = {
+                                        api_base: base,
+                                        api_key: key,
+                                        model: model
+                                    };
+                                }
+                            }
+
+                            config.organs[organ] = organCfg;
+                        }
+                    }
+
+                    // Shared config (for shared mode)
+                    if (mode === 'shared') {
+                        const useDefault = document.getElementById('organ-shared-use-default').checked;
+                        config.shared = {
+                            use_default_llm: useDefault
+                        };
+
+                        if (!useDefault) {
+                            config.shared.llm = {
+                                api_base: document.getElementById('organ-shared-base').value,
+                                api_key: document.getElementById('organ-shared-key').value,
+                                model: document.getElementById('organ-shared-model').value,
+                                temperature: parseFloat(document.getElementById('organ-shared-temp').value) || 0.7
+                            };
+                        }
+                    }
+
+                    const response = await fetch('/api/organ-llm/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+
+                    if (response.ok) {
+                        alert('器官 LLM 配置已保存（需重启服务生效）');
+                    } else {
+                        const error = await response.json();
+                        alert('保存失败: ' + (error.error || '未知错误'));
+                    }
+                } catch (error) {
+                    alert('保存出错: ' + error.message);
+                }
+            }
+        };
+
+        // Memory Consolidation LLM Settings
+        const MemoryConsolidationSettings = {
+            toggleCustom() {
+                const useDefault = document.getElementById('memory-consolidation-use-default').checked;
+                const customDiv = document.getElementById('memory-consolidation-custom');
+                customDiv.style.display = useDefault ? 'none' : 'block';
+            },
+
+            async loadConfig() {
+                try {
+                    const response = await fetch('/api/organ-llm/config');
+                    if (response.ok) {
+                        const config = await response.json();
+
+                        if (config.memory_consolidation) {
+                            const mc = config.memory_consolidation;
+                            // 默认启用（enabled 不是 false 就认为是启用）
+                            document.getElementById('memory-consolidation-enabled').checked = mc.enabled !== false;
+                            const useDefault = mc.use_default_llm !== false;
+                            document.getElementById('memory-consolidation-use-default').checked = useDefault;
+                            this.toggleCustom();
+
+                            if (!useDefault && mc.llm) {
+                                if (mc.llm.api_base) document.getElementById('memory-consolidation-base').value = mc.llm.api_base;
+                                if (mc.llm.api_key) document.getElementById('memory-consolidation-key').value = mc.llm.api_key;
+                                if (mc.llm.model) document.getElementById('memory-consolidation-model').value = mc.llm.model;
+                                if (mc.llm.temperature !== undefined) document.getElementById('memory-consolidation-temp').value = mc.llm.temperature;
+                            }
+                            if (mc.threshold) document.getElementById('memory-consolidation-threshold').value = mc.threshold;
+                        } else {
+                            // 没有配置时，使用默认值（启用）
+                            document.getElementById('memory-consolidation-enabled').checked = true;
+                            document.getElementById('memory-consolidation-use-default').checked = true;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load memory consolidation config:', error);
+                }
+            },
+
+            async save() {
+                try {
+                    const useDefault = document.getElementById('memory-consolidation-use-default').checked;
+                    const config = {
+                        memory_consolidation: {
+                            enabled: document.getElementById('memory-consolidation-enabled').checked,
+                            use_default_llm: useDefault,
+                            threshold: parseInt(document.getElementById('memory-consolidation-threshold').value) || 30,
+                            temperature: parseFloat(document.getElementById('memory-consolidation-temp').value) || 0.3
+                        }
+                    };
+
+                    if (!useDefault) {
+                        config.memory_consolidation.llm = {
+                            api_base: document.getElementById('memory-consolidation-base').value,
+                            api_key: document.getElementById('memory-consolidation-key').value,
+                            model: document.getElementById('memory-consolidation-model').value
+                        };
+                    }
+
+                    const response = await fetch('/api/organ-llm/config', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+
+                    if (response.ok) {
+                        alert('记忆整理 LLM 配置已保存');
+                    } else {
+                        const error = await response.json();
+                        alert('保存失败: ' + (error.error || '未知错误'));
+                    }
+                } catch (error) {
+                    alert('保存出错: ' + error.message);
+                }
+            }
+        };
+
+        // Initiative Messaging LLM Settings
+        const InitiativeMessagingSettings = {
+            toggleCustom() {
+                const useDefault = document.getElementById('initiative-use-default').checked;
+                const customDiv = document.getElementById('initiative-custom-llm');
+                customDiv.style.display = useDefault ? 'none' : 'block';
+            },
+
+            async loadConfig() {
+                try {
+                    const response = await fetch('/api/organ-llm/config');
+                    if (response.ok) {
+                        const config = await response.json();
+
+                        if (config.initiative_messaging) {
+                            const im = config.initiative_messaging;
+                            document.getElementById('initiative-enabled').checked = im.enabled !== false;
+                            const useDefault = im.use_default_llm !== false;
+                            document.getElementById('initiative-use-default').checked = useDefault;
+                            this.toggleCustom();
+
+                            if (!useDefault && im.llm) {
+                                if (im.llm.api_base) document.getElementById('initiative-api-base').value = im.llm.api_base;
+                                if (im.llm.api_key) document.getElementById('initiative-api-key').value = im.llm.api_key;
+                                if (im.llm.model) document.getElementById('initiative-model').value = im.llm.model;
+                            }
+                            if (im.temperature !== undefined) document.getElementById('initiative-temperature').value = im.temperature;
+                            if (im.max_tokens) document.getElementById('initiative-max-tokens').value = im.max_tokens;
+
+                            // 触发阈值
+                            if (im.triggers) {
+                                if (im.triggers.attachment_threshold) document.getElementById('initiative-attachment-threshold').value = im.triggers.attachment_threshold;
+                                if (im.triggers.boredom_threshold) document.getElementById('initiative-boredom-threshold').value = im.triggers.boredom_threshold;
+                                if (im.triggers.curiosity_threshold) document.getElementById('initiative-curiosity-threshold').value = im.triggers.curiosity_threshold;
+                                if (im.triggers.min_silence_ticks) document.getElementById('initiative-min-silence').value = im.triggers.min_silence_ticks;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load initiative messaging config:', error);
+                }
+            },
+
+            async save() {
+                try {
+                    const useDefault = document.getElementById('initiative-use-default').checked;
+                    const config = {
+                        initiative_messaging: {
+                            enabled: document.getElementById('initiative-enabled').checked,
+                            use_default_llm: useDefault,
+                            temperature: parseFloat(document.getElementById('initiative-temperature').value) || 0.8,
+                            max_tokens: parseInt(document.getElementById('initiative-max-tokens').value) || 100,
+                            triggers: {
+                                attachment_threshold: parseFloat(document.getElementById('initiative-attachment-threshold').value) || 0.6,
+                                boredom_threshold: parseFloat(document.getElementById('initiative-boredom-threshold').value) || 0.5,
+                                curiosity_threshold: parseFloat(document.getElementById('initiative-curiosity-threshold').value) || 0.5,
+                                min_silence_ticks: parseInt(document.getElementById('initiative-min-silence').value) || 100
+                            }
+                        }
+                    };
+
+                    if (!useDefault) {
+                        config.initiative_messaging.llm = {
+                            api_base: document.getElementById('initiative-api-base').value,
+                            api_key: document.getElementById('initiative-api-key').value,
+                            model: document.getElementById('initiative-model').value
+                        };
+                    }
+
+                    const response = await fetch('/api/organ-llm/config', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+
+                    if (response.ok) {
+                        alert('主动发消息 LLM 配置已保存');
+                    } else {
+                        const error = await response.json();
+                        alert('保存失败: ' + (error.error || '未知错误'));
+                    }
+                } catch (error) {
+                    alert('保存出错: ' + error.message);
+                }
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            Settings.loadCurrentConfig();
+            Settings.loadSystemInfo();
+            OrganSettings.loadConfig();
+            MemoryConsolidationSettings.loadConfig();
+            InitiativeMessagingSettings.loadConfig();
+            ParallelMode.loadConfig();
+
+            document.getElementById('llm-temperature').addEventListener('input', (e) => {
+                document.getElementById('llm-temperature-value').textContent = e.target.value;
+            });
+
+            document.getElementById('organ-temperature').addEventListener('input', (e) => {
+                document.getElementById('organ-temperature-value').textContent = e.target.value;
+            });
+
+            document.getElementById('organ-memory-threshold').addEventListener('input', (e) => {
+                document.getElementById('organ-memory-threshold-value').textContent = e.target.value;
+            });
+
+            document.getElementById('save-settings').addEventListener('click', async () => {
+                await Settings.apply();
+                await OrganSettings.saveConfig();
+                await ParallelMode.saveConfig();
+            });
+
+            document.getElementById('reload-config').addEventListener('click', () => {
+                Settings.apply();
+                OrganSettings.saveConfig();
+            });
+
+            document.getElementById('reset-system').addEventListener('click', async () => {
+                if (confirm('确定要重置系统吗？')) {
+                    await fetch('/api/reset', { method: 'POST' });
+                    alert('系统已重置');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            });
+
+            document.getElementById('clear-memory').addEventListener('click', async () => {
+                if (confirm('确定要清除所有记忆吗？此操作不可撤销！')) {
+                    await fetch('/api/clear-memory', { method: 'POST' });
+                    alert('记忆已清除');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

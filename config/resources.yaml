@@ -1,0 +1,28 @@
+# Resource Budget Configuration
+# 资源预算配置
+
+# 无限模式资源列表
+# 这些资源将不检查预算限制（适合有充足套餐的情况）
+unlimited_resources:
+  - cpu_tokens  # GLM MAX 套餐够用，不限制Token
+
+# 资源预算（当 unlimited=false 时生效）
+budgets:
+  cpu_tokens: 100000.0      # Token预算（仅在限制模式生效）
+  io_ops: 1000.0            # 磁盘I/O次数
+  net_bytes: 10000000.0     # 网络流量(10MB)
+  money: 10.0               # API调用费用($10)
+  risk_score: 0.5           # 累计风险上限
+
+# 资源紧急阈值
+emergency_thresholds:
+  cpu_tokens: 0.1           # 剩余<10%时进入紧急模式
+  compute: 0.5              # 占用率>50%时进入紧急模式
+  memory: 0.5               # 占用率>50%时进入紧急模式
+  resource_pressure: 0.35   # 资源压力指数>0.35时紧急
+
+# 数字原生资源说明
+# compute/memory 是占用率，不是剩余量：
+# - 启动任务 → 调用 consume_compute() 增加占用
+# - 任务结束 → 调用 release_compute() 减少占用
+# - 不随时间自然恢复，而是通过释放任务来降低

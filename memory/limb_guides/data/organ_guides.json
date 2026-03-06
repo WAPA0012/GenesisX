@@ -1,0 +1,57 @@
+{
+  "http_api": {
+    "name": "http_api",
+    "organ_type": "plugin",
+    "description": "HTTP API 调用插件",
+    "capabilities": [
+      "http_get",
+      "http_post",
+      "http_put",
+      "http_delete"
+    ],
+    "usage_examples": [
+      "使用 http_get 获取数据",
+      "使用 http_post 发送数据",
+      "使用 http_put 执行操作",
+      "使用 http_delete 执行操作"
+    ],
+    "parameters": {
+      "base_url": {
+        "type": "string",
+        "default": ""
+      },
+      "api_key": {
+        "type": "string",
+        "default": ""
+      },
+      "timeout": {
+        "type": "integer",
+        "default": 30
+      }
+    },
+    "created_at": "2026-03-06T04:39:17.895407+00:00",
+    "updated_at": "2026-03-06T04:39:17.895408+00:00"
+  },
+  "data_processor": {
+    "name": "data_processor",
+    "organ_type": "plugin",
+    "description": "数据处理插件 - CSV/Excel 处理",
+    "capabilities": [
+      "read_csv",
+      "read_json",
+      "process_data",
+      "to_excel",
+      "filter_data"
+    ],
+    "usage_examples": [
+      "使用 read_csv 读取内容",
+      "使用 read_json 读取内容",
+      "使用 process_data 处理数据",
+      "使用 to_excel 执行操作",
+      "使用 filter_data 执行操作"
+    ],
+    "parameters": {},
+    "created_at": "2026-03-06T04:39:17.896478+00:00",
+    "updated_at": "2026-03-06T04:39:17.896479+00:00"
+  }
+}

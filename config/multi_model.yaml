@@ -1,0 +1,172 @@
+# 多模型架构配置文件
+# Genesis X Multi-Model Architecture Configuration
+
+# ============================================
+# 多模型总开关
+# ============================================
+multi_model:
+  # 设置为 true 启用多模型架构，false 使用单模型模式
+  enabled: false
+
+  # 最大并行调用的模型数量
+  max_parallel: 3
+
+  # 结果融合策略
+  # 可选值:
+  #   - first_success: 返回第一个成功的结果（最快）
+  #   - majority_vote: 多数投票
+  #   - weighted_avg: 加权平均
+  #   - best_quality: 选择质量最高的
+  #   - consensus: 共识模式
+  #   - all_results: 返回所有结果
+  fusion_strategy: "first_success"
+
+  # 专家模型配置列表
+  experts:
+    # ============================================
+    # 通用专家 (默认启用)
+    # ============================================
+    - name: "gpt4_general"
+      type: "general"
+      enabled: true
+      weight: 1.0
+      timeout: 30.0
+      competencies: []
+      llm:
+        model: "gpt-4"
+        api_base: "https://api.openai.com/v1"
+        api_key: "${LLM_API_KEY}"  # 从环境变量读取
+        provider: "openai"
+        temperature: 0.7
+        max_tokens: 2000
+
+    # ============================================
+    # 深度推理专家 (可选)
+    # ============================================
+    - name: "claude_reasoning"
+      type: "reasoning"
+      enabled: false  # 默认禁用，需要时启用
+      weight: 1.2
+      timeout: 45.0
+      competencies: ["reason", "analyze", "explain", "logic", "step"]
+      llm:
+        model: "claude-3-sonnet-20240229"
+        api_base: "https://api.anthropic.com/v1"
+        api_key: "${ANTHROPIC_API_KEY}"
+        provider: "anthropic"
+        temperature: 0.7
+        max_tokens: 2000
+
+    # ============================================
+    # 创意生成专家 (可选)
+    # ============================================
+    - name: "gpt4_creative"
+      type: "creative"
+      enabled: false
+      weight: 1.0
+      timeout: 30.0
+      competencies: ["create", "write", "generate", "design", "story"]
+      llm:
+        model: "gpt-4"
+        api_base: "https://api.openai.com/v1"
+        api_key: "${LLM_API_KEY}"
+        provider: "openai"
+        temperature: 0.9  # 更高的温度用于创意
+        max_tokens: 2000
+
+    # ============================================
+    # 编程专家 (可选)
+    # ============================================
+    - name: "deepseek_coder"
+      type: "coding"
+      enabled: false
+      weight: 1.1
+      timeout: 30.0
+      competencies: ["code", "function", "program", "debug", "python", "javascript"]
+      llm:
+        model: "deepseek-coder"
+        api_base: "https://api.deepseek.com/v1"
+        api_key: "${DEEPSEEK_API_KEY}"
+        provider: "deepseek"
+        temperature: 0.3  # 更低的温度用于代码
+        max_tokens: 4000
+
+    # ============================================
+    # 快速响应专家 (可选)
+    # ============================================
+    - name: "gpt35_fast"
+      type: "general"
+      enabled: false
+      weight: 0.8
+      timeout: 15.0
+      competencies: ["quick", "simple", "short"]
+      llm:
+        model: "gpt-3.5-turbo"
+        api_base: "https://api.openai.com/v1"
+        api_key: "${LLM_API_KEY}"
+        provider: "openai"
+        temperature: 0.7
+        max_tokens: 1000
+
+    # ============================================
+    # 中文专家 (可选)
+    # ============================================
+    - name: "qwen_chinese"
+      type: "writing"
+      enabled: false
+      weight: 1.0
+      timeout: 30.0
+      competencies: ["中文", "chinese", "翻译", "translate"]
+      llm:
+        model: "qwen-plus"
+        api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        api_key: "${DASHSCOPE_API_KEY}"
+        provider: "qianwen"
+        temperature: 0.7
+        max_tokens: 2000
+
+    # ============================================
+    # 本地模型专家 (可选)
+    # ============================================
+    - name: "ollama_local"
+      type: "analysis"
+      enabled: false
+      weight: 0.7
+      timeout: 60.0
+      competencies: ["local", "private", "offline"]
+      llm:
+        model: "llama3"
+        api_base: "http://localhost:11434/v1"
+        api_key: ""
+        provider: "ollama"
+        temperature: 0.7
+        max_tokens: 2000
+
+# ============================================
+# 配置说明
+# ============================================
+#
+# 1. 单模型模式 (默认):
+#    设置 multi_model.enabled: false
+#    系统将使用环境变量中的 LLM 配置
+#
+# 2. 多模型模式:
+#    设置 multi_model.enabled: true
+#    系统将根据任务自动选择合适的专家模型
+#
+# 3. 启用特定专家:
+#    将对应专家的 enabled 设置为 true
+#    并配置相应的 API 密钥
+#
+# 4. 环境变量:
+#    LLM_API_KEY: OpenAI API 密钥
+#    ANTHROPIC_API_KEY: Anthropic API 密钥
+#    DEEPSEEK_API_KEY: DeepSeek API 密钥
+#    DASHSCOPE_API_KEY: 通义千问 API 密钥
+#
+# 5. 融合策略说明:
+#    - first_success: 最快响应，适合实时交互
+#    - majority_vote: 多数决策，提高准确性
+#    - best_quality: 质量优先，适合重要任务
+#    - consensus: 需要模型间达成一致
+#    - all_results: 获取所有模型结果，方便对比

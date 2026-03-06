@@ -1,0 +1,515 @@
+/**
+ * Genesis X Unified Navigation Styles
+ * 统一导航样式
+ */
+
+/* ============================================================================
+   导航栏基础样式
+   ========================================================================== */
+
+.genesis-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--bg-secondary, #0f172a);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    z-index: 1000;
+    box-shadow: 0 1px 20px rgba(0, 0, 0, 0.3);
+}
+
+.nav-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 100%;
+    padding: 0 20px;
+    max-width: 100%;
+}
+
+/* ============================================================================
+   Logo 区域
+   ========================================================================== */
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: var(--text-primary, #fff);
+    cursor: pointer;
+    user-select: none;
+}
+
+.nav-logo {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--primary, #6366f1), var(--accent-purple, #a855f7));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: white;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    transition: transform var(--transition-base, 0.2s);
+}
+
+.nav-brand:hover .nav-logo {
+    transform: rotate(15deg) scale(1.05);
+}
+
+.nav-brand-text {
+    font-size: 18px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary, #6366f1), var(--accent-cyan, #06b6d4));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ============================================================================
+   导航链接
+   ========================================================================== */
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    color: var(--text-secondary, #94a3b8);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all var(--transition-base, 0.2s);
+    position: relative;
+    overflow: hidden;
+}
+
+.nav-link::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--primary, #6366f1), var(--accent-purple, #a855f7));
+    opacity: 0;
+    transition: opacity var(--transition-base, 0.2s);
+}
+
+.nav-link:hover {
+    color: var(--text-primary, #fff);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.nav-link.active {
+    color: #fff;
+    background: linear-gradient(135deg, var(--primary, #6366f1), var(--accent-purple, #a855f7));
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.nav-link.active::before {
+    opacity: 1;
+}
+
+.nav-link i {
+    position: relative;
+    z-index: 1;
+    font-size: 16px;
+}
+
+.nav-link-text {
+    position: relative;
+    z-index: 1;
+}
+
+/* ============================================================================
+   工具按钮
+   ========================================================================== */
+
+.nav-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-tool-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: none;
+    background: var(--surface-1, rgba(255, 255, 255, 0.05));
+    color: var(--text-secondary, #94a3b8);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all var(--transition-base, 0.2s);
+}
+
+.nav-tool-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--text-primary, #fff);
+    transform: scale(1.05);
+}
+
+/* ============================================================================
+   移动端菜单按钮
+   ========================================================================== */
+
+.nav-mobile-toggle {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: none;
+    background: var(--surface-1, rgba(255, 255, 255, 0.05));
+    cursor: pointer;
+    padding: 10px;
+}
+
+.nav-mobile-toggle span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--text-secondary, #94a3b8);
+    border-radius: 2px;
+    transition: all var(--transition-base, 0.2s);
+}
+
+.nav-mobile-toggle:hover span {
+    background: var(--primary, #6366f1);
+}
+
+/* ============================================================================
+   快速状态面板
+   ========================================================================== */
+
+.nav-status-panel {
+    position: absolute;
+    top: 100%;
+    right: 80px;
+    margin-top: 10px;
+    background: var(--bg-secondary, #0f172a);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 16px;
+    padding: 16px;
+    min-width: 280px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all var(--transition-base, 0.2s);
+}
+
+.nav-status-panel.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.status-panel-content {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface-1, rgba(255, 255, 255, 0.05));
+    border-radius: 10px;
+    font-size: 13px;
+}
+
+.status-item i {
+    color: var(--accent-cyan, #06b6d4);
+    font-size: 14px;
+}
+
+.status-item span {
+    color: var(--text-primary, #fff);
+    font-weight: 600;
+}
+
+/* ============================================================================
+   面包屑导航
+   ========================================================================== */
+
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    background: var(--surface-1, rgba(255, 255, 255, 0.03));
+    border-radius: 12px;
+}
+
+.breadcrumb-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary, #94a3b8);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color var(--transition-base, 0.2s);
+}
+
+.breadcrumb-item:hover {
+    color: var(--primary, #6366f1);
+}
+
+.breadcrumb-item.current {
+    color: var(--text-primary, #fff);
+    font-weight: 500;
+}
+
+.breadcrumb-separator {
+    color: var(--text-tertiary, #64748b);
+    font-size: 12px;
+}
+
+/* ============================================================================
+   返回按钮
+   ========================================================================== */
+
+.back-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all var(--transition-base, 0.2s);
+}
+
+.back-button:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+/* ============================================================================
+   页面过渡动画
+   ========================================================================== */
+
+.page-loading {
+    opacity: 0;
+}
+
+.page-loaded {
+    animation: pageFadeIn 0.3s ease;
+}
+
+.page-unloading {
+    animation: pageFadeOut 0.2s ease;
+}
+
+.page-transition {
+    animation: pageScaleOut 0.15s ease;
+}
+
+@keyframes pageFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pageFadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0.5;
+    }
+}
+
+@keyframes pageScaleOut {
+    from {
+        transform: scale(1);
+    }
+    to {
+        transform: scale(0.98);
+        opacity: 0.8;
+    }
+}
+
+/* ============================================================================
+   响应式设计
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .nav-container {
+        padding: 0 12px;
+    }
+
+    .nav-brand-text {
+        display: none;
+    }
+
+    .nav-links {
+        position: fixed;
+        top: 56px;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        gap: 0;
+        background: var(--bg-secondary, #0f172a);
+        border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+        padding: 8px;
+        transform: translateY(-100%);
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s ease;
+    }
+
+    .genesis-nav.mobile-menu-open .nav-links {
+        transform: translateY(0);
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .nav-link {
+        width: 100%;
+        padding: 14px 16px;
+        border-radius: 10px;
+        justify-content: flex-start;
+    }
+
+    .nav-mobile-toggle {
+        display: flex;
+    }
+
+    .nav-tools {
+        gap: 4px;
+    }
+
+    .nav-status-panel {
+        right: 12px;
+        left: 12px;
+        min-width: auto;
+    }
+
+    .status-panel-content {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+    }
+
+    .status-item {
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px;
+        font-size: 11px;
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-link-text {
+        display: block;
+    }
+
+    .status-panel-content {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ============================================================================
+   主题适配
+   ========================================================================== */
+
+[data-theme="light"] {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-tertiary: #94a3b8;
+    --border-color: #e2e8f0;
+    --surface-1: #f1f5f9;
+    --surface-2: #e2e8f0;
+}
+
+[data-theme="light"] .genesis-nav {
+    background: rgba(255, 255, 255, 0.95);
+    border-bottom-color: #e2e8f0;
+    box-shadow: 0 1px 10px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .nav-link:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+[data-theme="light"] .nav-status-panel {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================================================
+   工具提示
+   ========================================================================== */
+
+.nav-link[title]:hover::after,
+.nav-tool-btn[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 12px;
+    background: var(--bg-primary, #0f172a);
+    color: var(--text-primary, #fff);
+    font-size: 12px;
+    white-space: nowrap;
+    border-radius: 6px;
+    pointer-events: none;
+    z-index: 1001;
+}
+
+/* ============================================================================
+   动画效果
+   ========================================================================== */
+
+@keyframes navSlideIn {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.genesis-nav {
+    animation: navSlideIn 0.3s ease;
+}
+
+/* ============================================================================
+   打印样式
+   ========================================================================== */
+
+@media print {
+    .genesis-nav,
+    .breadcrumb,
+    .back-button {
+        display: none !important;
+    }
+}

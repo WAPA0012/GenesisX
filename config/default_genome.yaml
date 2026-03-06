@@ -1,0 +1,73 @@
+# Default Genome Configuration (θ - Personality DNA)
+
+soul_field:
+  # Big Five personality traits (影响各维度权重偏置)
+  openness: 0.7  # affects curiosity sensitivity
+  conscientiousness: 0.6  # affects efficiency and integrity
+  extraversion: 0.5  # affects attachment and social behavior
+  agreeableness: 0.6  # affects contract compliance
+  neuroticism: 0.4  # affects stress sensitivity
+
+# Personality bias functions g_i(θ)
+personality_bias:
+  curiosity_openness_factor: 1.5  # openness enhances curiosity
+  efficiency_conscientiousness_factor: 1.3
+  attachment_extraversion_factor: 1.2
+  contract_agreeableness_factor: 1.1
+  stress_neuroticism_factor: 1.4
+
+# Affect parameters (论文Appendix A.5默认值)
+affect:
+  gamma: 0.97  # 论文Appendix A.5: discount factor γ = 0.97
+  mood_k_plus: 0.25  # 论文Appendix A.5: k_+ = 0.25 (正RPE的mood增益)
+  mood_k_minus: 0.30  # 论文Appendix A.5: k_- = 0.30 (负RPE的mood损失)
+  stress_gain: 0.20  # 论文Appendix A.5: s = 0.20 (负RPE的压力增长)
+  stress_relief: 0.10  # 论文Appendix A.5: s' = 0.10 (正RPE的压力缓解)
+
+# Body parameters
+body:
+  energy_decay_per_tick: 0.01
+  fatigue_accumulation_rate: 0.02
+  stress_decay_rate: 0.01
+  boredom_threshold: 0.7
+
+# Homeostasis setpoints
+# 修复 M11: 统一 Homeostasis setpoints (论文 Appendix A.4)
+homeostasis:
+  target_energy: 0.70  # E* = 0.70
+  target_stress: 0.20  # Stress* = 0.20
+  target_fatigue: 0.30  # Fatigue* = 0.30
+
+# Priority override thresholds
+priority_override:
+  homeostasis_high_threshold: 0.8  # gap threshold for priority override
+  homeostasis_low_threshold: 0.3   # hysteresis low threshold
+  homeostasis_override_weight: 0.7
+  integrity_high_threshold: 0.9
+  integrity_override_weight: 0.9
+
+# Learning parameters
+learning:
+  enable_skill_learning: true
+  enable_schema_formation: true
+  min_evidence_for_schema: 2
+  schema_confidence_threshold: 0.6
+
+# Planning parameters (论文 Appendix A.5)
+planning:
+  horizon: 5  # planning horizon in ticks (默认5, 建议值: {3, 5, 8})
+  num_candidate_plans: 5
+  replan_on_failure: true
+
+# Dream/consolidation parameters (论文 Appendix A.7 默认值)
+consolidation:
+  dream_trigger_fatigue: 0.8
+  dream_sample_size: 20
+  insight_quality_threshold: 0.65  # 论文 Q_min = 0.65
+  salience_rpe_weight: 1.0     # 论文 a_δ = 1.0
+  salience_emotion_weight: 0.5  # 论文 a_u = 0.5
+  salience_novelty_weight: 0.3  # 论文 a_n = 0.3
+
+  # LLM 记忆整理配置已移至 organ_llm.yaml
+  # 包括: enabled, use_default_llm, threshold, temperature 等
+  # 请在 organ_llm.yaml 的 memory_consolidation 部分配置

@@ -1,0 +1,64 @@
+# Value Setpoints Configuration (ω)
+# 论文 Section 3.5.1: 5维核心价值向量设定点
+
+value_dimensions:
+  homeostasis:
+    setpoint: 0.70  # 资源平衡、压力管理、系统稳定
+    drift_limit_per_day: 0.05
+    weight_bias: 1.0
+    description: "资源稳态：算力/内存/压力平衡"
+
+  attachment:
+    setpoint: 0.70  # 社交连接、信任建立、忽视回避
+    drift_limit_per_day: 0.10
+    weight_bias: 0.8
+    description: "依恋关系：与用户的连接强度"
+
+  curiosity:
+    setpoint: 0.60  # 新奇探索、信息增益、规律发现
+    drift_limit_per_day: 0.15
+    weight_bias: 0.7
+    description: "好奇求知：探索欲望与学习进展"
+
+  competence:
+    setpoint: 0.75  # 任务成功、技能成长、效能感
+    drift_limit_per_day: 0.08
+    weight_bias: 1.0
+    description: "胜任能力：完成任务的信心与能力"
+
+  safety:
+    setpoint: 0.80  # 风险回避、损失预防、安全边际
+    drift_limit_per_day: 0.05
+    weight_bias: 1.2
+    description: "安全意识：风险回避与损失预防"
+
+# Weight dynamics
+# 论文Appendix A.5: τ = 4.0
+tau: 4.0  # temperature for softmax (motivation concentration)
+
+# Value learning
+learning_rate: 0.001  # epsilon for slow value updates
+enable_value_learning: true
+
+# Priority override (论文 Section 3.6.4)
+priority_override:
+  critical_dimensions:
+    - homeostasis
+    - safety
+  high_threshold: 0.8  # θ_hi: trigger override
+  low_threshold: 0.4   # θ_lo: release override
+  min_weights:
+    homeostasis: 0.7
+    safety: 0.6
+  soft_override_factor: 0.3  # λ_soft: soft override blending
+  max_override_duration: 3600.0  # 1 hour timeout
+
+# Idle state bias (论文 Section 3.6.3)
+idle_bias:
+  homeostasis: 0.10
+  attachment: 0.15
+  curiosity: 0.40
+  competence: 0.20
+  safety: 0.15
+idle_epsilon: 0.02  # threshold for idle state detection
+

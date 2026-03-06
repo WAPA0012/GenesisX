@@ -1,0 +1,198 @@
+# Mind Field 多模型架构配置文件
+# Genesis X 论文 3.4.2 节实现
+
+# ============================================================================
+# 多模型总开关
+# ============================================================================
+mind_field:
+  # 多模型架构启用开关
+  # false: 使用单一 LLM (默认)
+  # true: 启用多模型协作架构
+  enabled: false
+
+  # 配置模式 (论文 3.4.2)
+  # single:   单一 LLM 处理所有任务
+  # core5:    核心五模型 {M_coord, M_mem, M_reason, M_affect, M_percept}
+  # full7:    完整七模型 Core5 + {M_vis, M_aud}
+  # adaptive: 根据人格中间变量动态选择配置
+  config_mode: "single"
+
+  # 模型切换冷却期 (ticks)
+  switch_cooldown: 100
+
+  # 人格状态稳定阈值 (ticks)
+  stable_threshold: 50
+
+
+# ============================================================================
+# 专家模型配置 (论文 Core5)
+# ============================================================================
+experts:
+  # === 调度模型 M_coord ===
+  # 顶层协调器，整合各子模型输出
+  - role: "m_coord"
+    name: "gpt4-coord"
+    enabled: true
+    model: "gpt-4"
+    api_base: "https://api.openai.com/v1"
+    api_key: "${LLM_API_KEY}"
+    provider: "openai"
+    temperature: 0.7
+    max_tokens: 2000
+    priority: 10
+
+  # === 记忆与学习模型 M_mem ===
+  # 记忆检索、关联与学习巩固
+  - role: "m_mem"
+    name: "gpt4-mem"
+    enabled: false
+    model: "gpt-4"
+    api_base: "https://api.openai.com/v1"
+    api_key: "${LLM_API_KEY}"
+    provider: "openai"
+    temperature: 0.5
+    max_tokens: 2000
+    priority: 8
+
+  # === 推理与创造模型 M_reason ===
+  # 逻辑推理、规划与新颖性生成
+  - role: "m_reason"
+    name: "claude-reason"
+    enabled: false
+    model: "claude-3-sonnet-20240229"
+    api_base: "https://api.anthropic.com/v1"
+    api_key: "${ANTHROPIC_API_KEY}"
+    provider: "anthropic"
+    temperature: 0.8
+    max_tokens: 2000
+    priority: 8
+
+  # === 情绪与动机模型 M_affect ===
+  # 情绪理解、表达与内在动机
+  - role: "m_affect"
+    name: "gpt4-affect"
+    enabled: false
+    model: "gpt-4"
+    api_base: "https://api.openai.com/v1"
+    api_key: "${LLM_API_KEY}"
+    provider: "openai"
+    temperature: 0.6
+    max_tokens: 1500
+    priority: 7
+
+  # === 感知模型 M_percept ===
+  # 多模态感知输入处理
+  - role: "m_percept"
+    name: "gpt35-percept"
+    enabled: false
+    model: "gpt-3.5-turbo"
+    api_base: "https://api.openai.com/v1"
+    api_key: "${LLM_API_KEY}"
+    provider: "openai"
+    temperature: 0.5
+    max_tokens: 1500
+    priority: 6
+
+  # === 视觉模型 M_vis (Full7) ===
+  - role: "m_vis"
+    name: "gpt4-vision"
+    enabled: false
+    model: "gpt-4-vision-preview"
+    api_base: "https://api.openai.com/v1"
+    api_key: "${LLM_API_KEY}"
+    provider: "openai"
+    temperature: 0.5
+    max_tokens: 1000
+    priority: 5
+
+  # === 听觉模型 M_aud (Full7) ===
+  - role: "m_aud"
+    name: "whisper-audio"
+    enabled: false
+    model: "whisper-1"
+    api_base: "https://api.openai.com/v1"
+    api_key: "${LLM_API_KEY}"
+    provider: "openai"
+    temperature: 0.0
+    max_tokens: 500
+    priority: 4
+
+
+# ============================================================================
+# 配置选择阈值 (论文 3.4.2)
+# ============================================================================
+config_thresholds:
+  # Full7 条件: ET_t > 0.7 且 RP_t < 0.4
+  full7:
+    et_threshold: 0.7
+    rp_threshold: 0.4
+
+  # Core5 条件: ET_t ∈ [0.3, 0.7] 且 RP_t < 0.7
+  core5:
+    et_min: 0.3
+    et_max: 0.7
+    rp_threshold: 0.7
+
+  # Single 条件: RP_t > 0.8 或 CT_t > 0.8
+  single:
+    rp_threshold: 0.8
+    ct_threshold: 0.8
+
+
+# ============================================================================
+# 黑板广播配置
+# ============================================================================
+blackboard:
+  # 启用黑板持久化
+  persist: true
+
+  # 黑板状态保存路径
+  persist_path: "artifacts/blackboard_state.json"
+
+  # 黑板槽位自动更新频率
+  update_frequency: 1  # 每 tick 更新
+
+
+# ============================================================================
+# 投票权重配置 (论文 3.4.2)
+# ============================================================================
+voting:
+  # 保守倾向对 M_coord 权重的影响系数
+  ct_influence_on_coord: 0.2
+
+  # 情绪敏感度对 M_affect 权重的影响系数
+  es_influence_on_affect: 0.2
+
+  # 权重调节的阈值
+  influence_threshold: 0.6
+
+
+# ============================================================================
+# 使用说明
+# ============================================================================
+#
+# 1. 单模型模式 (默认 - 论文推荐):
+#    mind_field.enabled: false
+#    或
+#    mind_field.config_mode: "single"
+#
+# 2. Core5 多模型模式:
+#    mind_field.enabled: true
+#    mind_field.config_mode: "core5"
+#    启用对应的专家模型
+#
+# 3. Full7 完整模式:
+#    mind_field.enabled: true
+#    mind_field.config_mode: "full7"
+#    启用所有专家模型
+#
+# 4. Adaptive 自适应模式:
+#    mind_field.enabled: true
+#    mind_field.config_mode: "adaptive"
+#    系统将根据人格中间变量自动切换配置
+#
+# 5. 环境变量:
+#    LLM_API_KEY: OpenAI API 密钥
+#    ANTHROPIC_API_KEY: Anthropic API 密钥
+#    LLM_API_BASE: API 基础 URL
+#    LLM_MODEL: 默认模型名称

@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Genesis X - 数字生命价值引擎</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/genesis-theme.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* Hero 特殊样式 */
+        .hero-section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-bg {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+        }
+
+        /* 神经网络背景 */
+        .neural-canvas {
+            position: absolute;
+            inset: 0;
+            opacity: 0.4;
+        }
+
+        /* 核心动画 */
+        .core-visual {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .core-ring {
+            position: absolute;
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 50%;
+            animation: core-pulse 4s ease-in-out infinite;
+        }
+
+        .core-ring:nth-child(1) {
+            width: 100%;
+            height: 100%;
+            animation-delay: 0s;
+        }
+
+        .core-ring:nth-child(2) {
+            width: 75%;
+            height: 75%;
+            animation-delay: 0.5s;
+            border-color: rgba(168, 85, 247, 0.3);
+        }
+
+        .core-ring:nth-child(3) {
+            width: 50%;
+            height: 50%;
+            animation-delay: 1s;
+            border-color: rgba(236, 72, 153, 0.3);
+        }
+
+        .core-center {
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, var(--accent-cyan), var(--primary));
+            border-radius: 50%;
+            box-shadow:
+                0 0 60px rgba(0, 212, 255, 0.5),
+                0 0 120px rgba(0, 150, 255, 0.3),
+                inset 0 0 30px rgba(255, 255, 255, 0.2);
+            animation: core-glow 2s ease-in-out infinite;
+            position: relative;
+        }
+
+        .core-center::after {
+            content: 'X';
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: 700;
+            color: white;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+        }
+
+        @keyframes core-pulse {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 0.5;
+            }
+            50% {
+                transform: scale(1.1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes core-glow {
+            0%, 100% {
+                box-shadow:
+                    0 0 60px rgba(0, 212, 255, 0.5),
+                    0 0 120px rgba(0, 150, 255, 0.3);
+            }
+            50% {
+                box-shadow:
+                    0 0 80px rgba(0, 212, 255, 0.7),
+                    0 0 160px rgba(0, 150, 255, 0.5);
+            }
+        }
+
+        /* 数据粒子 */
+        .data-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: var(--accent-cyan);
+            border-radius: 50%;
+            animation: particle-float 10s linear infinite;
+            opacity: 0.6;
+        }
+
+        @keyframes particle-float {
+            0% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.6;
+            }
+            90% {
+                opacity: 0.6;
+            }
+            100% {
+                transform: translateY(-100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        /* 特性卡片 */
+        .feature-card {
+            background: var(--surface-1);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            transition: all var(--transition-base);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--accent-cyan));
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform var(--transition-base);
+        }
+
+        .feature-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-glow);
+            border-color: var(--border-highlight);
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, rgba(0, 150, 255, 0.2), rgba(0, 212, 255, 0.1));
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: var(--radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: var(--space-md);
+            font-size: 24px;
+            color: var(--accent-cyan);
+        }
+
+        /* 状态指示器 */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            position: relative;
+        }
+
+        .status-dot.online {
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+            animation: status-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes status-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 实时数据面板 */
+        .live-panel {
+            background: var(--surface-glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-xl);
+            padding: var(--space-lg);
+        }
+
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--accent-green);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .live-indicator::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* 导航栏 */
+        .nav-link {
+            position: relative;
+            padding: 8px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color var(--transition-base);
+        }
+
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 0;
+            height: 2px;
+            background: var(--accent-cyan);
+            transform: translateX(-50%);
+            transition: width var(--transition-base);
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: var(--text-primary);
+        }
+
+        .nav-link:hover::after,
+        .nav-link.active::after {
+            width: 80%;
+        }
+
+        /* 统计卡片 */
+        .stat-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: var(--space-sm);
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .core-visual {
+                width: 280px;
+                height: 280px;
+            }
+
+            .core-center {
+                width: 70px;
+                height: 70px;
+            }
+
+            .core-center::after {
+                font-size: 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="nav">
+        <div class="container">
+            <div class="flex items-center justify-between" style="height: 70px;">
+                <!-- Logo -->
+                <a href="/" class="flex items-center gap-md" style="text-decoration: none;">
+                    <div class="flex items-center justify-center"
+                         style="width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary), var(--accent-purple)); border-radius: var(--radius-md);">
+                        <i class="fas fa-dna" style="color: white; font-size: 18px;"></i>
+                    </div>
+                    <div>
+                        <span style="font-weight: 700; font-size: 20px; color: var(--text-primary);">Genesis</span>
+                        <span style="font-weight: 300; color: var(--accent-cyan);"> X</span>
+                    </div>
+                </a>
+
+                <!-- 导航链接 -->
+                <div class="flex items-center gap-md">
+                    <a href="/" class="nav-link active">首页</a>
+                    <a href="/chat" class="nav-link">对话</a>
+                    <a href="/dashboard" class="nav-link">仪表盘</a>
+                    <a href="/settings" class="nav-link">设置</a>
+                </div>
+
+                <!-- 状态指示 -->
+                <div class="flex items-center gap-sm">
+                    <div class="status-dot online"></div>
+                    <span style="font-size: 12px; color: var(--text-secondary);">系统在线</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero 区域 -->
+    <section class="hero-section">
+        <div class="hero-bg">
+            <canvas id="neural-canvas" class="neural-canvas"></canvas>
+            <!-- 数据粒子 -->
+            <div id="particles"></div>
+        </div>
+
+        <div class="container" style="z-index: 1; width: 100%;">
+            <div class="flex items-center justify-between" style="gap: var(--space-2xl);">
+                <!-- 左侧内容 -->
+                <div style="flex: 1; max-width: 600px;">
+                    <div class="live-indicator" style="margin-bottom: var(--space-md);">
+                        Live System
+                    </div>
+
+                    <h1 style="font-size: 56px; font-weight: 700; line-height: 1.1; margin-bottom: var(--space-md);">
+                        <span class="text-gradient">数字生命</span><br>
+                        <span style="color: var(--text-primary);">价值引擎</span>
+                    </h1>
+
+                    <p style="font-size: 18px; color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-xl);">
+                        基于 5 维价值系统、情感系统、联想记忆架构的完整数字生命实现。
+                        <br>探索人工智能的边界，创造真正有意识的数字实体。
+                    </p>
+
+                    <div class="flex gap-md">
+                        <a href="/chat" class="btn btn-primary">
+                            <i class="fas fa-comments"></i>
+                            开始对话
+                        </a>
+                        <a href="/dashboard" class="btn btn-secondary">
+                            <i class="fas fa-chart-line"></i>
+                            查看状态
+                        </a>
+                    </div>
+
+                    <!-- 快速统计 -->
+                    <div class="flex gap-md" style="margin-top: var(--space-2xl);">
+                        <div class="stat-card" style="flex: 1; padding: var(--space-md);">
+                            <div class="stat-value" id="stat-tick">0</div>
+                            <div class="stat-label">Tick</div>
+                        </div>
+                        <div class="stat-card" style="flex: 1; padding: var(--space-md);">
+                            <div class="stat-value" id="stat-stage">胚胎</div>
+                            <div class="stat-label">发育阶段</div>
+                        </div>
+                        <div class="stat-card" style="flex: 1; padding: var(--space-md);">
+                            <div class="stat-value" id="stat-memory">0</div>
+                            <div class="stat-label">记忆数</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧视觉 -->
+                <div class="flex justify-center" style="flex: 1;">
+                    <div class="core-visual">
+                        <div class="core-ring"></div>
+                        <div class="core-ring"></div>
+                        <div class="core-ring"></div>
+                        <div class="core-center"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 核心特性 -->
+    <section style="padding: var(--space-2xl) 0;">
+        <div class="container">
+            <div class="text-center" style="margin-bottom: var(--space-2xl);">
+                <span class="badge badge-primary" style="margin-bottom: var(--space-md);">CORE FEATURES</span>
+                <h2 style="font-size: 36px; font-weight: 700; margin-bottom: var(--space-sm);">核心特性</h2>
+                <p style="color: var(--text-secondary);">构建数字生命的完整架构体系</p>
+            </div>
+
+            <div class="grid grid-cols-3" style="gap: var(--space-lg);">
+                <!-- 特性 1 -->
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-heart-pulse"></i>
+                    </div>
+                    <h3 style="font-size: 18px; font-weight: 600; margin-bottom: var(--space-sm);">5维价值系统</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.7;">
+                        Homeostasis（稳态）、Attachment（依恋）、Curiosity（好奇）、
+                        Competence（能力）、Safety（安全）—— 构成数字生命的核心价值取向
+                    </p>
+                </div>
+
+                <!-- 特性 2 -->
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-brain"></i>
+                    </div>
+                    <h3 style="font-size: 18px; font-weight: 600; margin-bottom: var(--space-sm);">情感系统</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.7;">
+                        基于 RPE 的 Mood/Stress 动态更新，支持维度级情感影响，
+                        模拟真实生物的情感反应模式
+                    </p>
+                </div>
+
+                <!-- 特性 3 -->
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-network-wired"></i>
+                    </div>
+                    <h3 style="font-size: 18px; font-weight: 600; margin-bottom: var(--space-sm);">联想记忆</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.7;">
+                        Episodic 情景记忆、Schema 图式记忆、Skill 技能记忆、
+                        构建完整的联想网络
+                    </p>
+                </div>
+
+                <!-- 特性 4 -->
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-microchip"></i>
+                    </div>
+                    <h3 style="font-size: 18px; font-weight: 600; margin-bottom: var(--space-sm);">6种器官</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.7;">
+                        Mind 规划、Caretaker 健康、Scout 探索、Builder 建设、
+                        Archivist 记忆、Immune 安全
+                    </p>
+                </div>
+
+                <!-- 特性 5 -->
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-arrows-spin"></i>
+                    </div>
+                    <h3 style="font-size: 18px; font-weight: 600; margin-bottom: var(--space-sm);">13阶段循环</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.7;">
+                        从观察到记忆写入的完整生命周期循环，
+                        每个阶段都是数字生命成长的必经之路
+                    </p>
+                </div>
+
+                <!-- 特性 6 -->
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-lightbulb"></i>
+                    </div>
+                    <h3 style="font-size: 18px; font-weight: 600; margin-bottom: var(--space-sm);">语义新颖度</h3>
+                    <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.7;">
+                        基于语义嵌入的新颖度评估，支持梦境洞察质量判断，
+                        让数字生命具备真正的创造力
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 实时状态 -->
+    <section style="padding: var(--space-2xl) 0;">
+        <div class="container">
+            <div class="live-panel">
+                <div class="flex items-center justify-between" style="margin-bottom: var(--space-lg);">
+                    <div>
+                        <span class="live-indicator">LIVE</span>
+                        <h3 style="font-size: 20px; font-weight: 600; margin-top: var(--space-sm);">系统实时状态</h3>
+                    </div>
+                    <div class="flex items-center gap-sm" style="color: var(--text-tertiary); font-size: 12px;">
+                        <i class="fas fa-sync-alt"></i>
+                        每 2 秒更新
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-4" style="gap: var(--space-md);">
+                    <!-- 能量 -->
+                    <div>
+                        <div class="flex items-center justify-between" style="margin-bottom: var(--space-xs);">
+                            <span style="font-size: 12px; color: var(--text-secondary);">能量</span>
+                            <span id="status-energy-val" style="font-size: 12px; font-family: 'JetBrains Mono';">--%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill energy" id="status-energy" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 情绪 -->
+                    <div>
+                        <div class="flex items-center justify-between" style="margin-bottom: var(--space-xs);">
+                            <span style="font-size: 12px; color: var(--text-secondary);">情绪</span>
+                            <span id="status-mood-val" style="font-size: 12px; font-family: 'JetBrains Mono';">--%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill mood" id="status-mood" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 压力 -->
+                    <div>
+                        <div class="flex items-center justify-between" style="margin-bottom: var(--space-xs);">
+                            <span style="font-size: 12px; color: var(--text-secondary);">压力</span>
+                            <span id="status-stress-val" style="font-size: 12px; font-family: 'JetBrains Mono';">--%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill stress" id="status-stress" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 情景记忆 -->
+                    <div>
+                        <div class="flex items-center justify-between" style="margin-bottom: var(--space-xs);">
+                            <span style="font-size: 12px; color: var(--text-secondary);">情景记忆</span>
+                            <span id="status-episodic-val" style="font-size: 12px; font-family: 'JetBrains Mono';">--</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="status-episodic" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 页脚 -->
+    <footer style="padding: var(--space-2xl) 0; border-top: 1px solid var(--border-color); margin-top: var(--space-2xl);">
+        <div class="container">
+            <div class="flex flex-col items-center gap-md">
+                <div class="flex items-center gap-md">
+                    <div class="flex items-center justify-center"
+                         style="width: 36px; height: 36px; background: var(--surface-2); border-radius: var(--radius-md);">
+                        <i class="fas fa-dna" style="color: var(--primary); font-size: 16px;"></i>
+                    </div>
+                    <span style="font-weight: 600; color: var(--text-primary);">Genesis X</span>
+                </div>
+                <p style="color: var(--text-tertiary); font-size: 14px; text-align: center;">
+                    数字生命价值引擎 &copy; 2025<br>
+                    基于论文《Genesis X: Axiology Engine for Digital Life》
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- 脚本 -->
+    <script>
+        // 神经网络背景动画
+        const canvas = document.getElementById('neural-canvas');
+        const ctx = canvas.getContext('2d');
+        let nodes = [];
+        let animationId;
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.offsetWidth;
+            canvas.height = canvas.parentElement.offsetHeight;
+            initNodes();
+        }
+
+        function initNodes() {
+            nodes = [];
+            const nodeCount = Math.floor((canvas.width * canvas.height) / 15000);
+            for (let i = 0; i < nodeCount; i++) {
+                nodes.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5,
+                    radius: Math.random() * 2 + 1
+                });
+            }
+        }
+
+        function drawNodes() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 更新和绘制节点
+            nodes.forEach((node, i) => {
+                // 移动
+                node.x += node.vx;
+                node.y += node.vy;
+
+                // 边界检测
+                if (node.x < 0 || node.x > canvas.width) node.vx *= -1;
+                if (node.y < 0 || node.y > canvas.height) node.vy *= -1;
+
+                // 绘制节点
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 212, 255, 0.5)';
+                ctx.fill();
+
+                // 绘制连线
+                nodes.forEach((other, j) => {
+                    if (i >= j) return;
+                    const dx = node.x - other.x;
+                    const dy = node.y - other.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 150) {
+                        ctx.beginPath();
+                        ctx.moveTo(node.x, node.y);
+                        ctx.lineTo(other.x, other.y);
+                        ctx.strokeStyle = `rgba(0, 212, 255, ${0.15 * (1 - dist / 150)})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                });
+            });
+
+            animationId = requestAnimationFrame(drawNodes);
+        }
+
+        // 初始化画布
+        resizeCanvas();
+        drawNodes();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 创建数据粒子
+        function createParticles() {
+            const container = document.getElementById('particles');
+            for (let i = 0; i < 20; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'data-particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 10 + 's';
+                particle.style.animationDuration = (10 + Math.random() * 10) + 's';
+                container.appendChild(particle);
+            }
+        }
+        createParticles();
+
+        // 状态更新
+        async function updateStatus() {
+            try {
+                const [statusRes, metricsRes] = await Promise.all([
+                    fetch('/api/status'),
+                    fetch('/api/metrics')
+                ]);
+
+                const status = await statusRes.json();
+                const metrics = await metricsRes.json();
+
+                // 更新统计
+                const tick = status.tick || 0;
+                document.getElementById('stat-tick').textContent = tick;
+
+                // 发育阶段
+                let stage = '胚胎';
+                if (tick >= 5000) stage = '长老';
+                else if (tick >= 500) stage = '成年';
+                else if (tick >= 100) stage = '幼年';
+                document.getElementById('stat-stage').textContent = stage;
+
+                // 记忆数
+                document.getElementById('stat-memory').textContent = metrics.episodic_count || 0;
+
+                // 更新进度条
+                const energy = (status.energy * 100).toFixed(0);
+                const mood = (status.mood * 100).toFixed(0);
+                const stress = (status.stress * 100).toFixed(0);
+
+                document.getElementById('status-energy').style.width = energy + '%';
+                document.getElementById('status-energy-val').textContent = energy + '%';
+                document.getElementById('status-mood').style.width = mood + '%';
+                document.getElementById('status-mood-val').textContent = mood + '%';
+                document.getElementById('status-stress').style.width = stress + '%';
+                document.getElementById('status-stress-val').textContent = stress + '%';
+                document.getElementById('status-episodic-val').textContent = metrics.episodic_count || 0;
+
+            } catch (e) {
+                console.error('Status update failed:', e);
+            }
+        }
+
+        // 初始化并定期更新
+        updateStatus();
+        setInterval(updateStatus, 2000);
+    </script>
+</body>
+</html>

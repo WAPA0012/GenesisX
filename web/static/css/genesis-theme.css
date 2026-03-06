@@ -1,0 +1,1511 @@
+/**
+ * Genesis X - Digital Life Theme
+ * 数字生命科技风格主题
+ *
+ * 设计理念：
+ * - 赛博朋克 + 未来主义
+ * - 神经网络可视化风格
+ * - 数据流动效果
+ * - 呼吸感与生命感
+ */
+
+/* ============================================================================
+   CSS VARIABLES - 设计系统
+   ============================================================================ */
+
+:root {
+    /* === 主色调 === */
+    --primary-h: 210;
+    --primary-s: 100%;
+    --primary-l: 50%;
+    --primary: hsl(var(--primary-h), var(--primary-s), var(--primary-l));
+    --primary-rgb: 0, 150, 255;
+    --primary-dark: hsl(var(--primary-h), var(--primary-s), 40%);
+    --primary-light: hsl(var(--primary-h), var(--primary-s), 60%);
+
+    /* === 辅助色 === */
+    --accent-cyan: #00d4ff;
+    --accent-purple: #a855f7;
+    --accent-pink: #ec4899;
+    --accent-green: #10b981;
+    --accent-orange: #f59e0b;
+
+    /* === 背景色 === */
+    --bg-primary: #0a0e1a;
+    --bg-secondary: #111827;
+    --bg-tertiary: #1f2937;
+    --bg-elevated: #1e293b;
+
+    /* === 表面色 === */
+    --surface-1: rgba(30, 41, 59, 0.8);
+    --surface-2: rgba(51, 65, 85, 0.6);
+    --surface-glass: rgba(15, 23, 42, 0.7);
+
+    /* === 文本色 === */
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-tertiary: #64748b;
+    --text-muted: #475569;
+
+    /* === 边框色 === */
+    --border-color: rgba(148, 163, 184, 0.1);
+    --border-highlight: rgba(0, 212, 255, 0.3);
+    --border-glow: rgba(0, 150, 255, 0.5);
+
+    /* === 阴影 === */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+    --shadow-glow: 0 0 20px rgba(0, 150, 255, 0.3);
+    --shadow-glow-strong: 0 0 40px rgba(0, 150, 255, 0.5);
+
+    /* === 圆角 === */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
+
+    /* === 间距 === */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* === 过渡 === */
+    --transition-fast: 150ms ease;
+    --transition-base: 250ms ease;
+    --transition-slow: 350ms ease;
+    --transition-bounce: 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* ============================================================================
+   BASE STYLES - 基础样式
+   ============================================================================ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* 背景网格效果 */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* 光晕效果 */
+body::after {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(
+        circle at center,
+        rgba(0, 150, 255, 0.03) 0%,
+        transparent 50%
+    );
+    pointer-events: none;
+    z-index: 0;
+    animation: glow-pulse 8s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* 内容容器 */
+body > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* ============================================================================
+   UTILITY CLASSES - 工具类
+   ============================================================================ */
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+}
+
+.container-narrow {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+}
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-sm { gap: var(--space-sm); }
+.gap-md { gap: var(--space-md); }
+.gap-lg { gap: var(--space-lg); }
+
+.grid { display: grid; }
+.grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+.text-center { text-align: center; }
+.text-gradient {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--primary), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ============================================================================
+   COMPONENTS - 组件
+   ============================================================================ */
+
+/* === 按钮 === */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    position: relative;
+    overflow: hidden;
+    text-decoration: none;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.2),
+        transparent
+    );
+    transition: left var(--transition-slow);
+}
+
+.btn:hover::before {
+    left: 100%;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+    color: white;
+    box-shadow: 0 4px 15px rgba(0, 150, 255, 0.3);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 150, 255, 0.5);
+}
+
+.btn-secondary {
+    background: var(--surface-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: var(--surface-1);
+    border-color: var(--border-highlight);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+    background: var(--surface-2);
+    color: var(--text-primary);
+}
+
+.btn-icon {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: var(--radius-md);
+}
+
+/* === 卡片 === */
+.card {
+    background: var(--surface-1);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    transition: all var(--transition-base);
+}
+
+.card:hover {
+    border-color: var(--border-highlight);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-2px);
+}
+
+.card-elevated {
+    background: var(--surface-glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg);
+}
+
+/* === 输入框 === */
+.input {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: all var(--transition-base);
+}
+
+.input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+}
+
+.input::placeholder {
+    color: var(--text-muted);
+}
+
+/* === 进度条 === */
+.progress-bar {
+    height: 8px;
+    background: var(--surface-2);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--accent-cyan));
+    border-radius: var(--radius-full);
+    transition: width var(--transition-slow);
+    position: relative;
+}
+
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* 进度条变体 */
+.progress-fill.energy {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.progress-fill.mood {
+    background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.progress-fill.stress {
+    background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.progress-fill.homeostasis {
+    background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+}
+
+.progress-fill.attachment {
+    background: linear-gradient(90deg, #ec4899, #f472b6);
+}
+
+.progress-fill.curiosity {
+    background: linear-gradient(90deg, #06b6d4, #22d3ee);
+}
+
+.progress-fill.competence {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.progress-fill.safety {
+    background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+/* === 徽章 === */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-primary {
+    background: rgba(0, 150, 255, 0.2);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.badge-success {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-green);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--accent-orange);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-danger {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* === 分隔线 === */
+.divider {
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        var(--border-color),
+        transparent
+    );
+    margin: var(--space-lg) 0;
+}
+
+/* ============================================================================
+   ANIMATIONS - 动画效果
+   ============================================================================ */
+
+/* 淡入 */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.5s ease forwards;
+}
+
+/* 从下滑入 */
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-slide-up {
+    animation: slideUp 0.5s ease forwards;
+}
+
+/* 脉冲 */
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(0, 150, 255, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(0, 150, 255, 0.6);
+    }
+}
+
+.animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* 呼吸 */
+@keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.animate-breathe {
+    animation: breathe 4s ease-in-out infinite;
+}
+
+/* 旋转 */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* 漂浮 */
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+/* 数据流动 */
+@keyframes dataFlow {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+.data-flow {
+    background: linear-gradient(
+        90deg,
+        var(--primary) 0%,
+        var(--accent-cyan) 25%,
+        var(--accent-purple) 50%,
+        var(--accent-cyan) 75%,
+        var(--primary) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: dataFlow 3s linear infinite;
+}
+
+/* ============================================================================
+   NEURAL NETWORK EFFECT - 神经网络效果
+   ============================================================================ */
+
+.neural-bg {
+    position: relative;
+    overflow: hidden;
+}
+
+.neural-bg::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        radial-gradient(circle at 20% 50%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 40% 20%, rgba(236, 72, 153, 0.05) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+/* ============================================================================
+   SCROLLBAR - 自定义滚动条
+   ============================================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--surface-2);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+}
+
+/* ============================================================================
+   RESPONSIVE - 响应式
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    :root {
+        --space-lg: 16px;
+        --space-xl: 24px;
+    }
+
+    .container {
+        padding: 0 var(--space-md);
+    }
+
+    .grid-cols-4,
+    .grid-cols-3 {
+        grid-template-columns: 1fr;
+    }
+
+    .grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .grid-cols-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ============================================================================
+   ADDITIONAL COMPONENTS - 额外组件
+   ============================================================================ */
+
+/* === Toggle Switch === */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: var(--surface-2);
+    border-radius: var(--radius-full);
+    transition: var(--transition-base);
+}
+
+.toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: var(--transition-base);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+}
+
+/* === Dropdown === */
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 180px;
+    background: var(--surface-glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    margin-top: 4px;
+    animation: dropdown-fade-in 0.2s ease;
+}
+
+@keyframes dropdown-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dropdown:hover .dropdown-content {
+    display: block;
+}
+
+.dropdown-item {
+    display: block;
+    padding: 10px 16px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 14px;
+    transition: all var(--transition-fast);
+}
+
+.dropdown-item:hover {
+    background: var(--surface-2);
+    color: var(--accent-cyan);
+}
+
+.dropdown-item:first-child {
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.dropdown-item:last-child {
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+/* === Tooltip === */
+.tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 12px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-size: 12px;
+    white-space: nowrap;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-fast);
+    z-index: 1000;
+    margin-bottom: 8px;
+}
+
+.tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--bg-elevated);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-fast);
+    z-index: 1000;
+    margin-bottom: -4px;
+}
+
+.tooltip:hover::after,
+.tooltip:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* === Modal === */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+}
+
+.modal.active {
+    display: flex;
+    animation: modal-fade-in 0.3s ease;
+}
+
+@keyframes modal-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    background: var(--surface-glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: var(--space-xl);
+    max-width: 500px;
+    width: 100%;
+    box-shadow: var(--shadow-glow-strong);
+    animation: modal-slide-up 0.3s ease;
+}
+
+@keyframes modal-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+    background: var(--surface-1);
+    color: var(--text-primary);
+}
+
+.modal-body {
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.modal-footer {
+    margin-top: var(--space-lg);
+    display: flex;
+    gap: var(--space-sm);
+    justify-content: flex-end;
+}
+
+/* === Tabs === */
+.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: var(--space-lg);
+}
+
+.tab {
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    position: relative;
+    transition: all var(--transition-fast);
+}
+
+.tab:hover {
+    color: var(--text-secondary);
+}
+
+.tab.active {
+    color: var(--accent-cyan);
+}
+
+.tab::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent-cyan);
+    transform: scaleX(0);
+    transition: transform var(--transition-base);
+}
+
+.tab.active::after {
+    transform: scaleX(1);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+    animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* === Alert/Notification === */
+.alert {
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+    border-left: 4px solid;
+    display: flex;
+    gap: var(--space-md);
+    align-items: start;
+}
+
+.alert-info {
+    background: rgba(0, 150, 255, 0.1);
+    border-color: var(--primary);
+    color: var(--accent-cyan);
+}
+
+.alert-success {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+}
+
+.alert-warning {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: var(--accent-orange);
+    color: var(--accent-orange);
+}
+
+.alert-error {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+.alert-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.alert-message {
+    flex: 1;
+    font-size: 14px;
+}
+
+.alert-close {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity var(--transition-fast);
+}
+
+.alert-close:hover {
+    opacity: 1;
+}
+
+/* === Notification Toast === */
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 12px 20px;
+    background: var(--surface-glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    min-width: 280px;
+    animation: toast-slide-in 0.3s ease;
+}
+
+@keyframes toast-slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast.removing {
+    animation: toast-slide-out 0.3s ease forwards;
+}
+
+@keyframes toast-slide-out {
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+.toast-icon {
+    font-size: 18px;
+}
+
+.toast-content {
+    flex: 1;
+    font-size: 14px;
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 4px;
+}
+
+/* === Loading Spinner === */
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-cyan);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.spinner-lg {
+    width: 40px;
+    height: 40px;
+    border-width: 3px;
+}
+
+.spinner-sm {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}
+
+/* === Skeleton Loading === */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--surface-1) 25%,
+        var(--surface-2) 50%,
+        var(--surface-1) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: var(--radius-sm);
+}
+
+@keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.skeleton-text {
+    height: 14px;
+    margin-bottom: 8px;
+}
+
+.skeleton-text-lg {
+    height: 20px;
+    margin-bottom: 12px;
+}
+
+.skeleton-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+}
+
+.skeleton-card {
+    height: 100px;
+    border-radius: var(--radius-md);
+}
+
+/* === Code Block === */
+.code-block {
+    background: #0d1117;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.code-block code {
+    color: #c9d1d9;
+}
+
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.code-lang {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.code-copy {
+    background: var(--surface-2);
+    border: none;
+    color: var(--text-tertiary);
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.code-copy:hover {
+    color: var(--text-primary);
+    background: var(--surface-1);
+}
+
+/* === Table === */
+.table-container {
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.table th,
+.table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.table th {
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+
+.table tbody tr:hover {
+    background: var(--surface-1);
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* === Avatar === */
+.avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+    color: white;
+    font-weight: 600;
+}
+
+.avatar-xs { width: 24px; height: 24px; font-size: 10px; }
+.avatar-sm { width: 32px; height: 32px; font-size: 12px; }
+.avatar-md { width: 40px; height: 40px; font-size: 14px; }
+.avatar-lg { width: 56px; height: 56px; font-size: 18px; }
+.avatar-xl { width: 80px; height: 80px; font-size: 24px; }
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.avatar-ring {
+    position: relative;
+}
+
+.avatar-ring::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
+                linear-gradient(135deg, var(--accent-cyan), var(--accent-purple)) border-box;
+}
+
+/* === Chip/Tag === */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.chip:hover {
+    border-color: var(--border-highlight);
+    color: var(--text-primary);
+}
+
+.chip-close {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    opacity: 0.7;
+    font-size: 14px;
+}
+
+.chip-close:hover {
+    opacity: 1;
+}
+
+/* === Data Visualization Helpers === */
+.chart-bar {
+    height: 8px;
+    background: var(--surface-2);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.chart-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-slow);
+}
+
+.stat-ring {
+    position: relative;
+    width: 120px;
+    height: 120px;
+}
+
+.stat-ring svg {
+    transform: rotate(-90deg);
+}
+
+.stat-ring-bg {
+    fill: none;
+    stroke: var(--surface-2);
+    stroke-width: 8;
+}
+
+.stat-ring-fill {
+    fill: none;
+    stroke: url(#ringGradient);
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset var(--transition-slow);
+}
+
+.stat-ring-value {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* === Glow Effects === */
+.glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+.glow-purple {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+}
+
+.glow-pink {
+    box-shadow: 0 0 20px rgba(236, 72, 153, 0.3);
+}
+
+.glow-green {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+/* === Neon Text === */
+.neon-text {
+    text-shadow:
+        0 0 10px currentColor,
+        0 0 20px currentColor,
+        0 0 40px currentColor;
+}
+
+.neon-text-cyan {
+    color: var(--accent-cyan);
+    text-shadow:
+        0 0 10px var(--accent-cyan),
+        0 0 20px var(--accent-cyan),
+        0 0 40px var(--accent-cyan);
+}
+
+/* === Scanline Effect === */
+.scanlines::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.1) 2px,
+        rgba(0, 0, 0, 0.1) 4px
+    );
+    pointer-events: none;
+}
+
+/* === Glitch Effect === */
+.glitch {
+    position: relative;
+}
+
+.glitch:hover {
+    animation: glitch 0.3s ease;
+}
+
+@keyframes glitch {
+    0%, 100% { transform: translate(0); }
+    20% { transform: translate(-2px, 2px); }
+    40% { transform: translate(-2px, -2px); }
+    60% { transform: translate(2px, 2px); }
+    80% { transform: translate(2px, -2px); }
+}
+
+/* === Typing Effect === */
+.typing {
+    overflow: hidden;
+    border-right: 2px solid var(--accent-cyan);
+    white-space: nowrap;
+    animation: typing 3s steps(40, end), blink-caret 0.75s step-end infinite;
+}
+
+@keyframes typing {
+    from { width: 0; }
+    to { width: 100%; }
+}
+
+@keyframes blink-caret {
+    from, to { border-color: transparent; }
+    50% { border-color: var(--accent-cyan); }
+}
+
+/* === Ripple Effect === */
+.ripple {
+    position: relative;
+    overflow: hidden;
+}
+
+.ripple::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.3) 10%, transparent 10.01%);
+    background-repeat: no-repeat;
+    background-position: 50%;
+    transform: scale(10, 10);
+    opacity: 0;
+    transition: transform 0.5s, opacity 1s;
+}
+
+.ripple:active::after {
+    transform: scale(0, 0);
+    opacity: 0.3;
+    transition: 0s;
+}
+
+/* ============================================================================
+   DATA STREAM ANIMATION - 数据流动画
+   ============================================================================ */
+
+.data-stream {
+    position: relative;
+    overflow: hidden;
+}
+
+.data-stream::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(0, 212, 255, 0.1),
+        transparent
+    );
+    animation: data-stream 3s linear infinite;
+}
+
+@keyframes data-stream {
+    0% { left: -100%; }
+    100% { left: 200%; }
+}
+
+/* ============================================================================
+   CORE PULSE ANIMATION - 核心跳动动画
+   ============================================================================ */
+
+.core-pulse {
+    animation: core-pulse 2s ease-in-out infinite;
+}
+
+@keyframes core-pulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 40px rgba(0, 212, 255, 0.6);
+    }
+}
+
+/* ============================================================================
+   PARTICLE FLOAT ANIMATION - 粒子漂浮动画
+   ============================================================================ */
+
+.particle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: var(--accent-cyan);
+    border-radius: 50%;
+    opacity: 0.6;
+    animation: particle-float 10s linear infinite;
+}
+
+@keyframes particle-float {
+    0% {
+        transform: translateY(100vh) scale(0);
+        opacity: 0;
+    }
+    10% {
+        opacity: 0.6;
+    }
+    90% {
+        opacity: 0.6;
+    }
+    100% {
+        transform: translateY(-100px) scale(1);
+        opacity: 0;
+    }
+}
+
+/* ============================================================================
+   PRINT STYLES - 打印样式
+   ============================================================================ */
+
+@media print {
+    body {
+        background: white;
+        color: black;
+    }
+
+    body::before,
+    body::after {
+        display: none;
+    }
+
+    .no-print {
+        display: none !important;
+    }
+}

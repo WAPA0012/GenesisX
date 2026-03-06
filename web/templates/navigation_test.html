@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>导航测试 - Genesis X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/genesis-theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/navigation.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            padding: 80px 20px 20px;
+            background: var(--bg-primary);
+        }
+
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .test-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .test-card h2 {
+            font-size: 20px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .test-card h2 i {
+            color: var(--accent-cyan);
+        }
+
+        .test-section {
+            margin-bottom: 20px;
+        }
+
+        .test-section-title {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .test-button {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: var(--surface-2);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        .test-button:hover {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+
+        .test-button i {
+            width: 20px;
+            text-align: center;
+            color: var(--accent-cyan);
+        }
+
+        .shortcut-display {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--text-tertiary);
+            font-family: monospace;
+        }
+
+        .status-log {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: 12px;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-time {
+            color: var(--text-tertiary);
+            min-width: 80px;
+        }
+
+        .log-message {
+            color: var(--text-secondary);
+        }
+
+        .log-message.success {
+            color: #10b981;
+        }
+
+        .log-message.error {
+            color: #ef4444;
+        }
+
+        .info-box {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .info-box h3 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: var(--accent-cyan);
+        }
+
+        .info-box p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .keyboard-shortcut-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 8px;
+        }
+
+        .keyboard-shortcut {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            background: var(--surface-2);
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .keyboard-shortcut kbd {
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .keyboard-shortcut span {
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <!-- 统一导航栏将自动注入 -->
+
+    <div class="test-container">
+        <!-- 欢迎信息 -->
+        <div class="test-card">
+            <h2><i class="fas fa-flask"></i> 导航系统测试页面</h2>
+            <div class="info-box">
+                <h3><i class="fas fa-info-circle"></i> 统一导航系统</h3>
+                <p>此页面用于测试 Genesis X 的新统一导航系统。导航栏会自动注入到所有页面，提供一致的导航体验。</p>
+            </div>
+
+            <div class="test-section">
+                <div class="test-section-title">键盘快捷键</div>
+                <div class="keyboard-shortcut-list">
+                    <div class="keyboard-shortcut">
+                        <kbd>Alt</kbd> + <kbd>C</kbd>
+                        <span>对话页面</span>
+                    </div>
+                    <div class="keyboard-shortcut">
+                        <kbd>Alt</kbd> + <kbd>D</kbd>
+                        <span>仪表盘</span>
+                    </div>
+                    <div class="keyboard-shortcut">
+                        <kbd>Alt</kbd> + <kbd>S</kbd>
+                        <span>设置</span>
+                    </div>
+                    <div class="keyboard-shortcut">
+                        <kbd>Alt</kbd> + <kbd>X</kbd>
+                        <span>调试</span>
+                    </div>
+                    <div class="keyboard-shortcut">
+                        <kbd>Esc</kbd>
+                        <span>关闭面板</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面导航测试 -->
+        <div class="test-card">
+            <h2><i class="fas fa-compass"></i> 页面导航</h2>
+            <div class="test-section">
+                <div class="test-section-title">点击下方按钮测试页面跳转</div>
+                <div class="button-grid">
+                    <button class="test-button" onclick="testNavigate('/chat')">
+                        <i class="fas fa-comments"></i>
+                        <span>对话</span>
+                        <span class="shortcut-display">Alt+C</span>
+                    </button>
+                    <button class="test-button" onclick="testNavigate('/dashboard')">
+                        <i class="fas fa-chart-line"></i>
+                        <span>仪表盘</span>
+                        <span class="shortcut-display">Alt+D</span>
+                    </button>
+                    <button class="test-button" onclick="testNavigate('/settings')">
+                        <i class="fas fa-cog"></i>
+                        <span>设置</span>
+                        <span class="shortcut-display">Alt+S</span>
+                    </button>
+                    <button class="test-button" onclick="testNavigate('/debug')">
+                        <i class="fas fa-bug"></i>
+                        <span>调试</span>
+                        <span class="shortcut-display">Alt+X</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 功能测试 -->
+        <div class="test-card">
+            <h2><i class="fas fa-tools"></i> 功能测试</h2>
+            <div class="test-section">
+                <div class="test-section-title">导航栏功能</div>
+                <div class="button-grid">
+                    <button class="test-button" onclick="testStatusPanel()">
+                        <i class="fas fa-heartbeat"></i>
+                        <span>快速状态面板</span>
+                    </button>
+                    <button class="test-button" onclick="testThemeToggle()">
+                        <i class="fas fa-moon"></i>
+                        <span>主题切换</span>
+                    </button>
+                    <button class="test-button" onclick="testBackButton()">
+                        <i class="fas fa-arrow-left"></i>
+                        <span>返回按钮</span>
+                    </button>
+                    <button class="test-button" onclick="testMobileMenu()">
+                        <i class="fas fa-bars"></i>
+                        <span>移动菜单</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- API 测试 -->
+        <div class="test-card">
+            <h2><i class="fas fa-plug"></i> API 测试</h2>
+            <div class="test-section">
+                <div class="test-section-title">测试后端 API 连接</div>
+                <div class="button-grid">
+                    <button class="test-button" onclick="testAPI('/api/status')">
+                        <i class="fas fa-server"></i>
+                        <span>状态 API</span>
+                    </button>
+                    <button class="test-button" onclick="testAPI('/api/metrics')">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>指标 API</span>
+                    </button>
+                    <button class="test-button" onclick="testAPI('/api/messages')">
+                        <i class="fas fa-envelope"></i>
+                        <span>消息 API</span>
+                    </button>
+                    <button class="test-button" onclick="testAPI('/api/logs')">
+                        <i class="fas fa-file-alt"></i>
+                        <span>日志 API</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 日志输出 -->
+        <div class="test-card">
+            <h2><i class="fas fa-terminal"></i> 测试日志</h2>
+            <div class="status-log" id="test-log">
+                <div class="log-entry">
+                    <span class="log-time">--:--:--</span>
+                    <span class="log-message">等待测试...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+    <script>
+        // 测试日志
+        function log(message, type = '') {
+            const logEl = document.getElementById('test-log');
+            const now = new Date();
+            const time = now.toLocaleTimeString('zh-CN');
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `
+                <span class="log-time">${time}</span>
+                <span class="log-message ${type}">${message}</span>
+            `;
+
+            logEl.insertBefore(entry, logEl.firstChild);
+
+            // 限制日志条数
+            while (logEl.children.length > 50) {
+                logEl.removeChild(logEl.lastChild);
+            }
+        }
+
+        // 导航测试
+        function testNavigate(url) {
+            log(`导航到: ${url}`, 'success');
+            setTimeout(() => {
+                window.location.href = url;
+            }, 500);
+        }
+
+        // 状态面板测试
+        function testStatusPanel() {
+            const btn = document.getElementById('nav-quick-status');
+            if (btn) {
+                btn.click();
+                log('已点击快速状态按钮');
+            } else {
+                log('未找到快速状态按钮', 'error');
+            }
+        }
+
+        // 主题切换测试
+        function testThemeToggle() {
+            const btn = document.getElementById('nav-theme-toggle');
+            if (btn) {
+                btn.click();
+                log('已点击主题切换按钮');
+            } else {
+                log('未找到主题切换按钮', 'error');
+            }
+        }
+
+        // 返回按钮测试
+        function testBackButton() {
+            if (window.GenesisXNav && window.GenesisXNav.createBackButton) {
+                log('导航 API 可用');
+            } else {
+                log('导航 API 不可用', 'error');
+            }
+        }
+
+        // 移动菜单测试
+        function testMobileMenu() {
+            const btn = document.getElementById('nav-mobile-toggle');
+            if (btn) {
+                btn.click();
+                log('已点击移动菜单按钮');
+            } else {
+                log('未找到移动菜单按钮', 'error');
+            }
+        }
+
+        // API 测试
+        async function testAPI(url) {
+            log(`测试 API: ${url}`);
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                log(`API 响应成功: ${url} (${JSON.stringify(data).length} bytes)`, 'success');
+            } catch (error) {
+                log(`API 错误: ${url} - ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载完成
+        document.addEventListener('DOMContentLoaded', () => {
+            log('导航测试页面加载完成', 'success');
+
+            // 检查导航 API
+            if (window.GenesisXNav) {
+                log('导航系统已加载: GenesisXNav API 可用', 'success');
+            } else {
+                log('警告: 导航系统未加载', 'error');
+            }
+
+            // 监听键盘快捷键
+            document.addEventListener('keydown', (e) => {
+                if (e.altKey) {
+                    const key = e.key.toUpperCase();
+                    const shortcuts = {
+                        'C': '对话',
+                        'D': '仪表盘',
+                        'S': '设置',
+                        'X': '调试'
+                    };
+                    if (shortcuts[key]) {
+                        log(`检测到快捷键: Alt+${key} (${shortcuts[key]})`, 'success');
+                    }
+                }
+                if (e.key === 'Escape') {
+                    log('检测到快捷键: Escape (关闭面板)');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
