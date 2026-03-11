@@ -1,52 +1,124 @@
-Genesis X License
-
+Genesis X Dual License
 Copyright (c) 2026 Genesis X Team
 
-This software and associated documentation files (the "Software") is dual-licensed.
+================================================================================
+                        DUAL LICENSE SUMMARY
+================================================================================
+
+This software is dual-licensed. You may choose either license below:
+
+  1. GNU Affero General Public License v3.0 (AGPL-3.0) - for open source use
+  2. Commercial License - for proprietary/closed source use (requires payment)
 
 --------------------------------------------------------------------------------
-NON-COMMERCIAL USE
+WHICH LICENSE APPLIES TO YOU?
 --------------------------------------------------------------------------------
 
-For non-commercial, educational, personal, and open-source use, this Software
-is licensed under the MIT License:
+USE AGPL-3.0 IF:
+  ✓ You use this software in an open-source project
+  ✓ You are willing to open-source your modifications under AGPL-3.0
+  ✓ You provide the source code to users of your network service
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this Software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+REQUIRE COMMERCIAL LICENSE IF:
+  ✗ You want to use this software in a closed-source/proprietary product
+  ✗ You want to modify this software without open-sourcing your changes
+  ✗ You provide a network service (SaaS) but don't want to share your code
+  ✗ Your company policy prohibits AGPL-licensed software
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+================================================================================
+                    OPTION 1: AGPL-3.0 (OPEN SOURCE)
+================================================================================
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
 
---------------------------------------------------------------------------------
-COMMERCIAL USE
---------------------------------------------------------------------------------
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 
-For commercial use, including but not limited to:
-- Use in commercial products or services
-- Use within for-profit organizations
-- Integration into paid software or SaaS offerings
-- Any use that generates revenue
+IMPORTANT: AGPL-3.0 requires that if you modify this software and make it
+available over a network (e.g., as a web service), you MUST provide the source
+code of your modified version to the users of that service.
 
-You must obtain authorization from the Genesis X Team. Please contact us to
-apply for a commercial use license.
+The full text of AGPL-3.0 is available at:
+https://www.gnu.org/licenses/agpl-3.0.html
 
---------------------------------------------------------------------------------
-CONTACT
---------------------------------------------------------------------------------
+================================================================================
+                    OPTION 2: COMMERCIAL LICENSE
+================================================================================
 
-For commercial use authorization inquiries, please contact:
-asdfghjklpo1211@icloud.com
+For commercial use, you must obtain a separate commercial license from the
+Genesis X Team. Commercial license grants you:
 
---------------------------------------------------------------------------------
+  • Right to use this software in closed-source/proprietary products
+  • Right to modify without open-sourcing your changes
+  • Right to provide SaaS without disclosing your source code
+  • Priority technical support
+  • No copyleft obligations
+
+COMMERCIAL USE SCENARIOS REQUIRING A LICENSE:
+
+  1. Closed-Source Products
+     - Embedding GenesisX in proprietary software
+     - Distributing modified versions without source code
+
+  2. SaaS / Cloud Services
+     - Offering GenesisX as a paid service
+     - Using modified GenesisX in your web application
+
+  3. Enterprise Internal Use
+     - If your company policy prohibits AGPL
+     - When you need warranty or indemnification
+
+PRICING TIERS:
+
+  ┌─────────────────┬─────────────────────────────────────────────────┐
+  │     Tier        │                   Description                   │
+  ├─────────────────┼─────────────────────────────────────────────────┤
+  │   Startup       │ Small teams, early-stage startups               │
+  │   Business      │ Growing companies, production use               │
+  │   Enterprise    │ Large organizations, custom terms               │
+  │   OEM/Resell    │ Embed in your product for resale                │
+  └─────────────────┴─────────────────────────────────────────────────┘
+
+Contact us for pricing details.
+
+================================================================================
+                          HOW TO OBTAIN A LICENSE
+================================================================================
+
+1. Evaluate the software under AGPL-3.0 (free)
+2. If you need a commercial license, contact us:
+   - Email: asdfghjklpo1211@icloud.com
+   - Provide: Company name, intended use, estimated users
+
+================================================================================
+                          ADDITIONAL TERMS
+================================================================================
+
+1. Patent Grant
+   Both licenses include a patent grant from the copyright holders for the
+   software's essential patent claims.
+
+2. Trademark
+   This license does not grant permission to use the trade names, trademarks,
+   service marks, or product names of Genesis X Team, except as required for
+   reasonable and customary use in describing the origin of the work.
+
+3. Contributions
+   By contributing to this project, you agree that your contributions will be
+   licensed under the same dual-license terms.
+
+================================================================================
+                          CONTACT INFORMATION
+================================================================================
+
+Commercial License Inquiries:
+  Email: asdfghjklpo1211@icloud.com
+
+General Questions:
+  GitHub Issues: https://github.com/YOUR_USERNAME/GenesisX/issues
+
+================================================================================

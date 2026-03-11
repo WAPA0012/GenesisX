@@ -694,12 +694,45 @@ Higher-order cognitive function implementation.
 
 ## License
 
-MIT License
+GenesisX is dual-licensed:
 
-Copyright (c) 2026 Genesis X Team
+| License | Use Case | Cost |
+|---------|----------|------|
+| **AGPL-3.0** | Open-source, willing to share modifications | Free |
+| **Commercial** | Closed-source, SaaS without code disclosure | Contact us |
+
+### Quick Guide
+
+```
+✓ AGPL-3.0 (Free) if you:
+  - Use in open-source projects
+  - Share your modifications under AGPL-3.0
+  - Provide source code to SaaS users
+
+✗ Commercial License Required if you:
+  - Want to keep your modifications proprietary
+  - Provide SaaS without disclosing source code
+  - Embed in closed-source commercial products
+```
+
+### Why AGPL?
+
+AGPL-3.0 closes the "SaaS loophole" in GPL. If you modify GenesisX and provide it as a network service (e.g., web app, API), you **must** open-source your modifications. This ensures:
+
+- Contributions flow back to the community
+- Commercial users who want to keep code closed must pay for a license
+- Fair exchange of value
+
+### Commercial Licensing
+
+For commercial license inquiries:
+- **Email**: asdfghjklpo1211@icloud.com
+- **Include**: Company name, intended use, estimated users
+
+See [LICENSE](LICENSE) for full terms.
 
 ---
 
-**Documentation Updated**: 2026-03-04
+**Documentation Updated**: 2026-03-11
 **Version**: v1.3.0
 **Status**: Production Ready (Code Review Complete)
