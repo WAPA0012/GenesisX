@@ -5,7 +5,7 @@
 > **生成方式**：通读源码 + 论文对照，标注 `🔍问题` 为值得后续迭代的点。
 > **版本基准**：v1.3.0，5 维价值系统（已从早期 9 维精简）。
 > **最后更新**：2026-07-06
-> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ✅ 第5章 organs/ 已完成精读（15文件/7956行） ⏳ 第4,6,7,9章待续（61文件/22k行）
+> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ✅ 第5章 organs/ 已完成精读（15文件/7956行） ✅ 第6章 tools/ 已完成精读（23文件/9837行） ⏳ 第4,7,9章待续（38文件/13k行）
 
 ---
 
@@ -17,7 +17,7 @@
 - [3. 记忆层 `memory/`](#3-记忆层-memory) ✅
 - [4. 认知/感知/代谢 `cognition/` + `perception/` + `metabolism/`](#4-认知感知代谢) ⏳待续
 - [5. 器官层 `organs/`](#5-器官层-organs) ✅
-- [6. 工具层 `tools/`](#6-工具层-tools) ⏳待续
+- [6. 工具层 `tools/`](#6-工具层-tools) ✅
 - [7. 安全 + 持久化 `safety/` + `persistence/`](#7-安全--持久化) ⏳待续
 - [8. 核心引擎 `core/`](#8-核心引擎-core-最重要) ✅
 - [9. 入口 + Web `lifecycle/` + `web/` + 顶层脚本](#9-入口--web)
@@ -748,10 +748,245 @@ get_last_thought()/clear_last_thought() ← 选择性记忆用
 
 ---
 
-## 6. 工具层 `tools/` — 待续
+## 6. 工具层 `tools/`
 
-> ⏳ 23 文件/9837 行。LLM API 统一接口 + 工具执行引擎 + Mind Field 黑板(`blackboard.py` 1370行) + 安全代码执行 + 视觉/语音/嵌入。
-> **续写提示**：`llm_api.py`(多 provider 适配,495行)→`tool_executor.py`(643行)→`blackboard.py`(1370行,论文3.4.2)→`safe_executor.py`(515行,AST安全)→`embeddings.py`。**注意当前 .env 配的是 stepfun step-3.7-flash，llm_api.py 的 provider 适配是否覆盖需验证。**
+> 23 文件/9837 行。LLM API 统一接口 + 工具执行引擎 + Mind Field 多专家黑板（论文 §3.4.2） + 安全代码执行 + 视觉/语音/嵌入。**这是整个系统的"手"——器官决策（第5章）落地的执行手段。**
+>
+> **核心认知（理解本章的前提）**：tools/ 是项目里"重复实现"最严重的层——**LLM 客户端有 3 套**（llm_api/llm_client/llm_orchestrator），**工具注册表有 3 套**（tool_registry/dynamic_tool_registry/tool_definitions），**代码执行有 4 套**（tool_executor 全开/safe_executor AST/code_exec 正则/tool_executor 黑名单），**嵌入有 4 处**（见第3章 P3-7 + 本章 tools/embeddings），**web_search 有 2-3 套**。理解本章的关键是**先搞清楚哪套是"活的"**——见 6.x 接入真相表。
+>
+> **活路径确认**（grep + 精读 life_loop/action_executor）：`LLM_MODE` 环境变量默认 `single` → action_executor 走 **`tools/llm_client.py:LLMClient`**（不是 llm_api.UniversalLLM，不是 llm_orchestrator）。多专家黑板（blackboard.py 1369行）**默认休眠**，仅当 `LLM_MODE=core5/full7/adaptive` 时经 llm_orchestrator 接入。器官的 LLM 会话（第5章 organ_llm_session）**也独立走 LLMClient**。即生产路径上**真正的 LLM 客户端只有 llm_client.py**，llm_api.py 是它的"前身/兼容别名"。
+>
+> **目录结构**：
+> ```
+> tools/
+> ├── llm_client.py        (708)  ⭐⭐ 活路径：单一/兼容 LLM 客户端(action_executor/器官/检索都用它)
+> ├── llm_api.py           (537)  ⚠️ 另一套 UniversalLLM(仅 blackboard/growth/插件用)
+> ├── llm_orchestrator.py  (352)  🟡 多模型门面(默认 single 时退化为 llm_client 包装)
+> ├── blackboard.py        (1369) ⭐ Mind Field 多专家黑板(论文§3.4.2,默认休眠)
+> ├── tool_executor.py     (642)  ⭐ 活路径：LLMToolExecutor(工具执行+FULL_ACCESS 代码)
+> ├── tool_system_v2.py    (606)  🟡 EnhancedToolExecutor+SmartToolParser(中文意图解析,接入弱)
+> ├── dynamic_tool_registry.py (527) ⭐ 活路径：运行时工具注册(喂 LLM tools+技能桥接)
+> ├── tool_registry.py     (198)  ⚠️ 静态 ToolSpec 目录(action_executor 只用 .get())
+> ├── tool_protocol.py     (371)  🔍 Tool 抽象基类+ToolExecutor(死类)
+> ├── tool_definitions.py  (118)  OpenAI function schema(chat_interactive 用)
+> ├── safe_executor.py     (514)  🔍 AST 安全执行器(孤立,最完善但没接)
+> ├── code_exec.py         (359)  🔍 正则黑名单 CodeExecutionTool(孤立)
+> ├── cost_model.py        (262)  🔍 CostModel 价格表(死代码)
+> ├── llm_cache.py         (295)  🔍 LLM 响应缓存(完全孤立)
+> ├── embeddings.py        (405)  🟡 嵌入工具(默认 mock,真后端 sentence-transformers)
+> ├── vision.py            (539)  🔍 视觉/OCR(三 provider,无人调用)
+> ├── voice.py             (568)  🔍 TTS 四引擎(🚨 _speak_edge 递归 bug)
+> ├── messaging.py         (370)  🟡 主动消息(web/app + ToolSpec send_message)
+> ├── memory_tools.py      (363)  🔍 记忆 CRUD 工具(孤立,被 tool_executor 取代)
+> ├── web_search.py        (157)  🟡 Bing 搜索 Tool(与 tool_executor._web_search 重复)
+> ├── file_ops.py          (226)  🟡 沙箱文件 Tool(allow-list,默认 fail-open)
+> └── capability.py        (113)  🔍 CapabilityToken 管理器(被 core/capability_manager 遮蔽,P8-1)
+> ```
+
+---
+
+### 6.1 LLM 客户端三套并存（最重要，先分清）
+
+项目里有 **三个 LLM 客户端模块**，命名相似、接口相近，但只有一个是活路径。混淆它们是本章最大的坑。
+
+| 模块 | 类 | 行数 | 谁用它 | 状态 |
+|---|---|---|---|---|
+| `llm_client.py` | `LLMClient` | 708 | **action_executor（CHAT 路径）、器官 organ_llm_session、life_loop 全局 client、检索** | ⭐ **活路径**（`LLM_MODE=single` 默认） |
+| `llm_api.py` | `UniversalLLM`（别名 `LLMAPIClient`） | 537 | blackboard 专家、growth/limb_generator、memory/skills/*、tool_executor._web_search | ⚠️ 黑板/生成路径用 |
+| `llm_orchestrator.py` | `LLMMOrchestrator`（**双 M 拼写错误**，别名 `LLMOrchestrator`） | 352 | action_executor（仅 `LLM_MODE≠single`）、web/app、chat_interactive | 🟡 多模型门面，默认休眠 |
+
+**为什么有三套**：历史遗留。`llm_api.py`（L1 注释 "Universal LLM API wrapper"）是**最早**的多 provider 封装（OpenAI/Anthropic/Ollama/OpenRouter/Custom，纯 requests + 流式）；`llm_client.py`（L1 注释 "统一的大语言模型接口"）是**后写的、更全**的国产模型适配（额外覆盖 claude/qianwen/deepseek/glm/ernie/hunyuan/kimi/yi/local + 嵌入 `embed()`），两者接口不同（llm_api 用 `chat(messages, tools=)`、llm_client 用 `chat(messages, system_prompt=, tools=)`）。`llm_orchestrator` 是在两者之上的**门面**——single 模式转调 `llm_api.create_llm_from_env()`，多模型模式转调 blackboard。
+
+**🔍问题 P6-1（🔴 重要，三客户端并存）**：三个模块接口签名不一致（`chat()` 参数名/位置、返回 dict 的键 `text` vs `ok` vs `total_tokens`、`error` 处理），改一处易漏另两处。且 `llm_orchestrator.LLMMOrchestrator` 类名拼写错误（双 M，L20），靠 L330 别名掩盖。**优化应统一到 llm_client.py，废弃 llm_api.py（或反之），让 orchestrator 只做门面。**
+
+### 6.2 `llm_client.py` (708行) ⭐⭐ 活路径 LLM 客户端
+
+**职责**：被 action_executor（CHAT/工具调用循环）、organ_llm_session（器官思考）、life_loop 全局 client 引用。统一适配 11 个 provider（claude/qianwen/deepseek/glm/ernie/hunyuan/kimi/yi/local + 通用 openai-compat）。
+
+**`LLMConfig` dataclass**（L25-37）：`api_base/api_key/model/temperature/max_tokens/timeout=60/provider="openai"/version`。**注意 timeout=60**（注释"增加到 60 秒以适应 GLM API 的波动"）。
+
+**provider 自动检测**（`_load_config` L88-117）：按 api_base 子串匹配，**检测顺序很关键**——先判 `/api/anthropic`（智谱 Anthropic 兼容接口）→ `anthropic.com`/`claude` → `dashscope`/`qianwen` → `deepseek` → `zhipu`/`bigmodel` → `ernie`/`baidu` → `hunyuan`/`tencent` → `moonshot`/`kimi` → `lingyi`/`yi` → `localhost`/`ollama`。**🔍问题 P6-2（重要，检测脆弱）**：纯子串匹配，`api_base="https://api.stepfun.com/step_plan/v1"`（当前 .env）不含任何关键词 → 落到默认 `provider="openai"`（走 OpenAI 兼容路径，**恰好对**，因为 stepfun 是 OpenAI 兼容）。但任何 base_url 含意外子串（如 "kimi-proxy.openai.com"）会误判。
+
+**三套调用分支**：
+- `_chat_openai_compatible`（L193，覆盖 openai/deepseek/glm/ernie/hunyuan/kimi/yi/local）：POST `/chat/completions`，Bearer auth，`tools`+`tool_choice="auto"`。**L255-258 关键：当 `content` 为空时回退到 `reasoning_content`**——这是为 GLM-5/step-3.7-flash 等推理模型准备的。
+- `_chat_qianwen`（L290）：优先用 dashscope SDK，ImportError 时**降级回 openai-compat**（兼容模式）。
+- `_chat_claude`（L382）：优先 anthropic 库，失败降级到 requests 直接调 `/v1/messages`。**处理 system 消息分离、tool 格式转换（OpenAI↔Anthropic）、tool_result 消息转换**（L502-529），是三者中最复杂。
+
+**返回 dict 约定**：`{ok, text, tool_calls: List, total_tokens, [error]}`。tool_calls 统一规整成 OpenAI 风格 `{id, type:"function", function:{name, arguments(JSON字符串)}}`。
+
+**🔍问题 P6-3（⚠️ 与既有记录冲突，需澄清）**：CODE_MAP 第8章 P8-12 和第5章 P5-3 称"CHAT 路径/器官 think 不解析 reasoning_content"。**这是不准确的**——llm_client.py:256-258 确实在 content 为空时回退到 reasoning_content。**真正的缺陷**是：① 只在 content**完全为空**时才取 reasoning_content，若 content 非空（哪怕只是个标点）则 reasoning_content 被丢弃；② 把推理链当成"正文 text"返回，下游无法区分"正式回答"和"思考过程"。对 step-3.7-flash 这类**同时**返回 content+reasoning_content 的模型，行为依赖 content 是否为空。**建议把 P8-12/P5-3 改写为"reasoning_content 仅在 content 空时兜底，且与正文混在 text 字段"。**
+
+**🔍问题 P6-4**：`embed()`（L618）逐条文本发 `/embeddings` 请求（无批量），且 `model` 字段用的是 chat 模型名（非 embedding 模型）——对不支持嵌入的 chat 端点必失败。当前生产环境无嵌入 API，此方法实际不可用。
+
+**🔍问题 P6-5**：`_chat_claude` 的降级路径（requests 直接调）L469 引用了未定义的 `logger`（`logger.warning`）——`logger` 在模块顶部未导入/定义，anthropic 库失败时会抛 `NameError` 被外层吞掉，**降级逻辑本身有 bug**。
+
+### 6.3 `llm_api.py` (537行) ⚠️ 第二套 LLM 客户端
+
+**职责**：`UniversalLLM`——最早的多 provider 封装。被 blackboard 专家、growth limb_generator、memory/skills/* 引用（这些模块写死 `from tools.llm_api import ...`）。
+
+**与 llm_client.py 的差异**：
+- provider 用 `LLMProvider` 枚举（7 个），llm_client 用字符串。
+- 有 `DEFAULT_PRESETS`（6 个：gpt-4/gpt-3.5-turbo/claude-3-sonnet/deepseek-chat/qwen-plus/ollama），llm_client 无预设。
+- 有 `chat_stream`（SSE 流式），llm_client 无流式。
+- `_parse_response` 区分 Anthropic（content blocks）与 OpenAI-compat（choices）。
+- 工具调用格式：Anthropic 走 `_convert_tools_to_anthropic`（OpenAI→`{name,description,input_schema}`）。
+
+**🔍问题 P6-6**：`from_env`（L445）的 provider 检测逻辑与 llm_client.py 的几乎逐字重复（两处都先判 anthropic 再判其他）。改一处忘另一处。这是 P6-1 的具体表现。
+
+**🔍问题**：`DEFAULT_PRESETS` 的模型名已过时（claude-3-sonnet-20240229、gpt-4 无 -turbo 后缀）；`chat_stream` 的 Anthropic 分支 L401 注释"兼容旧格式"暗示有未对齐的流式协议变体。
+
+### 6.4 `tool_executor.py` (642行) ⭐ 活路径工具执行器
+
+**职责**：`LLMToolExecutor`——执行 LLM 返回的函数调用。被 action_executor（USE_TOOL + CHAT 工具循环）、memory/skills/* 引用。原 `ToolExecutor` 名（L642 别名保留兼容）。
+
+**`execute(tool_id, params)` 统一入口**（L233）：维护 `tool_mapping`（别名→规范名，如 `file_read`/`read_file`/`file`→`read_file`），调 `_execute`。**🔍问题 P6-7（与 P8-11 同源）**：tool_id 映射表是硬编码字典，而 gap_detector 读 `params["tool"]`、action_executor 读 `params["tool_id"]`——三处对"工具名放哪"的约定不一致（见第8章 P8-11）。
+
+**`execute_tool_call(tool_call)`**（L265）：处理 OpenAI/Anthropic 两种 tool_call 格式，禁用工具检查（`disabled_tools`，safe_mode 下 `{write_file, execute_code, web_search}`），JSON 解析参数，调 `_execute`。
+
+**5 个内置工具**（`_execute` L315）：`read_file`（截断 50KB）/`write_file`/`list_directory`（最多 20 文件）/`web_search`（**用 LLMClient 联网搜索，非真搜索**）/`execute_code`（见下）。
+
+**`_web_search`（L415）的独特设计**：不调搜索 API，而是**新建一个 LLMClient**，用"你是一个搜索助手…"的系统提示 + `temperature=0.3` 让 LLM 自己"联网搜索"（依赖 provider 的联网能力，如通义千问）。**🔍问题 P6-8**：这与 web_search.py（Bing API）是**两套完全不同的搜索实现**，且 stepfun step-3.7-flash 不保证有联网能力——实际可能只是 LLM 凭记忆编造"搜索结果"。
+
+**`_execute_code`（L445）—— 默认 FULL_ACCESS**：`safe_mode=False`（构造默认值）时，`exec(code, exec_globals)` 其中 `exec_globals` 含**完整 builtins + os/sys/json/pathlib/datetime/math/random + `genesis_self`(self 引用)**。注释明确"FULL_ACCESS 模式…可以导入模块、读写文件、联网、self-modification"。**这给了 LLM 完全的本地代码执行权**。
+
+**🔍问题 P6-9（🔴 安全，默认全开）**：`create_llm_tool_executor(safe_mode=True)`（L636）默认 safe，但 `dynamic_tool_registry._register_default_tools`（L442）用 `LLMToolExecutor(safe_mode=False)` 构造——**全局 registry 注册的 execute_code 是 FULL_ACCESS**。`config/runtime.yaml:27 sandbox_code_exec: false` 与 `config_manager.py:146 sandbox_code_exec: bool=True` 默认值冲突，且**两处 flag 都没被 tool_executor 读取**。即"沙箱代码执行"配置形同虚设，实际永远是全开。
+
+**`_execute_code_sandboxed`（L501）**：28 个危险子串黑名单（`import`/`exec`/`eval`/`open`/`os.`/`sys.`/`__class__`/…），空 builtins + 白名单函数，SIGALRM 5 秒超时（Windows 无效）。**🔍问题 P6-10**：子串黑名单可绕过（`__builtins__["open"]`、`getattr(__builtins__,"open")`、`chr(111)+...` 拼接），且 `import` 作为子串会误拦注释里的 "import" 一词。
+
+### 6.5 三套工具注册表 + tool_definitions（6.6 详述重叠）
+
+**🔍问题 P6-11（🔴 重要，工具目录四重定义）**："有哪些工具"这件事在 4 处各写一遍，互不引用：
+1. `tool_registry.py::ToolRegistry`（11 个 ToolSpec：qianwen_chat/file_read/web_search/get_time/analyze_image/image_to_text/read_own_logs/system_stats/send_message/voice_speak/schedule_action）——action_executor 用 `.get(tool_id)`。
+2. `dynamic_tool_registry.py::DynamicToolRegistry`（5 个：list_directory/read_file/write_file/web_search/execute_code + 技能桥接）——action_executor 用 `.to_llm_format()` 喂 LLM、`.get(name)` 解析调用。
+3. `tool_definitions.py::AVAILABLE_TOOLS`（5 个 OpenAI schema：read_file/write_file/list_directory/web_search/execute_code）——chat_interactive 用。
+4. `memory/skills/`（4 个技能）经 dynamic_tool_registry 桥接。
+
+四处工具名不统一（`read_file` vs `file_read` vs `read`）、风险等级不一致、schema 各异。**action_executor 同时查 ToolRegistry（L504-524）和 DynamicToolRegistry（L620-621,777）**，两个注册表并存无协调层。
+
+**`tool_registry.py::ToolSpec`**（L7-21，pydantic）：实现论文 §3.11 工具五元组 `<id, schema, cost_model, pre, post>`（L19-20 注释"修复 H12"加了 preconditions/postconditions，**但是字符串表达式，从不被求值**）。`list_available(capabilities)`（L176）能力门控是唯一活方法。
+
+**`tool_protocol.py::ToolExecutor`（L179）完全死代码**：定义了带风险门控（`max_risk_online=0.75`/`max_risk_offline=0.3`）、前后置条件校验、动态成本计算的"正经"执行器，但**全项目零实例化**——运行时用的是 tool_executor.py 的 LLMToolExecutor（无风险门控）。抽象基类 `Tool` 被 4 个具体工具（code_exec/embeddings/file_ops/web_search）继承，但它们的 `Tool` 实例**从不注册进 ToolExecutor**。**🔍问题 P6-12**：tool_protocol.py 的整套风险/契约/成本框架（292 行）是"论文实现了但没接"的典型。
+
+**`capability.py::CapabilityManager` 被 P8-1 遮蔽**（见第8章）：life_loop.py:48 导入它，但 :71 导入 core/capability_manager.py 同名类覆盖了它。确认 tools/capability.py 的 `CapabilityManager` 在主循环中**从未使用**（仅 life_loop_backup.py 用）。其 `CapabilityToken` 的 `budget_cpu_tokens`/`budget_money`/`revocable`/`audit_scope` 字段全部**存储但不读取**——token 只是能力名清单，无预算扣减。
+
+### 6.6 `blackboard.py` (1369行) ⭐ Mind Field 多专家黑板（论文 §3.4.2，默认休眠）
+
+**职责**：论文 §3.4.2 "Mind Field" 的完整实现——多个角色专家（M_coord 调度/M_mem 记忆/M_reason 推理/M_affect 情感/M_percept 感知 + 可选 M_vis/M_aud）读写共享黑板 `BlackboardState`，由 `MindFieldOrchestrator` 协调，按人格中间变量（ET/CT/ES）和资源压力（RP）动态选配置（single/core5/full7/adaptive）。**这是 tools/ 最大的文件，但默认休眠**（只有 `LLM_MODE≠single` 才经 orchestrator 接入）。
+
+**`ModelConfig` 枚举**（L32）：SINGLE/CORE5/FULL7/ADAPTIVE。**`ExpertRole` 枚举**（L40）：5 核心 + 2 扩展（M_VIS/M_AUD）+ 8 个遗留兼容角色（GENERAL/REASONING/CREATIVE/CODING/ANALYSIS/WRITING/MATH/CRITIC，**全模块无引用**）。
+
+**`BlackboardState`（L78-168）**：12 个槽位（current_goal/retrieved_memories/emotional_state/resource_state/soul_state/middle_vars/perception/candidates/value_features/relationship_state/communication_frequency/abstract_state）+ tick/last_update 元数据。`update_slot`（L159）用 `hasattr` 守卫——**未知槽位静默丢弃**。
+
+**`ExpertModel.process(user_message, context)`（L426-892）**：巨型分派器。每个专家先做角色专属的前置工作（写黑板 + 增强 prompt），**然后无条件调 `client.chat(messages)`**（L858，用 llm_api.UniversalLLM）。角色前置工作：
+- **M_MEM**（L449）：正则提关键词 → `MemoryRetrieval.retrieve_episodes` → 写 retrieved_memories 槽。
+- **M_REASON**（L486）：import `cognition.planner.Planner`，`planner.propose_plans(goal, context, available_tools, num_plans=3)` → 写 candidates 槽。
+- **M_AFFECT**（L539）：中文关键词情感打分（高兴/喜欢/谢谢→+0.1，不/错/问题→−0.05）→ 调 `affect.mood.update_mood` / `affect.stress_affect.update_stress`。
+- **M_PERCEPT**（L588）：novelty = `min(1.0, len(unique_words)/20.0)`。
+- **M_COORD**（L704）：**单模式时内联复制 M_MEM/M_REASON/M_AFFECT/M_PERCEPT 的全部逻辑**（L728-848，~120 行重复）。
+
+**`MindFieldOrchestrator`（L939）**：`process`（L1110）按配置选活跃角色 → 单 M_COORD 走快速路径 → 多角色走 `_process_multi_expert`（ThreadPoolExecutor 并行，`as_completed(timeout=60)`）→ `_select_final_result`（M_COORD 优先，否则按 `confidence × voting_weight` 加权）。`config_select(et,ct,rp)`（L899）按阈值选配置（rp>0.8 或 ct>0.8→SINGLE；et>0.7 且 rp<0.4→FULL7；…）。
+
+**🔍问题 P6-13（🔴 重要，update_mood 签名错误，整条情感路径死）**：M_AFFECT（L557-561）和 M_COORD 单模式（L817）调 `update_mood(..., dimension="attachment")`——但 `affect.mood.update_mood` 签名是 `(mood, delta, k_plus, k_minus)`，**没有 dimension 参数**（论文的维度级更新是另一个函数 `update_mood_per_dimension`）。这会抛 TypeError，被宽泛 `except Exception`（L584/L829）吞掉只记 warning。**结果：黑板驱动的情绪更新整条路径静默失效**。
+
+**🔍问题 P6-14（幽灵槽位丢失）**：M_VIS 写 `vision_perception`（L645）、M_AUD 写 `audio_perception`（L695）、orchestrator 写 `expert_{role}_output`（L1194）——但这些槽位**不在 BlackboardState schema 里**，`update_slot` 的 `hasattr` 守卫导致写入被静默丢弃。这些专家/编排器的输出数据**全部丢失**。
+
+**🔍问题 P6-15（成本翻倍）**：M_REASON/M_COORD 先调 `planner.propose_plans`（planner 内部可能再调 LLM），然后 L858 又**无条件** `client.chat`——一次"推理"产生两次 LLM 调用。
+
+**🔍问题 P6-16**：M_COORD 单模式块（L728-848）是其他四个专家分支的逐字副本（含同样的 update_mood bug），~120 行重复，维护高危。`_stable_threshold=50`（L999）定义但从不读取（L1084 `# TODO: 检查人格状态稳定性` 未实现）。`BlackboardSlot` dataclass（L69）从不实例化。
+
+**🔍问题 P6-17**：`create_core5_experts`（L1298）硬编码模型名（M_COORD/M_MEM/M_REASON/M_AFFECT=`gpt-4`，M_PERCEPT=`gpt-3.5-turbo`）和 api_base（`https://api.openai.com/v1`）——与当前 stepfun 环境完全不匹配，多模型模式若启用会用错误的端点/模型。
+
+### 6.7 `llm_orchestrator.py` (352行) 🟡 多模型门面
+
+**职责**：`LLMMOrchestrator`（拼写错误双 M，别名 `LLMOrchestrator` L330）——single 模式包装 `llm_api.create_llm_from_env()`，多模型模式包装 blackboard。被 action_executor（`LLM_MODE≠single`）、web/app、chat_interactive 引用。
+
+**`chat(messages, tools, **kwargs)`**（L179）：single → `llm.chat(messages, tools=tools)`；multi → `orchestrator.process(user_message, context, tick)`。**🔍问题 P6-18（🔴 重要，多模型模式丢 tools）**：multi 分支（L206）调 `process(user_message, context, tick)` **不传 tools 参数**——即多专家黑板模式下，函数调用（tool_calls）静默失效，LLM 拿不到工具定义。这是 blackboard.process 签名本就不接收 tools 的体现（见 P6-15），orchestrator 无从转发。
+
+**🔍问题 P6-19**：`enable_multi_model` 参数标记"已弃用"但仍在签名里；`config_mode` 构造参数在多模型路径被 YAML 配置静默覆盖（L62），构造参数失效。`_expand_env`（L168）只处理**精确** `${VAR}` 形式，不展开内嵌变量。
+
+### 6.8 安全代码执行三套 + safe_executor（孤立）
+
+**🔍问题 P6-20（🔴 重要，代码执行四套，最完善的那套没接）**：
+| # | 位置 | 过滤策略 | 运行时 | 接入？ |
+|---|---|---|---|---|
+| 1 | `tool_executor._execute_code`（FULL_ACCESS） | **无过滤** | exec 全 builtins+os/sys+self | ✅ 活（dynamic_tool_registry 注册） |
+| 2 | `tool_executor._execute_code_sandboxed` | 28 子串黑名单 | exec 空 builtins+白名单，SIGALRM | 仅 safe_mode=True 分支 |
+| 3 | `safe_executor.py` `SafeCodeExecutor` | **AST NodeVisitor+禁止表** | exec 空 builtins+白名单，线程超时 | 🔴 **完全孤立**（无人 import） |
+| 4 | `code_exec.py` `CodeExecutionTool` | 正则词边界 | 子进程（默认）/exec 直跑 | 🔴 **完全孤立** |
+
+**`safe_executor.py`（514行）是四套里最完善的**——真正的 AST 静态分析（`forbidden_imports`/`forbidden_calls`/dunder 黑名单）+ 受控运行时（空 builtins+白名单+math）+ 线程超时（Windows 也能用）。但**全项目零引用**。
+
+**🔍问题 P6-21（safe_executor 的隐患）**：① `allowed_nodes` 节点白名单（L67-88）**定义了但 checker 从不校验**（无 generic_visit 拒绝）——实际是黑名单模型；② `max_memory_mb`（L63）从不强制（无 resource.setrlimit）；③ 线程超时不杀 worker（L430），`while True` 永占 CPU；④ `ExecutionTimeout` 异常声明了从不抛（L27）；⑤ `reduce` 在白名单（L117）但不是 builtin，被 hasattr 守卫静默跳过；⑥ `import_cache`/PERMISSIVE_POLICY 等不一致。
+
+**`code_exec.py`（359行）`CodeExecutionTool`**：正则 `\bimport\s+X\b` 词边界匹配 + 子进程执行。**🔍问题 P6-22**：子进程模式（默认）写临时文件用 `subprocess.run([sys.executable, tmp])`——**子进程拥有完整标准库+网络+文件系统**，仅靠正则前置过滤挡危险。正则可绕（`__builtins__["__import__"](...)`、`getattr(__builtins__,"__import__")` 用下标/反射绕过 call 模式匹配）。docstring（L6-9）要求"非执行回放模式"但未实现。Windows 下直跑模式无 SIGALRM→无超时。
+
+### 6.9 嵌入/视觉/语音/消息（能力模块，多数休眠）
+
+**`embeddings.py`（405行）🟡 第 4 套嵌入**：`EmbeddingsTool(Tool)` + `get_embedding`/`cosine_similarity`。**默认 mock_mode=True**（hash→seed→伪随机单位向量，**无语义**），真后端 sentence-transformers（`all-MiniLM-L6-v2`，L219）需 `mock_mode=False`。OpenAI/DashScope 后端 docstring 声称支持但**未实现**（ImportError 静默降级 mock）。**被 cognition/insight_quality.py 引用**（L168，包在 try 里），所以 insight_quality 的"语义新颖度"在默认配置下也是伪嵌入。
+**🔍问题 P6-23**：① 默认 `embedding_dim=768`（L74）与 MiniLM-L6-v2 的 384 维不符；② `import_cache`（L304）把 `self.cache` 重新赋成普通 dict，**丢掉 LRU 约束**——后续无界增长；③ L17 docstring 谎称支持 OpenAI/DashScope。**这印证了第3章 P3-7 的"嵌入散落多处"——现在是 4 处**（retrieval MD5 / familiarity md5-seed / semantic_novelty 真嵌入 / tools/embeddings 默认 mock）。
+
+**`vision.py`（539行）🔍 孤立**：`VisionClient` 三 provider（Anthropic/OpenAI GPT-4V/Qwen-VL），真实 POST 实现。`VisionModel` 7 常量但 `MODEL_CONFIGS` 只配了 6 个——LLaVA（L56）无配置→选它会用空 base URL 崩。**全项目无运行时消费者**（仅 tools/__init__ 重导出 + tool_registry 的 analyze_image/image_to_text ToolSpec 声明）。模型名 `claude-opus-4-6`/`claude-3-5-sonnet` 是非标准 ID，可能 404。
+
+**`voice.py`（568行）🔍 孤立 + 🚨 递归 bug**：`VoiceOutput` 四 TTS 引擎（pyttsx3 离线/edge-tts/百度/讯飞 stub）。
+**🔍问题 P6-24（🔴 真 bug，edge-tts 必崩）**：L336 定义 `async def _speak_edge`，L382 又定义同名 `def _speak_edge`（同步包装）——**后者覆盖前者**。L392 同步包装里 `loop.run_until_complete(self._speak_edge(...))` 调用的已是同步版自己→**无限递归**。edge-tts 的 async 实现（L336-380）是死代码。
+**🔍问题 P6-25**：Windows 播放 `.mp3` 用 `System.Media.SoundPlayer`（只支持 wav）必抛；`_queue`/`_worker_thread` 异步脚手架声明从不使用；`gender`/`emotion` 参数存储但不应用；讯飞 `_init_xunfei` 报成功但 `_speak_xunfei` 恒失败。无运行时消费者。
+
+**`messaging.py`（370行）🟡 主动消息**：`Message`+4 渠道（Console/Log/Webhook/Callback）+`MessagingSystem` 单例。被 web/app（initiative_messaging 配置）+ tool_registry（send_message ToolSpec）引用。**🔍问题 P6-26**：`message_queue`/`_worker_thread` 异步脚手架声明但 send_message 全同步；URGENT 绕过 enabled 的逻辑（L258）被基类 send 的 enabled 检查抵消；webhook `timeout=10` 硬编码；单例无线程锁且 `__init__` 副作用建目录。
+
+### 6.10 `memory_tools.py` + `web_search.py` + `file_ops.py` + 辅助模块
+
+**`memory_tools.py`（363行）🔍 孤立**：把记忆 CRUD 暴露为 3 个 OpenAI 工具（search_memory/get_recent_conversations/save_to_memory）+ `MemoryToolExecutor(life_loop)`。**全项目无引用**——被 tool_executor + dynamic_tool_registry 的工具体系取代。**🔍问题 P6-27**：`_search_memory` 用 `query.split()[:5]` 分词——中文无空格→单个整句 token；`save_to_memory` 的 confidence `0.9 if high else 0.7`（low/medium 退化同值）；MEMORY_TOOLS 是可变全局且按引用返回。
+
+**`web_search.py`（157行）🟡 Bing 搜索 Tool**：`WebSearchTool(Tool)` 真 Bing API（`api.bing.microsoft.com`，L121）+ mock 回退（无 key 时）。**🔍问题 P6-28**：与 tool_executor._web_search（LLMClient 联网）是**两套搜索实现**，且 tool_executor 把 web_search 列入 `disabled_tools`（safe_mode 时）。任意 Bing 失败被 `except Exception` 吞成 mock 结果（L78），调用方无法区分真假。mock 含 `rank` 字段、真结果不含→下游 `r["rank"]` KeyError。
+
+**`file_ops.py`（226行）🟡 沙箱文件 Tool**：`FileOpsTool(Tool)` read/write/list + allow-list 目录 + 禁止模式（`*.exe`/`*.dll`/`/etc/passwd`）。被 memory/skills/file_skill、safety/contract_guard 引用。**🔍问题 P6-29（🔴 安全 fail-open）**：`_is_path_allowed`（L121）`if self.allowed_dirs:`——**allow-list 为空时跳过目录检查**，只剩 `forbidden_patterns` 兜底，而 `Path.match` 对 `/etc/passwd` 这类绝对路径模式在 Windows 上不可靠。即空配置=任意目录可读写。`max_read_size` 限制读但 `_write_file` 无大小上限。
+
+**`cost_model.py`（262行）🔍 死代码**：`CostModel` + 9 个 `ModelType` + PRICING 表。**仅 tools/__init__ 重导出，从不实例化**。action_executor 里的 `tool_spec.cost_model` 是 ToolSpec 的 dict 字段，**不是这个类**。**🔍问题 P6-30**：价格全是 2023 年旧值（gpt-4-turbo 0.01/0.03、claude-2 EOL）；`estimate_tool_cost` 内联硬编码（web_search=0.01 等）与 ToolSpec.cost_model 重复；`estimate_text_tokens` 的 `model` 参数接受但不用。**四套成本概念并存**（本表 / action_executor 的 `tokens*0.000001` / ToolSpec.cost_model dict / common/constants.ToolCostConstants 的 CAPS）。
+
+**`llm_cache.py`（295行）🔍 完全孤立**：SHA256 key 的 LLM 响应缓存（LRU+TTL+线程锁）。**全项目零引用**（docstring 有用法示例但无调用方）。**🔍问题 P6-31**：① `temperature` **故意排除在 key 外**（L104）→ 高温随机响应被当确定性的缓存命中，返回错误温度的结果；② key 截断到 16 hex（64bit，大负载碰撞风险）；③ 构造默认 TTL=3600 vs 单例 TTL=1800 不一致；④ `evictions` 计数器被容量淘汰/TTL 过期/手动 prune 三处重复递增，统计失真。
+
+**`tool_system_v2.py`（606行）🟡 增强工具系统（接入弱）**：`ToolCall`/`ToolResult`/`ToolCallRecord`（可回放）/`ToolCallLogger`（JSONL 审计）/`SmartToolParser`（中文自然语言→工具意图）/`EnhancedToolExecutor`。被 tools/__init__ 重导出。**🔍问题 P6-32**：`SmartToolParser` 用中文关键词+正则从自然语言提工具调用（如"读取xxx.txt"→read_file）——与器官的 `_parse_llm_thought_to_actions`（第5章 P5-15）同源脆弱性；`EnhancedToolExecutor` 重复实现 read_file/write_file/list_files（第三套）；`get_replay_output` 靠 input_hash 精确匹配回放。
+
+### 6.x tools/ 速查与调试点
+
+**精读优先级**：`llm_client.py`（活路径，必懂）> `tool_executor.py`（执行+代码全开）> `dynamic_tool_registry.py`（活注册表）> `blackboard.py`（论文核心但默认休眠，看架构债）。
+
+**接入真相表**（grep + life_loop/action_executor 确认）：
+| tools 模块 | 接入方式 | 状态 |
+|---|---|---|
+| llm_client.LLMClient | action_executor(`LLM_MODE=single`默认)/器官/检索/life_loop全局 | ⭐ **活路径** |
+| llm_api.UniversalLLM | blackboard 专家/growth/skills/tool_executor._web_search | 🟡 黑板/生成路径用（默认休眠） |
+| llm_orchestrator.LLMMOrchestrator | action_executor(仅`LLM_MODE≠single`)/web/chat_interactive | 🟡 默认休眠，多模型时丢 tools(P6-18) |
+| tool_executor.LLMToolExecutor | action_executor USE_TOOL+CHAT 工具循环 | ⭐ 活路径（execute_code 默认 FULL_ACCESS） |
+| dynamic_tool_registry | life_loop:281 注册 + action_executor:620 to_llm_format + :777 get | ⭐ 活路径 |
+| tool_registry.ToolRegistry | action_executor:225,506 `.get()` | 🟡 仅 .get() 用，list_available/get_all 无调用 |
+| blackboard.MindFieldOrchestrator | 经 llm_orchestrator，`LLM_MODE≠single` | 🟡 **默认休眠**（核心 bug P6-13/14/15） |
+| embeddings.EmbeddingsTool | cognition/insight_quality.py（try 包裹） | 🟡 接入但默认 mock（无语义） |
+| messaging.MessagingSystem | web/app + tool_registry send_message | 🟡 接入 |
+| tool_protocol.ToolExecutor | — | 🔴 **完全死代码**(P6-12) |
+| safe_executor.SafeCodeExecutor | — | 🔴 **完全孤立**(P6-20，最完善的沙箱没用) |
+| code_exec.CodeExecutionTool | — | 🔴 **完全孤立** |
+| cost_model.CostModel | — | 🔴 **完全死代码**(P6-30) |
+| llm_cache.LLMCache | — | 🔴 **完全孤立**(P6-31) |
+| memory_tools.MemoryToolExecutor | — | 🔴 **完全孤立**(被 tool_executor 取代) |
+| vision.VisionClient | — | 🔴 **无运行时消费者** |
+| voice.VoiceOutput | — | 🔴 **无运行时消费者 + edge-tts 递归 bug**(P6-24) |
+| tool_system_v2.EnhancedToolExecutor | tools/__init__ 重导出 | 🟡 接入弱，与 tool_executor 重复 |
+| capability.CapabilityManager | life_loop:48 导入(被:71遮蔽) | 🔴 **被遮蔽死代码**(P8-1) |
+| web_search.WebSearchTool | tool_registry ToolSpec 声明 | 🟡 与 tool_executor._web_search 重复(P6-28) |
+| file_ops.FileOpsTool | memory/skills + safety/contract_guard | 🟡 接入但 fail-open(P6-29) |
+
+**高危区**：
+1. **三 LLM 客户端并存**（P6-1）：llm_client/llm_api/llm_orchestrator 接口不一，改一处漏两处
+2. **execute_code 默认全开**（P6-9）：LLM 拥有完全本地执行权，沙箱配置形同虚设
+3. **工具目录四重定义**（P6-11）：ToolRegistry/DynamicToolRegistry/AVAILABLE_TOOLS/skills 四套，名/风险/schema 不统一
+4. **黑板情绪路径死**（P6-13）：update_mood 签名错，多模型模式情绪更新整条静默失效
+5. **嵌入四处且三处伪**（P6-23/P3-7）：默认配置下语义检索/联想/洞察新颖度都是噪声
+6. **最完善的沙箱没接**（P6-20）：safe_executor AST 沙箱孤立，活路径是无过滤的 FULL_ACCESS
+7. **edge-tts 递归崩溃**（P6-24）：voice.py 同名方法覆盖，第一调用即无限递归
+8. **成本四套**（P6-30）：价格/系数各处不一，相差可达 75×
+
+**与论文的对应**：Mind Field 多专家黑板 = §3.4.2（blackboard.py，默认休眠）；工具五元组 = §3.11（tool_registry.ToolSpec，pre/post 不求值）；确定性工具+回放 = §3.11.3（tool_protocol 死框架 + tool_system_v2 的 ToolCallLogger/Strict Replay）；成本跟踪 = §3.11.3（cost_model 死代码）。
 
 ---
 
@@ -1089,7 +1324,7 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 
 ## A. 全局问题清单（按优先级）
 
-> 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。
+> 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) + Phase 6(tools) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。
 
 ### 🔴 高优先级（影响正确性/可维护性）
 
@@ -1174,11 +1409,36 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P3-17 | 模块级 `compute_novelty` 每次调用 new 一个 calculator，缓存全失效/重复加载模型 | memory/semantic_novelty.py |
 | P3-23 | skills/ 内有两个 SkillRegistry 类(base.py 非线程安全 + skill_registry.py 线程安全)，前者76行死代码 | memory/skills/base.py |
 | P3-19 | compute_salience 仅被 consolidation 用；写入 episode 时不存 salience 字段，query_high_salience 另用 \|delta\|——两套"显著性"定义 | memory/salience.py |
+| P6-3 | reasoning_content 仅在 content 完全为空时兜底(llm_client:256-258)，且与正文混在 text 字段；需澄清/改写第8章 P8-12 与第5章 P5-3 的"不解析 reasoning_content"表述 | tools/llm_client.py:256 |
+| P6-5 | _chat_claude 降级路径引用未定义的 logger(L469 logger.warning)，anthropic 库失败时抛 NameError 被外层吞→降级逻辑本身有 bug | tools/llm_client.py:469 |
+| P6-8 | _web_search 用 LLMClient 让 LLM"联网搜索"(非真搜索)，stepfun step-3.7-flash 不保证联网能力→可能是凭记忆编造；与 web_search.py 的 Bing 实现是两套 | tools/tool_executor.py:415 |
+| P6-12 | tool_protocol.ToolExecutor(292行风险/契约/成本框架)完全死代码，零实例化；抽象基类 Tool 被4工具继承但实例从不注册进 ToolExecutor | tools/tool_protocol.py:179 |
+| P6-15 | 黑板成本翻倍：M_REASON/M_COORD 先调 planner.propose_plans(内部可能再调LLM)，然后 L858 又无条件 client.chat→一次"推理"两次 LLM 调用 | tools/blackboard.py:486,858 |
+| P6-17 | create_core5_experts 硬编码 gpt-4/gpt-3.5-turbo + openai.com 端点，与当前 stepfun 环境完全不匹配 | tools/blackboard.py:1298 |
+| P6-18 | 多模型模式丢 tools：llm_orchestrator multi 分支调 process(user_message,context,tick) 不传 tools，blackboard.process 签名也不接收→多专家模式下函数调用静默失效 | tools/llm_orchestrator.py:206 |
+| P6-21 | safe_executor 隐患：allowed_nodes 定义但不校验(实为黑名单)、max_memory_mb 不强制、线程超时不杀 worker、ExecutionTimeout 从不抛、reduce 非builtin 静默跳过 | tools/safe_executor.py |
+| P6-22 | code_exec 子进程模式拥有完整 stdlib+网络+文件系统，仅靠可绕过的正则前置过滤；Windows 直跑模式无 SIGALRM→无超时；docstring 要求的回放模式未实现 | tools/code_exec.py:167 |
+| P6-25 | voice：_queue/_worker_thread 异步脚手架声明不用；gender/emotion 存储不应用；讯飞 init 报成功但 speak 恒失败 | tools/voice.py |
+| P6-26 | messaging：message_queue/_worker_thread 声明但 send_message 全同步；URGENT 绕过 enabled 被基类抵消；webhook timeout=10 硬编码；单例无线程锁且 init 副作用建目录 | tools/messaging.py |
+| P6-27 | memory_tools 完全孤立(被 tool_executor 取代)：_search_memory 用 split() 中文分词失效；confidence low/medium 退化同值；MEMORY_TOOLS 可变全局按引用返回 | tools/memory_tools.py |
+| P6-28 | web_search：与 tool_executor._web_search(LLMClient联网) 两套实现且后者 safe_mode 时禁用；Bing 失败静默降 mock；mock 含 rank 真结果不含→下游 KeyError | tools/web_search.py:78 |
+| P6-30 | cost_model 完全死代码(仅重导出不实例化)：价格全2023旧值/含EOL模型；与 action_executor 的 tokens*0.000001、ToolSpec.cost_model、constants.ToolCostConstants 四套成本并存，相差可达75× | tools/cost_model.py |
+| P6-31 | llm_cache 完全孤立：temperature 故意排除在 key 外→高温随机响应被当确定性缓存命中；key 截断16hex碰撞风险；TTL 默认值不一致(3600 vs 1800)；evictions 计数器三处重复递增 | tools/llm_cache.py |
+| P6-32 | tool_system_v2.SmartToolParser 用中文关键词+正则提工具意图(同器官 P5-15 脆弱性)；EnhancedToolExecutor 第三套 read/write/list 实现 | tools/tool_system_v2.py |
 | P5-5 | OrganMemoryWriter._llm_evaluate 用 find("{")/rfind("}") 提取 JSON，多 JSON 块/代码块含{} 会误提取；summary[:200] 与 thought[:500] 截断不一致 | organs/organ_llm_session.py |
 | P5-7/P5-8 | Limb/Plugin.propose_actions 恒返回[]；6 真器官用 WrappedBuiltinOrgan 动态子类重复创建6次且丢失 _llm_session 等属性 | organs/unified_organ.py + core/life_loop.py |
 | P5-11 | OrganManager.record_exploration 直接访问私有 _explored_topics，与 ScoutOrgan 同名字段完全独立，探索记录分散两处 | organs/organ_manager.py |
 | P5-18 | mind 的 record_plan_outcome/successful_patterns 学习机制 life_loop 不调，_adapt_from_history 永不触发 | organs/internal/mind_organ.py |
 | P5-23 | caretaker sleep 时间窗靠 tick×tick_duration/3600 估算，context 是否传 tick_duration 不确定；与 metabolism/circadian 真实节律可能不一致 | organs/internal/caretaker_organ.py |
+| P6-1 | **三 LLM 客户端并存**：llm_client(活路径)/llm_api(黑板用)/llm_orchestrator(门面) 接口签名/返回 dict 不一致，provider 检测逻辑重复；LLMMOrchestrator 类名拼写错误(双M)靠别名掩盖 | tools/{llm_client,llm_api,llm_orchestrator}.py | 改一处漏两处，维护高危 |
+| P6-9 | **execute_code 默认 FULL_ACCESS**：dynamic_tool_registry 用 `LLMToolExecutor(safe_mode=False)`，exec 含完整 builtins+os/sys+self；runtime.yaml `sandbox_code_exec:false` 与 config_manager 默认 True 冲突，且两处 flag 都没被读取 | tools/tool_executor.py:445 + dynamic_tool_registry.py:442 | LLM 拥有完全本地执行权，沙箱配置形同虚设 |
+| P6-11 | **工具目录四重定义**：ToolRegistry(11 ToolSpec)/DynamicToolRegistry(5+技能)/AVAILABLE_TOOLS(5 schema)/skills 四处，工具名(read_file vs file_read)/风险/schema 不统一，action_executor 同时查两套注册表 | tools/{tool_registry,dynamic_tool_registry,tool_definitions}.py + memory/skills/ | "有哪些工具"无单一真相源 |
+| P6-13 | **黑板情绪路径死**：M_AFFECT/M_COORD 调 `update_mood(..., dimension="attachment")`，但该函数无 dimension 参数(应为 update_mood_per_dimension)，TypeError 被吞→多模型模式情绪更新整条静默失效 | tools/blackboard.py:557,817 | 论文§3.4.2 黑板驱动情绪的功能不工作 |
+| P6-14 | **黑板幽灵槽位丢失**：M_VIS/M_AUD/expert_*_output 写的槽位不在 BlackboardState schema，update_slot 的 hasattr 守卫静默丢弃→专家输出数据全部丢失 | tools/blackboard.py:645,695,1194,159 | 视觉/音频/专家结果无法跨专家共享 |
+| P6-20 | **代码执行四套，最完善的没接**：tool_executor FULL_ACCESS(活)/tool_executor 黑名单/safe_executor AST(孤立)/code_exec 正则(孤立)；config_manager 的 sandbox_code_exec flag 无处读取 | tools/{tool_executor,safe_executor,code_exec}.py | 论文§3.11.3 的安全沙箱形同虚设，活路径是无过滤全开 |
+| P6-23 | **嵌入四处且三处伪**：tools/embeddings 默认 mock(hash-seed)，与 memory/retrieval(MD5)/familiarity(md5-seed) 同为伪嵌入，仅 semantic_novelty 真嵌入；默认配置下语义检索/联想/洞察新颖度都是噪声 | tools/embeddings.py + memory/{retrieval,familiarity,semantic_novelty}.py | 第3章 P3-7 的扩展(现4处) |
+| P6-24 | **edge-tts 递归崩溃**：voice.py L336 async _speak_edge 被 L382 同名同步方法覆盖，同步包装调自己→无限递归；Windows mp3 播放用 SoundPlayer(只支持wav)必抛 | tools/voice.py:336,382,364 | TTS 功能第一调用即崩(但无运行时消费者) |
+| P6-29 | **file_ops fail-open**：allow-list 为空时跳过目录检查，仅剩 forbidden_patterns(Path.match 对绝对路径在 Windows 不可靠)；空配置=任意目录可读写；_write_file 无大小上限 | tools/file_ops.py:121 | 空配置下文件工具无沙箱 |
 
 ---
 
@@ -1194,8 +1454,8 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 新会话1: "读 CODE_MAP.md，续写第8章 core/"     ✅ 已完成
 新会话2: "读 CODE_MAP.md，续写第3章 memory/"   ✅ 已完成
 新会话3: "读 CODE_MAP.md，续写第5章 organs/"   ✅ 已完成
-新会话4: "读 CODE_MAP.md，续写第6章 tools/"   ← 下一个推荐
-新会话5: "读 CODE_MAP.md，续写第4章(认知感知代谢)+第7章(安全持久化)"
+新会话4: "读 CODE_MAP.md，续写第6章 tools/"   ✅ 已完成
+新会话5: "读 CODE_MAP.md，续写第4章(认知感知代谢)+第7章(安全持久化)"   ← 下一个推荐
 新会话6: "读 CODE_MAP.md，续写第9章(入口Web) + 更新A节问题清单"
 ```
 每章续写后，AI 应：①填充"待续"章节 ②如发现新问题追加到 A 节 ③更新本文件顶部的"最后更新"日期。
@@ -1218,6 +1478,6 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 
 ---
 
-*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) + Phase 3(memory/, 29文件/8733行) + Phase 5(organs/, 15文件/7956行) 已完成精读。Phase 4,6,7,9 待续。全局问题清单已收录 14 + 20 + 23 + 23 = 80 项（P1/P2/P3/P5/P8 系列）。*
+*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) + Phase 3(memory/, 29文件/8733行) + Phase 5(organs/, 15文件/7956行) + Phase 6(tools/, 23文件/9837行) 已完成精读。Phase 4,7,9 待续。全局问题清单已收录 14 + 20 + 23 + 23 + 32 = 112 项（P1/P2/P3/P5/P6/P8 系列）。*
 
 
