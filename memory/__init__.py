@@ -21,7 +21,9 @@ from .skill import SkillMemory
 from .retrieval import MemoryRetrieval
 from .consolidation import DreamConsolidator
 from .salience import compute_salience
-from .dream import DreamEngine, DreamDirector, DreamPhase, DreamReport, create_dream_engine, create_dream_director
+# 注：dream.py（DreamDirector 第二套实现）和 personality_encoding.py（论文§3.4.4 孤立实现）
+# 已删除——前者与 consolidation.DreamConsolidator 重复且零运行时引用，
+# 后者写好但从未接入 episodic.append 写入路径。详见 CODE_MAP P3-13/P3-20。
 
 # 外部工具调用技能（网上下载的）
 try:
@@ -82,12 +84,6 @@ __all__ = [
     "MemoryRetrieval",
     "DreamConsolidator",
     "compute_salience",
-    "DreamEngine",
-    "DreamDirector",
-    "DreamPhase",
-    "DreamReport",
-    "create_dream_engine",
-    "create_dream_director",
     # Semantic novelty
     "SemanticNoveltyCalculator",
     "EmbeddingConfig",
@@ -138,40 +134,5 @@ try:
 except ImportError:
     pass
 
-# Personality-modulated memory encoding (论文 3.4.4)
-try:
-    from .personality_encoding import (
-        PersonalityMiddleVars,
-        MemoryDomain,
-        EmotionalTag,
-        PersonalityModulatedTagging,
-        CrossDomainAssociation,
-        CrossDomainAssociationCalculator,
-        PersonalityModulatedConsolidation,
-        NoveltySensitivityCalculator,
-        EncodingContext,
-        EncodingResult,
-        PersonalityModulatedEncoder,
-        # Factory functions
-        create_personality_vars,
-        create_encoder,
-        create_encoding_context,
-    )
-    __all__.extend([
-        "PersonalityMiddleVars",
-        "MemoryDomain",
-        "EmotionalTag",
-        "PersonalityModulatedTagging",
-        "CrossDomainAssociation",
-        "CrossDomainAssociationCalculator",
-        "PersonalityModulatedConsolidation",
-        "NoveltySensitivityCalculator",
-        "EncodingContext",
-        "EncodingResult",
-        "PersonalityModulatedEncoder",
-        "create_personality_vars",
-        "create_encoder",
-        "create_encoding_context",
-    ])
-except ImportError:
-    pass
+# Personality-modulated memory encoding (论文 3.4.4) — personality_encoding.py 已删除（孤立，见上注）
+
