@@ -187,8 +187,10 @@ class LifeLoop(GapDetectorMixin):
         """初始化记忆系统"""
         episodes_path = self.run_dir / "episodes.jsonl"
         self.episodic = EpisodicMemory(episodes_path)
-        self.schema = SchemaMemory()
-        self.skill = SkillMemory()
+        # 修复 P3-5: Schema/Skill 传入 persist_path，使巩固产物持久化
+        # （save_to_disk/load_from_disk 已实现，此前因无参构造而从未生效）
+        self.schema = SchemaMemory(self.run_dir / "schemas.jsonl")
+        self.skill = SkillMemory(self.run_dir / "skills.jsonl")
         self.retrieval = MemoryRetrieval(self.episodic, self.schema, self.skill)
         self.consolidator = DreamConsolidator(self.episodic, self.schema, self.skill)
         self._restore_tick_from_history()
@@ -1775,6 +1777,22 @@ class LifeLoop(GapDetectorMixin):
                 logger.debug(f"Override state persisted: {override_state}")
         except Exception as e:
             logger.error(f"Error persisting override state: {e}")
+
+        # 修复 P3-5: 关闭前持久化 Schema/Skill 记忆
+        # 巩固产生的图式/技能此前只在内存，进程结束即丢失
+        try:
+            if hasattr(self, 'schema') and self.schema:
+                self.schema.save_to_disk()
+                logger.debug("Schema memory persisted")
+        except Exception as e:
+            logger.error(f"Error persisting schema memory: {e}")
+
+        try:
+            if hasattr(self, 'skill') and self.skill:
+                self.skill.save_to_disk()
+                logger.debug("Skill memory persisted")
+        except Exception as e:
+            logger.error(f"Error persisting skill memory: {e}")
 
         # Persist value learning parameters
         try:
