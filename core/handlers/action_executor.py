@@ -412,11 +412,15 @@ class ActionExecutor:
                 logger.info(f"[CHAT] 疲劳更新: {current_fatigue:.3f} + {fatigue_increase:.3f} = {new_fatigue:.3f}")
 
                 # 更新社交状态
+                # P0-1 第二层修复（2026-07）：原 bond +0.01/次 太小，填不平 attachment 缺口
+                # （setpoint 0.7，bond 从 0 起步需 ~45 次成功 CHAT）。导致 CHAT 的 +0.2 reward
+                # bonus 盖不过 attachment 负效用（-0.219），CHAT 闭环无法转正，tick 4+ LLM 放弃 CHAT。
+                # 提到 +0.05/次（trust 同比例 +0.025），让 ~10 次 CHAT 能填平缺口，闭环转正。
                 bond = self.fields.get("bond")
                 trust = self.fields.get("trust")
                 boredom = self.fields.get("boredom")
-                new_bond = min(1.0, bond + 0.01)
-                new_trust = min(1.0, trust + 0.005)
+                new_bond = min(1.0, bond + 0.05)
+                new_trust = min(1.0, trust + 0.025)
                 new_boredom = max(0.0, boredom - 0.05)
                 self.life_loop._sync_fields_to_global(bond=new_bond, trust=new_trust, boredom=new_boredom, fatigue=new_fatigue)
 
