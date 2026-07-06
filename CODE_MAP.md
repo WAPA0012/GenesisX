@@ -2518,9 +2518,18 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 | inspect.is_function（Py3.13 兼容，新发现） | `a50083d` | dynamic_tool_registry.py，5 个工具文件报错消除 |
 | P3-3 episodic.py print→logger | `ba70b80` | 5 处 print 替换为结构化日志 |
 | P3-5 Schema/Skill 持久化接入 | `15e0051` | 构造传 persist_path + shutdown 调 save_to_disk |
+| P3-22 limb_guides 崩溃重复包 | `前一个` | 删 4 个与 skills/ 逐字节重复文件 + 崩溃 __init__，保留 data/ 目录 |
+| P6-30/P6-31/P6-27 死代码 | `前一个` | 删 cost_model/llm_cache/memory_tools（~920行，零引用） |
+| P3-18 auto_detect_backend 接入 | `6ee3b00` | 加 @classmethod + from_env 调用；**意外收益：本机有 sentence-transformers，语义嵌入从 TF-IDF 升级为真嵌入** |
+| P3-17 compute_novelty 单例 | `28af13a` | 避免每次调用重新加载模型，缓存生效 |
+
+#### 修复说明
+- **死代码删除原则**：只删"包外零引用 + 删除后包导入正常"的，保留有数据依赖的目录（如 limb_guides/data/）。
+- **P3-18 副作用**：首次启动会加载 sentence-transformer 模型（all-MiniLM-L6-v2，约 1-2 秒）。若环境无此包则自动回退 TF-IDF，行为不变。
+- **未动 P0-1**：价值→行为断链是架构级问题，留待专门会话处理。
 
 ---
 
-*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) + Phase 3(memory/, 29文件/8733行) + Phase 5(organs/, 15文件/7956行) + Phase 6(tools/, 23文件/9837行) + Phase 4(cognition/perception/metabolism, 20文件/5430行) + Phase 7(safety/persistence, 13文件/2604行) + Phase 9(入口+Web, 15文件/约7k行) **全部已完成精读**。全局问题清单已收录 209 + 18 = **227 项**（P1/P2/P3/P4/P5/P6/P7/P8 + P9 系列，含多条合并项，A 节三表实际行数 29+44+81=154 行）。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经死代码清理后现 **232 文件/82.7k 行**）。全局问题清单收录 **227 项**，其中 **9 项已修复**（见上方"已修复"表）。**最高优先级未修：P0-1 价值→行为断链**（25 tick 实测验证，见 A 节）。*
 
 
