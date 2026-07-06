@@ -2303,7 +2303,7 @@ user_input → self._pending_user_input
 
 | ID | 问题 | 位置 | 影响 |
 |---|---|---|---|
-| P1-3 | **参数三重定义不一致**：τ 在 constants.py=2.0、value_setpoints.yaml=4.0、parameters.py=4.0。k_+/k_- 同样散落三处 | common/constants.py + config + axiology | 论文复现不可靠，调参时改了一处另一处覆盖 |
+| **P0-1** 🆕⭐ | **价值→行为反馈环路断裂（实测验证，最核心运行时问题）**：25 tick 实测（run_20260706_062952），17/17 个有好奇/依恋缺口的 tick **100% 未产生 EXPLORE/CHAT**，全是 REFLECT/THINK。系统陷入"反思死循环"，mood 从 0.5 单调跌到 0 后永久卡死，负 RPE 未能驱动行为改变。根因：①价值系统正确识别需求（curiosity/attachment 缺口 0.45）但器官 `_parse_llm_thought_to_actions` 关键词失配（P5-15），LLM 叙事被 fallback 到 REFLECT ②驱动力信号无人消费（P5-10）③无用户输入时缺乏主动行动驱动。**这是"数字生命不像活的"的直接原因。** | organs/internal/* + life_loop PHASE 7→11 | 系统无法自主行动，mood 锁死归零，违背"自主数字生命"核心目标 |
 | P2-3 | **axiology 严重代码重复**：value_dimensions.py(799行) 与 feature_extractors.py+utilities_unified.py 功能重叠 | axiology/ | 改一处忘另一处，行为不一致 |
 | P2-5 | **drives/ 5维驱动力被禁用**：life_loop.py 顶部注释禁用，但代码存在 | axiology/drives/ | 死代码或半成品，需决策启用/删除 |
 | P1-4 | **两套配置加载体系并存**：config.py(load_config→dict) vs config_manager.py(ConfigManager→对象)，且都有 load_config() 同名函数 | common/ | 极易混淆，维护负担 |
@@ -2504,6 +2504,20 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 - **ORGAN_PARALLEL_MODE**: mixed（器官混合并行）
 - **session_id**: genesisx_persistent（记忆跨重启累积）
 - **注意**: step-3.7-flash 是推理模型，响应含 `reasoning_content`，正式回答在 `content`。默认思考模式关闭。
+
+### 实测记录与已修复问题
+
+#### 实测发现（2026-07-06，run_20260706_062952，17 tick）
+- **P0-1 价值→行为断链**（见 A 节）：17 tick 全 REFLECT/THINK，0 EXPLORE/CHAT，mood 跌至 0 卡死。**当前最高优先级**。
+- 无用户输入时系统缺乏主动行动驱动，陷入反思死循环。
+- 巩固未触发（需 ≥20 episode，17 tick 被超时中断于 shutdown 前，schemas/skills 未落盘）。
+
+#### 已修复（2026-07-06）
+| 问题 | commit | 说明 |
+|---|---|---|
+| inspect.is_function（Py3.13 兼容，新发现） | `a50083d` | dynamic_tool_registry.py，5 个工具文件报错消除 |
+| P3-3 episodic.py print→logger | `ba70b80` | 5 处 print 替换为结构化日志 |
+| P3-5 Schema/Skill 持久化接入 | `15e0051` | 构造传 persist_path + shutdown 调 save_to_disk |
 
 ---
 
