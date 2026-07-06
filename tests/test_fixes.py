@@ -1,69 +1,10 @@
-"""测试核心修复: RP_t, 有效 Boredom, 中间变量
+"""测试核心修复: 有效 Boredom, 中间变量
 
 验证论文 v14 定义的核心公式实现。
+
+注：test_resource_pressure 已删除（resource_pressure.py 模块在 P4-61 修复中移除，
+其 RP 公式与 state.py 生产版语义相反且零运行时引用）。
 """
-
-def test_resource_pressure():
-    """测试 RP_t 资源压力指数.
-
-    论文公式: RP_t = max(0, 1 - (α·Compute_t + β·Memory_t))
-    默认: α=0.6, β=0.4
-    """
-    print("=" * 60)
-    print("测试 RP_t 资源压力指数")
-    print("=" * 60)
-
-    from metabolism.resource_pressure import (
-        compute_resource_pressure,
-        is_emergency_state,
-        compute_effective_boredom,
-        get_resource_pressure_report,
-    )
-
-    test_cases = [
-        # (compute, memory, expected_rp_min, expected_rp_max, desc)
-        (1.0, 1.0, 0.0, 0.0, "Full resources: RP_t = 0"),
-        (0.8, 0.85, 0.17, 0.18, "Normal (default initial)"),
-        (0.5, 0.6, 0.44, 0.46, "Medium stress"),
-        (0.3, 0.4, 0.64, 0.66, "High stress"),
-        (0.1, 0.2, 0.84, 0.86, "Critical"),
-    ]
-
-    all_passed = True
-    for compute, memory, rp_min, rp_max, desc in test_cases:
-        rp = compute_resource_pressure(compute, memory)
-
-        # 验证范围
-        if not (rp_min <= rp <= rp_max):
-            print(f"  ❌ {desc}: expected [{rp_min}, {rp_max}], got {rp:.3f}")
-            all_passed = False
-        else:
-            print(f"  ✅ {desc}: RP_t = {rp:.3f}")
-
-        # 验证紧急状态
-        emergency = is_emergency_state(compute, memory)
-        eff_boredom = compute_effective_boredom(0.7, compute, memory)
-
-        if rp > 0.35:
-            if not emergency:
-                print(f"    ❌ Should be emergency when RP={rp:.3f}")
-                all_passed = False
-            if eff_boredom != 0.0:
-                print(f"    ❌ Effective boredom should be 0 in emergency")
-                all_passed = False
-        else:
-            if emergency:
-                print(f"    ❌ Should NOT be emergency when RP={rp:.3f}")
-                all_passed = False
-            if eff_boredom != 0.7:
-                print(f"    ❌ Effective boredom should be 0.7, got {eff_boredom:.2f}")
-                all_passed = False
-
-    if all_passed:
-        print("\n✅ RP_t 测试全部通过!")
-    else:
-        print("\n❌ RP_t 测试有失败")
-    return all_passed
 
 
 def test_intermediate_variables():
@@ -198,52 +139,42 @@ def test_global_state():
 
 
 def test_boredom_integration():
-    """测试 boredom 模块的资源压力集成."""
+    """测试 boredom 模块的 η-coefficient 更新（P4-61 修复后）.
+
+    resource_pressure.py 已删除，资源紧急判断由 state.py 负责。
+    此测试只验证 boredom 的 η-coefficient 公式本身。
+    """
     print("\n" + "=" * 60)
-    print("测试 Boredom 模块的资源压力集成")
+    print("测试 Boredom η-coefficient 更新")
     print("=" * 60)
 
     from metabolism.boredom import update_boredom, compute_effective_boredom
 
-    # 正常情况: 资源充足，无聊度应该正常更新
+    # 低新颖度时无聊应增长（η_idle 项）
     boredom = 0.5
-    new_boredom = update_boredom(
-        boredom,
-        dt=1.0,
-        novelty=0.1,
-        socially_engaged=False,
-        compute=0.9,
-        memory=0.9,
-        apply_resource_override=True,
-    )
-    print(f"  Normal resources: boredom {boredom:.2f} -> {new_boredom:.2f}")
-
-    # 紧急情况: 资源不足，无聊度应被禁用
-    boredom = 0.8
-    new_boredom = update_boredom(
-        boredom,
-        dt=1.0,
-        novelty=0.1,
-        socially_engaged=False,
-        compute=0.2,
-        memory=0.2,
-        apply_resource_override=True,
-    )
-    print(f"  Emergency resources: boredom 0.80 -> {new_boredom:.2f}")
-
-    if new_boredom != 0.0:
-        print(f"  ❌ Boredom should be 0 in emergency state")
+    new_boredom = update_boredom(boredom, dt=1.0, novelty=0.1, socially_engaged=False)
+    print(f"  Low novelty: boredom {boredom:.2f} -> {new_boredom:.2f}")
+    if new_boredom <= boredom:
+        print(f"  ❌ Boredom should increase with low novelty")
         return False
 
-    # 测试 compute_effective_boredom 函数
-    eff_boredom = compute_effective_boredom(0.7, 0.9, 0.9)
+    # 高新颖度时无聊应减少（η_nov 项）
+    boredom = 0.5
+    new_boredom = update_boredom(boredom, dt=1.0, novelty=0.9, socially_engaged=False)
+    print(f"  High novelty: boredom {boredom:.2f} -> {new_boredom:.2f}")
+    if new_boredom >= boredom:
+        print(f"  ❌ Boredom should decrease with high novelty")
+        return False
+
+    # 社交参与时无聊应减少（η_soc 项）
+    boredom = 0.5
+    new_boredom = update_boredom(boredom, dt=1.0, novelty=0.1, socially_engaged=True)
+    print(f"  Social: boredom {boredom:.2f} -> {new_boredom:.2f}")
+
+    # compute_effective_boredom 现在是向后兼容存根，直接返回 clip 后的 boredom
+    eff_boredom = compute_effective_boredom(0.7)
     if eff_boredom != 0.7:
-        print(f"  ❌ Effective boredom should be 0.7 with good resources")
-        return False
-
-    eff_boredom = compute_effective_boredom(0.7, 0.2, 0.2)
-    if eff_boredom != 0.0:
-        print(f"  ❌ Effective boredom should be 0.0 with low resources")
+        print(f"  ❌ Effective boredom should be 0.7, got {eff_boredom}")
         return False
 
     print("\n✅ Boredom 集成测试通过!")

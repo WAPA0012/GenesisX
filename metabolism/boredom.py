@@ -74,8 +74,11 @@ def update_boredom(
 
     Boredom_{t+1} = clip_{[0,1]}(Boredom_t + η_B^idle * 1[low novelty] - η_B^nov * Novelty_t - η_B^soc * 1[social])
 
-    有效无聊度 (论文 Section 3.6.4):
-    effective_boredom_t = Boredom_t · 1[RP_t < θ_emergency]
+    注：资源压力覆盖（论文 Section 3.6.4 effective_boredom）原由 resource_pressure.py
+    的 is_emergency_state 实现，但 life_loop 调用时 compute/memory 恒为默认 1.0（P4-50），
+    从不触发。该模块已删除，资源紧急判断统一由 state.py:get_effective_boredom 负责
+    （基于真实 psutil 采样的 resource_pressure）。compute/memory/apply_resource_override
+    参数保留仅为向后兼容，不再有任何效果。
 
     Args:
         boredom: Current boredom [0,1]
@@ -83,12 +86,12 @@ def update_boredom(
         novelty: Current novelty level [0,1] (from retrieval similarity)
         socially_engaged: Whether the agent is socially engaged (last action was CHAT with user response)
         config: Optional configuration (uses default if not provided)
-        compute: Compute resource level [0,1] (for resource pressure check)
-        memory: Memory resource level [0,1] (for resource pressure check)
-        apply_resource_override: Whether to apply resource pressure override (default: True)
+        compute: (已废弃，保留兼容) Compute resource level
+        memory: (已废弃，保留兼容) Memory resource level
+        apply_resource_override: (已废弃，保留兼容) 无效果
 
     Returns:
-        Updated boredom in [0,1] (effective boredom if resource override enabled)
+        Updated boredom in [0,1]
     """
     cfg = config or _default_config
 
@@ -106,47 +109,29 @@ def update_boredom(
         - cfg.ETA_SOC * is_social * dt
     )
 
-    new_boredom = max(0.0, min(1.0, new_boredom))
-
-    # 应用资源压力覆盖 (论文 Section 3.6.4)
-    if apply_resource_override:
-        try:
-            from .resource_pressure import is_emergency_state
-
-            if is_emergency_state(compute, memory):
-                # 紧急状态：返回 0，禁用无聊机制
-                return 0.0
-        except ImportError:
-            # 如果 resource_pressure 模块不可用，跳过
-            pass
-
-    return new_boredom
+    return max(0.0, min(1.0, new_boredom))
 
 
 def compute_effective_boredom(
     boredom: float,
-    compute: float,
-    memory: float,
+    compute: float = 1.0,
+    memory: float = 1.0,
 ) -> float:
-    """计算有效无聊度.
+    """计算有效无聊度（向后兼容存根）.
 
-    论文公式 (Section 3.6.4):
-    effective_boredom_t = Boredom_t · 1[RP_t < θ_emergency]
+    原实现依赖 resource_pressure.is_emergency_state（论文 Section 3.6.4），但该模块
+    已删除（生产路径 life_loop 不传 compute/memory，此函数从不被运行时调用）。
+    资源紧急时的有效无聊度判断统一由 state.py:get_effective_boredom 基于
+    真实 psutil 采样的 resource_pressure 实现。
+
+    此存根保留仅为向后兼容（test_fixes 引用），直接返回 clip 后的 boredom。
 
     Args:
         boredom: 当前原始无聊度 [0,1]
-        compute: 计算资源水平 [0,1]
-        memory: 内存资源水平 [0,1]
+        compute: (已废弃)
+        memory: (已废弃)
 
     Returns:
-        有效无聊度 [0,1] (资源紧急时返回 0)
+        clip 后的 boredom [0,1]
     """
-    try:
-        from .resource_pressure import is_emergency_state
-
-        if is_emergency_state(compute, memory):
-            return 0.0
-    except ImportError:
-        pass
-
     return max(0.0, min(1.0, boredom))
