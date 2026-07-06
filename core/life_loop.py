@@ -647,7 +647,7 @@ class LifeLoop(GapDetectorMixin):
         self.fields.set("mood", initial.get("mood", 0.5))
         self.fields.set("stress", initial.get("stress", 0.2))
         self.fields.set("fatigue", initial.get("fatigue", 0.1))
-        self.fields.set("bond", initial.get("bond", 0.0))
+        self.fields.set("bond", initial.get("bond", 0.4))  # P0-1 冷启动修复：0→0.4
         self.fields.set("trust", initial.get("trust", 0.5))
         self.fields.set("boredom", initial.get("boredom", 0.0))
         self.fields.set("curiosity", initial.get("curiosity", 0.5))  # 缺失字段

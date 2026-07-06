@@ -78,7 +78,7 @@ class FieldStore:
             "mood": Prob(0.5),
             "stress": Prob(0.2),
             "fatigue": Prob(0.1),
-            "bond": Prob(0.0),
+            "bond": Prob(0.4),  # P0-1 冷启动修复：0→0.4，避免 attachment 缺口从一开始就过深
             "trust": Prob(0.5),
             "boredom": Prob(0.0),
             "curiosity": Prob(0.5),  # 好奇心字段
