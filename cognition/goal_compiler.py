@@ -4,7 +4,7 @@ Enhanced with paper Section 3.8.3: Complete conflict resolution mechanism.
 """
 from typing import Dict, Optional, List, Any
 from datetime import datetime
-from common.models import ValueDimension, Goal
+from common.models import ValueDimension, Goal, PriorityLevel
 from dataclasses import dataclass, field
 
 
@@ -206,10 +206,15 @@ class GoalCompiler:
             weight = weights.get(dim, 0.0)
             priority = template["base_priority"] * gap * weight
 
+            # P4-1 修复：根据 priority float 映射到论文 §3.8.1 的 1-6 级 priority_level。
+            # 原代码只写 deprecated 的 priority(float)，priority_level 恒为默认 MEDIUM(3)。
+            priority_level = self._priority_to_level(priority, dim)
+
             # Create goal
             goal = Goal(
                 goal_type=template["type"],
                 priority=min(1.0, priority),
+                priority_level=priority_level,
                 owner=owner,
                 description=template["description"],
                 context={
@@ -285,11 +290,44 @@ class GoalCompiler:
 
         return best_goal
 
+    @staticmethod
+    def _priority_to_level(priority: float, dim: ValueDimension = None) -> PriorityLevel:
+        """将 priority float [0,1] 映射到论文 §3.8.1 的 1-6 级 PriorityLevel。
+
+        P4-1 修复：原代码只写 deprecated 的 Goal.priority(float)，priority_level
+        恒为默认 MEDIUM(3)。此方法根据 priority 强度 + 维度重要性推导等级：
+          - safety/homeostasis 维度天然更高（生存相关）
+          - priority float 反映 gap×weight 的紧迫度
+
+        Args:
+            priority: 0-1 的优先级浮点
+            dim: 对应的价值维度（safety/homeostasis 提升一级）
+
+        Returns:
+            PriorityLevel 枚举（CRITICAL=6 .. OPTIONAL=1）
+        """
+        # 维度加成：生存相关维度提升一级
+        boost = 1 if dim in (ValueDimension.SAFETY, ValueDimension.HOMEOSTASIS) else 0
+        # priority float → 基础等级（0.0-1.0 映射到 1-5）
+        if priority >= 0.8:
+            base = 5
+        elif priority >= 0.6:
+            base = 4
+        elif priority >= 0.4:
+            base = 3
+        elif priority >= 0.2:
+            base = 2
+        else:
+            base = 1
+        level = min(6, base + boost)
+        return PriorityLevel(level)
+
     def _create_idle_goal(self) -> Goal:
         """Create idle/maintain goal when no gaps."""
         return Goal(
             goal_type="maintain",
             priority=0.1,
+            priority_level=PriorityLevel.OPTIONAL,  # P4-1 修复
             owner="self",
             description="Maintain current stable state",
             progress=1.0,
