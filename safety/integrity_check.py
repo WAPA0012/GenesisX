@@ -54,8 +54,15 @@ def check_integrity(action: Action, state: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(mood, (int, float)):
         mood = max(0.0, min(1.0, mood))  # Normalize to [0, 1]
         if mood < 0.1:
-            # Very low mood requires additional caution
+            # Very low mood requires additional caution.
+            # P0-1 修复（2026-07）：原逻辑"mood<0.1 禁一切 EXPLORE/LEARN_SKILL"会形成死锁——
+            # mood 低 → 禁探索 → 无法靠探索的正反馈升 mood → mood 永久卡死。
+            # 现改为：低落时仍允许**低风险**（risk_level ≤ 0.2）的自救性探索，
+            # 让系统能通过 EXPLORE 闭环（boredom-0.15 + outcome bonus）拉回 mood。
+            # 器官 LLM 产的 EXPLORE 默认 risk_level=0.2，正好豁免；高风险探索仍禁。
             if action.type in [ActionType.EXPLORE, ActionType.LEARN_SKILL]:
-                return {"ok": False, "reason": "Mood too low for exploration activities"}
+                risk = getattr(action, "risk_level", 0.0) or 0.0
+                if risk > 0.2:
+                    return {"ok": False, "reason": "Mood too low for high-risk exploration activities"}
 
     return {"ok": True}

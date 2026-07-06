@@ -114,27 +114,8 @@ class BuilderOrgan(BaseOrgan):
         state: Dict[str, Any],
         context: Dict[str, Any],
     ) -> List[Action]:
-        """使用 LLM 进行构建思考"""
-        actions = []
-
-        # 构建思考提示
-        prompt = self._build_thinking_prompt(state, context)
-
-        # 调用 LLM 思考
-        thought = self._llm_session.think(prompt)
-
-        if thought:
-            # 保存最后的思考（用于选择性记忆）
-            self._last_thought = thought
-
-            # 解析 LLM 的思考结果为 Action
-            actions = self._parse_llm_thought_to_actions(thought, state, context)
-
-        # 如果 LLM 没有返回有效的动作，fallback 到规则模式
-        if not actions:
-            actions = self._propose_actions_impl(state, context)
-
-        return actions
+        """使用 LLM 进行构建思考（P0-1/P5-15 修复：委托基类模板方法）。"""
+        return self._propose_actions_with_llm_template(state, context)
 
     def get_last_thought(self) -> Optional[str]:
         """获取最后的思考内容（用于选择性记忆）"""
@@ -145,7 +126,7 @@ class BuilderOrgan(BaseOrgan):
         self._last_thought = None
 
     def _build_thinking_prompt(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
-        """构建构建思考提示"""
+        """构建构建思考提示（P0-1 修复：注入驱动力 + 追加结构化输出格式）"""
         energy = state.get("energy", 0.5)
         stress = state.get("stress", 0.0)
         focus = state.get("focus", 0.5)
@@ -156,6 +137,9 @@ class BuilderOrgan(BaseOrgan):
         # 获取活跃项目
         active = [p["goal"] for p in self.active_projects.values()
                   if p["status"] in [self.STATUS_IN_PROGRESS, self.STATUS_PLANNING]]
+
+        # P5-10 修复：注入驱动力信号
+        drives_prompt = context.get("drives_prompt", "") or "无明显驱动"
 
         prompt = f"""请基于我的当前状态，独立思考并提出你想构建或实现的东西。
 
@@ -174,15 +158,19 @@ class BuilderOrgan(BaseOrgan):
 【我的已完成项目】
 {len(self.completed_projects)} 个
 
+【我的内在驱动】
+{drives_prompt}
+
 请回答以下问题：
 1. 我现在想构建或实现什么？（不是应该做什么，而是想做什么）
 2. 为什么我想做这件事？
 3. 我打算怎么开始？
 
-请直接告诉我你的思考，不要使用列表格式。"""
+请直接告诉我你的思考（自然语言即可）。"""
+        prompt += self._format_structured_output_prompt_suffix()
         return prompt
 
-    def _parse_llm_thought_to_actions(
+    def _keyword_fallback_actions(
         self,
         thought: str,
         state: Dict[str, Any],
