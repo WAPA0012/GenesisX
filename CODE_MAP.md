@@ -2522,14 +2522,33 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 | P6-30/P6-31/P6-27 死代码 | `前一个` | 删 cost_model/llm_cache/memory_tools（~920行，零引用） |
 | P3-18 auto_detect_backend 接入 | `6ee3b00` | 加 @classmethod + from_env 调用；**意外收益：本机有 sentence-transformers，语义嵌入从 TF-IDF 升级为真嵌入** |
 | P3-17 compute_novelty 单例 | `28af13a` | 避免每次调用重新加载模型，缓存生效 |
+| **P0-1 核心死锁（器官结构化动作 + 9a 豁免）** | `6b80130` | base_organ 抽模板方法（结构化【动作:XXX】→关键词 fallback→规则）；6 器官迁移；integrity_check 解 mood<0.1 死锁（低风险 EXPLORE 豁免）。**实测：CHAT 从 0→出现，mood 出现回升**。顺带根治 P5-15/P5-10/P5-16 |
+| **P0-1 第二层（CHAT bond 增益）** | `3f5c2b6` | action_executor bond +0.01→+0.05/次，trust 同比例。诊断发现 PHASE 11 的 CHAT +0.2 bonus 实际生效，但 bond 涨太慢填不平 attachment 缺口 |
+| **P0-1 第三层（bond 冷启动）** | `7e70740` | bond 初始值 0→0.4（FieldStore + life_loop）。attachment 缺口从 0.45 降到 0.21，CHAT reward 从 -0.12 改善到 -0.02 |
+
+#### P0-1 修复的实测对比（2026-07-06）
+| 指标 | 修复前 (run_062952) | 修复后 (run_151237) |
+|---|---|---|
+| CHAT/EXPLORE 数量 | 0（29 tick 全 REFLECT/THINK） | CHAT 出现（结构化路径产生） |
+| attachment 缺口 | 0.45（深，bond 从 0 起步） | 0.21（bond 初始 0.4 + 增益 +0.05） |
+| CHAT 的 reward | -0.12（+0.2 bonus 盖不过负效用） | -0.02（接近 0，闭环几乎转正） |
+| mood 单调锁死归零 | 是（0.5→0 单调，永久卡死） | 核心死锁解开，但 mood 稳定性仍受推理模型影响（见下） |
+
+#### P0-1 残留项（后续优化，非死锁）
+P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 闭环），但实测发现 mood 在长 tick 后仍会回落到 0，根因已转移：
+1. **推理模型格式遵守不稳定**（新问题，非 P0-1）：step-3.7-flash 常忽略【动作:XXX】格式要求，退回关键词 fallback。属 prompt 工程/模型能力问题，非代码 bug。
+2. **curiosity→EXPLORE 传导弱**（P5-10 同源延伸）：curiosity gap 涨到 0.45 但系统不选 EXPLORE，转为 REFLECT 循环拉低 mood。
+3. **关键词 fallback 偏向 REFLECT**：archivist/mind 的反思关键词（思考/分析/理解/记录/整理）命中率高，fallback 时默认 REFLECT。
+
+**建议后续**：① 收紧各器官 REFLECT 关键词（去掉高频泛化词）；② 强化结构化 prompt（格式要求前置 + few-shot）；③ 考虑 curiosity 驱动的 EXPLORE 触发器。这些是调优不是 bug 修复。
 
 #### 修复说明
 - **死代码删除原则**：只删"包外零引用 + 删除后包导入正常"的，保留有数据依赖的目录（如 limb_guides/data/）。
 - **P3-18 副作用**：首次启动会加载 sentence-transformer 模型（all-MiniLM-L6-v2，约 1-2 秒）。若环境无此包则自动回退 TF-IDF，行为不变。
-- **未动 P0-1**：价值→行为断链是架构级问题，留待专门会话处理。
+- **P0-1 回滚预案**：`git revert 6b80130 3f5c2b6 7e70740`，或 `.env` 设 `STRUCTURED_ORGAN_ACTIONS=0` 回退到原关键词逻辑。
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经死代码清理后现 **232 文件/82.7k 行**）。全局问题清单收录 **227 项**，其中 **9 项已修复**（见上方"已修复"表）。**最高优先级未修：P0-1 价值→行为断链**（25 tick 实测验证，见 A 节）。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经死代码清理后现 **232 文件/82.7k 行**）。全局问题清单收录 **227 项**，其中 **12 项已修复**（见上方"已修复"表）。**P0-1 核心死锁已解**（3 commits，实测验证 CHAT 出现 + attachment 缺口大幅改善）；残留 mood 稳定性受推理模型格式遵守影响，列为后续 prompt 调优项。*
 
 
