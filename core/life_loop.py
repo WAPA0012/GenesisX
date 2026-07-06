@@ -922,6 +922,10 @@ class LifeLoop(GapDetectorMixin):
         drive_signals = self.organ_manager.get_all_drive_signals(drive_state, context)
         context["drive_signals"] = drive_signals
         context["drives_prompt"] = self.organ_manager.format_drives_for_llm(drive_state, context)
+        # P0-1 残留修复：把 gaps/weights 写入 context，让器官的 _build_thinking_prompt
+        # 和价值驱动兜底（BaseOrgan._value_driven_fallback）能读到当前价值缺口。
+        context["value_gaps"] = drive_state["gaps"]
+        context["value_weights"] = drive_state["weights"]
 
         # === 新增: PHASE 4.6: 进化系统检查 ===
         # 检查是否需要触发自我进化（吞噬新软件）

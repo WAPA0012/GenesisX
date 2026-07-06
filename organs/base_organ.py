@@ -162,6 +162,8 @@ class BaseOrgan(ABC):
 
         # 步骤 1：构建提示并调 LLM
         prompt = self._build_thinking_prompt(state, context)
+        # P0-1 残留修复：格式要求前置（推理模型对开头指令更敏感）
+        prompt = self._format_structured_output_prompt_prefix() + prompt
         try:
             thought = llm_session.think(prompt)
         except Exception as e:
@@ -193,11 +195,91 @@ class BaseOrgan(ABC):
                 if _structured_actions_enabled():
                     logger.debug(f"器官 {self.name} 关键词 fallback 得到 {len(actions)} 动作")
 
-        # 步骤 3：仍无动作 → 规则模式兜底
+        # 步骤 3：仍无动作 → 价值驱动兜底（根据当前最大价值缺口选动作）
+        if not actions:
+            actions = self._value_driven_fallback(state, context)
+
+        # 步骤 4：价值驱动也无动作 → 各器官的规则模式
         if not actions:
             actions = self._propose_actions_impl(state, context)
 
         return actions
+
+    def _value_driven_fallback(
+        self,
+        state: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> List[Action]:
+        """价值驱动兜底（P0-1 残留修复）：结构化+关键词都失败时，按价值缺口选动作。
+
+        推理模型（step-3.7-flash）常忽略【动作:XXX】格式要求，退回关键词 fallback。
+        若关键词也偏向 REFLECT/THINK（高频词命中），系统会陷入反思死循环。
+        此方法在退入规则模式前，根据当前最大的价值缺口维度选一个主动动作，
+        让价值系统真正驱动行为，而非被 LLM 的叙事习惯劫持。
+
+        映射（按器官的 value_dimension 与缺口的语义对应）：
+          - curiosity 缺口大 → EXPLORE（满足好奇）
+          - attachment 缺口大 → CHAT（社交联结）
+          - homeostasis 缺口大 → SLEEP（恢复）
+          - competence 缺口大 → EXPLORE（学习提升）
+          - safety 缺口大 → REFLECT（警惕）
+        缺口阈值 0.3；无显著缺口则返回空（交给规则模式）。
+        """
+        gaps = context.get("value_gaps") or state.get("gaps") or {}
+        if not gaps:
+            return []
+
+        # 找最大缺口维度
+        max_dim = max(gaps, key=gaps.get) if gaps else None
+        max_gap = gaps.get(max_dim, 0) if max_dim else 0
+        if max_gap < 0.3:
+            return []  # 无显著缺口，交给规则模式
+
+        # 维度 → 动作映射
+        dim_action = {
+            "curiosity": ("EXPLORE", 0.2, ["llm_access"]),
+            "attachment": ("CHAT", 0.0, []),
+            "homeostasis": ("SLEEP", 0.0, []),
+            "competence": ("EXPLORE", 0.2, ["llm_access"]),
+            "safety": ("REFLECT", 0.1, []),
+        }
+        mapping = dim_action.get(max_dim)
+        if not mapping:
+            return []
+
+        action_type_str, risk, caps = mapping
+        from common.models import ActionType
+        try:
+            action_type = ActionType(action_type_str)
+        except ValueError:
+            return []
+
+        logger.debug(
+            f"器官 {self.name} 价值驱动兜底: 缺口维度={max_dim}({max_gap:.2f}) → {action_type_str}"
+        )
+        return [Action(
+            type=action_type,
+            params={
+                "source": "value_driven_fallback",
+                "gap_dimension": max_dim,
+                "gap_value": round(max_gap, 3),
+            },
+            risk_level=risk,
+            capability_req=caps,
+        )]
+
+    def _format_structured_output_prompt_prefix(self) -> str:
+        """返回前置到 prompt 开头的强制格式提醒（适配推理模型）。
+
+        推理模型（step-3.7-flash）会先内部推理再输出 content，对 prompt 末尾的
+        格式要求容易忽略。把核心要求前置到开头，让模型在开始推理前就知道
+        最终必须输出【动作:XXX】标记。
+        """
+        return (
+            "【重要】请在回答的最后用【动作:类型】【主题:内容】格式给出行动决策"
+            "（如【动作:EXPLORE】【主题:xxx】）。可选动作: EXPLORE/REFLECT/CHAT/GROW/LEARN_SKILL/THINK。"
+            "不要默认选 REFLECT/THINK。下面是思考素材：\n\n"
+        )
 
     def _format_structured_output_prompt_suffix(self) -> str:
         """返回追加到 _build_thinking_prompt 末尾的结构化输出格式说明。
