@@ -725,9 +725,16 @@ class SemanticNoveltyCalculator:
 
 
 # 便利函数
+# 修复 P3-17: 缓存默认计算器单例，避免每次调用重新加载模型/重建缓存
+_default_calculator: Optional[SemanticNoveltyCalculator] = None
+
+
 def get_default_calculator() -> SemanticNoveltyCalculator:
-    """获取默认的新颖度计算器（从环境变量配置）."""
-    return SemanticNoveltyCalculator()
+    """获取默认的新颖度计算器（从环境变量配置，单例缓存）."""
+    global _default_calculator
+    if _default_calculator is None:
+        _default_calculator = SemanticNoveltyCalculator()
+    return _default_calculator
 
 
 def compute_novelty(
@@ -742,12 +749,16 @@ def compute_novelty(
         insight: 新洞察文本
         existing: 现有文本列表
         threshold: 新颖度阈值
-        config: 可选配置
+        config: 可选配置（传入时新建专用计算器，否则用单例）
 
     Returns:
         (novelty_score, is_novel) 元组
     """
-    calc = SemanticNoveltyCalculator(config)
+    # 修复 P3-17: 无自定义 config 时复用单例，避免重复加载模型
+    if config is None:
+        calc = get_default_calculator()
+    else:
+        calc = SemanticNoveltyCalculator(config)
     return calc.compute_novelty(insight, existing, threshold)
 
 
