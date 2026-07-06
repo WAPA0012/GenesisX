@@ -5,7 +5,7 @@
 > **生成方式**：通读源码 + 论文对照，标注 `🔍问题` 为值得后续迭代的点。
 > **版本基准**：v1.3.0，5 维价值系统（已从早期 9 维精简）。
 > **最后更新**：2026-07-06
-> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ⏳ 第3-7,9章待续（105文件/38k行）
+> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ⏳ 第4-7,9章待续（76文件/29k行）
 
 ---
 
@@ -14,7 +14,7 @@
 - [0. 项目概览与心智模型](#0-项目概览与心智模型)
 - [1. 基础层 `common/` + `models/`](#1-基础层-common--models) ✅
 - [2. 核心理论层 `axiology/` + `affect/`](#2-核心理论层-axiology--affect) ✅
-- [3. 记忆层 `memory/`](#3-记忆层-memory) ⏳待续
+- [3. 记忆层 `memory/`](#3-记忆层-memory) ✅
 - [4. 认知/感知/代谢 `cognition/` + `perception/` + `metabolism/`](#4-认知感知代谢) ⏳待续
 - [5. 器官层 `organs/`](#5-器官层-organs) ⏳待续
 - [6. 工具层 `tools/`](#6-工具层-tools) ⏳待续
@@ -264,11 +264,243 @@ setpoint 管理散落 3 处（加 axiology_config.py）。
 
 ---
 
-## 3. 记忆层 `memory/` — 待续
+## 3. 记忆层 `memory/`
 
-> ⏳ **本章节待新会话续写。** memory/ 含 29 文件/8733 行，是项目第三大模块。
-> **续写提示**：精读顺序 `episodic.py`→`schema.py`→`skill.py`→`retrieval.py`→`consolidation.py`→`dream.py`→`familiarity.py`(890行,联想网络)→`semantic_novelty.py`(750行)→`personality_encoding.py`→`gates.py`→`pruning.py`→`salience.py`。
-> **已知线索**：`memory/skills/` 和 `memory/limb_guides/` 有代码重复（README 已提及）。CLS 三层记忆架构，容量 Episodic 50k/Schema 1k/Skill 300。
+> 29 文件/8733 行——项目第三大模块。论文 §3.4（CLS 三层记忆）+ §3.4.3（熟悉度/联想）+ §3.4.4（人格调制编码）+ §3.10.4（梦-反思-洞察巩固）的落地。承担"经验→知识→技能"的压缩与"联想/遗忘/做梦"。
+>
+> **目录结构**：
+> ```
+> memory/
+> ├── episodic.py        (523)  ⭐ CLS第1层：情节记忆，append-only，JSONL持久化
+> ├── schema.py          (332)  ⭐ CLS第2层：图式记忆，信念+证据+置信度
+> ├── skill.py           (349)  ⭐ CLS第3层：技能记忆，可执行宏动作
+> ├── retrieval.py       (453)  ⭐ 混合检索(语义/关键词/近因/显著性/联想)
+> ├── smart_retrieval.py (276)     规则/AI驱动的"要不要检索"决策
+> ├── consolidation.py   (745)  ⭐ 梦-反思-洞察巩固(实际接入)
+> ├── dream.py           (671)  🔍 DreamDirector(与consolidation重复，孤立)
+> ├── familiarity.py     (890)  ⭐ 联想网络(共现/因果/情绪/语义/时间)+普鲁斯特效应
+> ├── semantic_novelty.py(750)     嵌入后端(sentence-transformers/API/本地/TF-IDF)
+> ├── salience.py        (82)      论文§3.10.4显著性公式
+> ├── personality_encoding.py(624) 🔍 论文§3.4.4人格调制编码(孤立)
+> ├── organ_guide_manager.py(382)  器官使用指南(JSON存储)
+> ├── gates.py           (187)  🔍 海马门控(孤立,仅测试)
+> ├── pruning.py         (363)  🔍 容量管理+巩固(孤立,仅测试+archivist)
+> ├── indices.py         (274)  🔍 多索引检索(孤立,仅测试+archivist/snapshot)
+> ├── utils.py           (62)      get_episode_attr/cosine_similarity
+> ├── __init__.py        (186)
+> ├── skills/            (7文件)   外部工具技能(文件/网页/PDF/分析)
+> └── limb_guides/       (5文件)  🔍 肢体指南(与skills逐字节重复+导入即崩)
+> ```
+>
+> **接入真相**（精读+全项目grep确认）：life_loop 实际只用了 `EpisodicMemory`/`SchemaMemory`/`SkillMemory`/`MemoryRetrieval`/`DreamConsolidator`/`smart_retrieval` 这 6 个。`dream.py`(DreamDirector)、`personality_encoding.py`、`gates.py`、`pruning.py`、`indices.py` **运行时孤立**（仅 tests/test_memory.py 引用）。详见 3.x 速查与 P3-5。
+
+### 3.1 CLS 三层记忆数据流（论文 §3.4）
+
+```
+EpisodeRecord(e_t)  ──append──►  EpisodicMemory [N_ep=50000]  episodes.jsonl (持久)
+   (life_loop PHASE 12)                                    │
+                                                           │ 梦境巩固 (PHASE 15, 周期触发)
+                                                           ▼
+                          高显著性 episodes  ──压缩──►  SchemaMemory [N_sch=1000]  schemas.jsonl (⚠未持久)
+                                                           │      "Goal X 通常产生 ~reward"
+                                                           ▼
+                          成功动作序列    ──提取──►  SkillMemory  [N_sk=300]   skills.jsonl (⚠未持久)
+                                                               "可复用宏动作"
+检索方向(PHASE 3):  user_message ──smart_retrieval决策──► retrieve_episodes/schemas/skills ──► 构建context
+```
+
+### 3.2 `episodic.py` (523行) ⭐ CLS 第1层 — 情节记忆
+**职责**：`EpisodicMemory`——append-only 的情节存储，backed by `episodes.jsonl`。论文 §3.4 的 M_t。
+
+**数据结构**（内存索引三件套）：
+- `_cache: deque` —— 有序 episode 序列（按 tick 单调，因为 tick 递增）
+- `_by_tick: Dict[int, EpisodeRecord]` —— tick→episode，O(1) 查找
+- `_sorted_ticks: List[int]` —— 排序 tick 列表，`bisect` 二分查找做时间范围查询
+
+**写入** `append(episode)`：① 入 deque + 字典 + `bisect.insort` 维持有序 ② 加联想记忆 ③ **立即持久化**（修复 H22，每条 append 都 `open(ab)` 写盘）④ 超 `max_cache_size`(默认50000) 淘汰队首。
+
+**查询**：`query_recent(n)`（逆序取 n）、`query_by_time_range`（二分定位 `[left,right)`）、`query_by_goal`/`query_by_tags`（线性扫描）、`query_high_salience`（按 |delta|）。
+
+**磁盘管理**：`prune_disk_by_salience(threshold, keep_recent_ratio, backup)`（保留高|delta|+最近 N%，备份后重写）、`archive_old_episodes`（旧 tick 归档到独立文件）。两者都会**清空缓存重载**。
+
+**🔍问题 P3-1（重要，性能）— 每 tick 一次文件 `open/append/close`**：`_persist_episode` 每次 append 都 `open(episodes_path,'ab')` 写一行再关。高频写（每 tick 一条 episode）下，文件反复打开关闭，IO 开销显著。对比 `common/jsonl.JSONLWriter` 是流式（open 一次写多次）。episodic 绕过了 life_loop 已有的 JSONLWriter 自己重写了一套持久化（见 P3-2）。优化应复用常驻的 JSONLWriter。
+**🔍问题 P3-2（重要，重复实现）— 持久化逻辑绕开 JSONLWriter 重写**：episodic.py、schema.py、skill.py 各自用 `orjson`/`json` 手写 JSONL 读写，而 common/jsonl.py 已有统一 `JSONLWriter`+`read_jsonl`（含自定义 datetime/Enum/Pydantic 序列化）。三套写法并存，序列化行为可能不一致（如 episodic 用 `default=str` 兜底，schema/skill 用 model_dump）。
+**🔍问题 P3-3**：`_persist_episode` 用 `print` 调试输出（L118/132/138）而非 logger——每条 episode 都打印，污染日志。
+**🔍问题**：`query_by_goal` 用 `ep.current_goal`，但 `query_by_tags` 用 `getattr(ep,'tags',[])`（防御式）——对 EpisodeRecord 是否有 `tags` 字段的不一致假设；缓存淘汰只清 `_cache/_by_tick/_sorted_ticks`，不清联想网络（联想节点引用已淘汰的 tick 会成为悬空引用）。
+
+### 3.3 `schema.py` (332行) ⭐ CLS 第2层 — 图式记忆
+**职责**：`SchemaMemory`——压缩知识（信念/规则），带证据与置信度。论文 §3.4 的 K_t。"冲突时降置信度而非删除"。
+
+**`SchemaEntry`**（Pydantic）：`claim`（信念陈述）/`scope`/`confidence∈[0,1]`/`evidence_refs:List[int]`（支持它的 episode tick）/`supporting_count`+`conflicting_count`/`risk_level`/`tags`/`schema_id`（claim+scope 哈希前16位）。
+
+**容量上限** `MAX_CAPACITY=1000`（论文 Appendix A.7 的 N_sch）。超限时 `_evict_lowest_confidence`（线性扫描找最低 confidence 淘汰 + 重建索引）。
+
+**去重/合并**：`add` 先算 schema_id；若已存在则 `_merge_schema`（合并 evidence_refs **截断到50**防无限增长、supporting/conflicting 累加、confidence = supporting/(supporting+conflicting) 重算）。`mark_conflict` 重复同一逻辑。
+**🔍问题 P3-4**：schema_id 用 `hash_dict({"claim","scope"})[:16]`——语义相同但文字微差（"Goal A 通常产生0.5奖励" vs "目标A通常产生~0.50奖励"）会产生不同 id，**不被识别为重复**，缓慢撑爆容量。consolidation 生成的 claim 是模板字符串（`f"Goal '{goal}' typically yields reward ~{avg_reward:.2f}"`），avg_reward 微变即产生新 schema。
+
+### 3.4 `skill.py` (349行) ⭐ CLS 第3层 — 技能记忆
+**职责**：`SkillMemory`——可执行宏动作（论文 §3.10.3）。`SkillEntry` 含 `action_sequence: List[Action]`/`estimated_cost: CostVector`/`risk_level`/`capabilities`/性能跟踪(`invocation_count`/`success_count`/`average_reward` EMA α=0.2)。
+
+**容量** `MAX_CAPACITY=300`（论文 N_sk）。`_evict_lowest_performing` 淘汰最低 `success_rate()` 的。`record_invocation` 记录每次调用的成功/奖励。`prune_low_performing` 批量清理。
+
+**🔍问题 P3-5（🔴 重要，正确性）— Schema/Skill 永不持久化**：life_loop:190-191 用 `SchemaMemory()`/`SkillMemory()` **无参构造**（未传 persist_path），且 `shutdown()`（core/life_loop.py:1742）**从不调用 `save_to_disk()`**。结果：**巩固产生的 schema/skill 只活在内存，进程结束即全部丢失**。Episodic 有 episodes.jsonl 跨重启累积（session_id=genesisx_persistent），但 CLS 的第 2、3 层记忆**每轮会话从零开始**——直接破坏了论文"经验压缩为长期知识"的核心目标。这是 memory 层最严重的问题。修复：传 persist_path + shutdown 时 save_to_disk + 启动时 load_from_disk（schema/skill 的 load_from_disk/save_to_disk 已实现，只是没被接上）。
+
+### 3.5 `retrieval.py` (453行) ⭐ 混合检索
+**职责**：`MemoryRetrieval`——给 PHASE 3 提供 `retrieve_episodes/schemas/skills`。混合打分：`recency + salience + keyword + semantic + associative`。
+
+**`SemanticEmbeddingProvider`**：三后端 `simple`(默认)/`sentence_transformers`/`openai`。**🔍问题 P3-6（重要）— "simple" 后端是 MD5 伪嵌入，毫无语义**：`_simple_embed` 把文本 MD5 后**循环取 16 字节填 384 维**——同一文本恒等向量，相似文本向量无相关性。默认 backend="simple" 时，`semantic_weight` 即使>0 算出的相似度也是噪声。真正的语义检索在 `semantic_novelty.py` 有 sentence-transformers 支持，但 retrieval 走的是这套伪嵌入。两套嵌入实现并存且质量悬殊（见 P3-7）。
+**🔍问题 P3-7（重要，重复）— 嵌入实现散落 3 处**：① `retrieval.SemanticEmbeddingProvider._simple_embed`(MD5) ② `familiarity.AssociativeMemory._get_embedding`(默认 md5 seed 的 np.random，或可注入函数) ③ `semantic_novelty.SemanticNoveltyCalculator`(真正的 TF-IDF/sentence-transformers/API)。三处对"嵌入"的实现完全不同，且前两处都是伪嵌入。应统一到 `semantic_novelty` 的 `SemanticNoveltyCalculator`。
+
+**`retrieve_episodes`** 流程：① 候选=`query_by_tags`(limit×2)，无候选回退 `query_recent` ② 联想检索（调 episodic.retrieve_by_association，但 mood/stress 取值代码写死 `current_mood=None`——**🔍问题：FieldStore 导入了但从未读，普鲁斯特效应的情绪门控实际失效**）③ 语义分数（按需）④ 逐条 `_score_episode` 加权归一 ⑤ 排序取 top。
+**🔍问题 P3-8**：`retrieve_by_semantic_similarity` 与 `retrieve_episodes(semantic_weight>0)` 功能高度重叠，两个语义检索入口。
+**🔍问题**：`recency_score = max(0, 1 - age/1000)`（1000 tick 半衰，魔法数）；权重归一时若全 0 兜底为 1.0（不报错）。
+
+### 3.6 `smart_retrieval.py` (276行) — 检索需求决策
+**职责**：`analyze_retrieval_need(message)` 用规则决定检索强度：`NONE`（简单问候，正则匹配）/`BASIC`（短消息/基础关键词）/`SEMANTIC`（回忆/个人信息/复杂问题）。另有 `ai_decide_retrieval`（LLM 决策，异步）。
+
+life_loop PHASE 3 实际调用 `analyze_retrieval_need`（规则版），按 `get_retrieval_config(decision)` 调整检索权重。
+**🔍问题 P3-9**：`ai_decide_retrieval` 永不被调用（全项目 grep 仅自身定义）——LLM 决策是死代码，永远走规则。规则关键词表硬编码中文，英文消息基本都落到"默认按词数/问号数"分支。
+**🔍问题**：`SEMANTIC_KEYWORDS` 与 `BASIC_KEYWORDS` 有重叠（`'如何'/'什么'` 同时出现在两表），按代码顺序 SEMANTIC 先判，故 BASIC 的这两个词永远不生效。
+
+### 3.7 `consolidation.py` (745行) ⭐ 梦-反思-洞察巩固（实际接入）
+**职责**：`DreamConsolidator`——PHASE 15 周期触发（life_loop:1538 当 `episodic.count()>=20` 时）。论文 §3.10.4。流程：
+```
+should_consolidate(cooldown/attempts/quality降级检查)
+ → _sample_episodes(显著性阈值, top20)
+ → _extract_schemas(按goal分组, ≥2条且avg_reward>0.3 → 评估Q^insight → 过质量阈值 → P1-8证据验证 → add)
+ → _extract_skills(按action_type分组, ≥3条且avg_reward>0.6 → add)
+ → _prune_episodes(budget>1000时, 保留最近100+高|delta|)
+ → record_success/failure(更新防死循环状态)
+```
+
+**`InsightQualityEvaluator`**：论文 Q^insight = `0.4·压缩性 + 0.3·可迁移性 + 0.3·新颖性`。压缩性=`log(n+1)/log(10)`；可迁移性=avg_reward；新颖性=语义嵌入 `1-max cos(emb)`（无 semantic_calculator 时退化为词汇 Jaccard 重叠）。
+
+**`EvidenceConfig`**（论文§3.10.4 强证据）：高影响(safety/attachment 标签 或 Q≥0.8)的洞察需 ≥1 tool_call 或 ≥N 用户确认。`_check_evidence_requirement` 检查 action.type 非 CHAT/SLEEP/REFLECT 算 tool 证据，并探测 `user_confirmed`/`user_rating`/`feedback`/`outcome.ok` 多字段推用户确认。
+
+**防死循环**（论文§3.10.4）：`cooldown_ticks=30`/`max_attempts=3`/连续2次失败降 quality_threshold（最低0.3）。成功重置。
+
+**🔍问题 P3-10（重要，"证据"几乎永远满足）**：默认 `min_tool_calls=1, min_user_confirmations=0`。`_check_evidence_requirement` 的逻辑：当 `min_user_confirmations==0` 时，只要 `tool_call_count>=1` 即 `has_evidence=True`（L401-404）。而 tool 证据的判定极宽（任何非 CHAT/SLEEP/REFLECT 的 action）——USE_TOOL/EXPLORE/LEARN_SKILL 都算。结果：**只要 supporting episodes 里有一条非聊天动作，洞察就通过证据门**。证据验证形同虚设。另外它检查的 `ep.user_confirmed`/`ep.user_rating`/`ep.feedback` 字段在 EpisodeRecord 模型里**不存在**（见 common/models.py），那些分支恒不命中。
+**🔍问题 P3-11**：`_extract_skills` 用 `representative_ep.action` 单条作为 `action_sequence`——"宏动作/技能"其实是单动作的快照，没有真正提取"序列"。且 skill 名恒为 `skill_{action_type.lower()}`，同类型反复巩固会因 SkillMemory.add 按 name 去重而**只保留第一条**。
+**🔍问题 P3-12**：`_prune_episodes` 调 `prune_disk_by_salience(salience_threshold=0.3)`——但 `_sample_episodes` 已按 salience≥阈值 取样，prune 又用固定 0.3，两处阈值语义不同（一个 Q^insight 门、一个 |delta| 门），易混淆。
+
+### 3.8 `dream.py` (671行) 🔍 孤立 — 与 consolidation 重复
+**职责**：`DreamEngine`+`DreamDirector`——梦-反思-洞察的**另一套实现**。`DreamDirector.start_dream_cycle` 同样做 抽样→轨迹→洞察→质量评估→沉淀→剪枝，逻辑与 `consolidation.DreamConsolidator` 高度重叠。
+
+**🔍问题 P3-13（重要）— 整个 dream.py 运行时孤立**：全项目 grep，`DreamDirector`/`DreamEngine`/`create_dream_director` **零外部引用**（仅 dream.py 自身 + memory/__init__ 重导出）。life_loop 用的是 `consolidation.DreamConsolidator`，不是 `dream.DreamDirector`。这 671 行是"梦境"概念的**第二份实现却从未接入**。其差异点（DreamEpisode/DreamReport 数据类、联想重组 `_generate_associative_traces`、DreamPhase 状态机）是有价值的设计，但要么接入要么删除。
+
+**🔍问题 P3-14**：`dream.py:529` 调 `compute_novelty(insight=..., existing=..., threshold=0.85)` 用**关键字参数**，而 `semantic_novelty.compute_novelty` 签名是 `(insight, existing, threshold, config=None)`——参数名碰巧对得上能跑；但 `SemanticNoveltyCalculator.compute_novelty`（方法）签名是 `(insight_text, existing_texts, threshold)`——**参数名不同**。consolidation.py:195 用方法版传位置参数。两种调用风格 + 两套参数名，维护易错。
+**🔍问题**：`_check_novelty` 降级路径做 `insight.get("claim","") == schema.claim` 精确字符串相等——几乎恒为 novel。
+
+### 3.9 `familiarity.py` (890行) ⭐ 联想网络（最大文件）
+**职责**：论文 §3.4.3 熟悉度信号 + 双阶段检索 + §3.10.4 梦境联想重组。三大组件：
+
+**`AssociationEdge`/`AssociativeNode`/`AssociativeNetwork`**：有向带权图 G=(V,E)。节点=记忆（含 embedding/mood/stress/salience），边=联想。
+- **5 种联想**（权重公式 `w = Σβ_i·w_i`，默认 β=[0.25共现, 0.30因果, 0.20情绪, 0.15语义, 0.10时间]）：
+  - 共现（同 episode，`register_episode` 两两建边 boost 0.3）
+  - 因果（`register_causal_link` action→result）
+  - 情绪（`1 - 0.6·|Δmood| - 0.4·|Δstress|`，普鲁斯特效应）
+  - 语义（嵌入余弦，映射[-1,1]→[0,1]）
+  - 时间（1h内=1.0，之后指数衰减，>24h=0）
+- **`propagate_activation`**（梦境用）：种子激活=1.0，沿边传播 `score·weight·0.7`，最多 3 步，阈值 0.3。
+- **`find_associative_path`**：BFS 找两节点最短联想路径（梦境轨迹用）。
+- **`get_proust_effect_memories`**：按当前 mood/stress 找相似情绪记忆 top10。
+- **容量控制**：每节点 `max_associations=10`，超限替换权重最低边；`decay_associations` 全图衰减，低于 `association_threshold=0.2` 删边。
+
+**`AssociativeMemory`**（管理器，被 EpisodicMemory 持有）：`add_episode_memory`（建节点+自动共现链接）、`retrieve_by_association`（语义70%+联想邻居30%+普鲁斯特 boost 0.2）、`generate_dream_assembly`（梦境联想重组，供 dream.py 调）。
+
+**🔍问题 P3-15（🔴 重要）— 联想网络无法持久化**：`export_state` 实现了（序列化节点+边），但 `import_state` 是 **`pass`（空实现，L869-873，注释"完整恢复需要重建节点和边"）**。且 EpisodicMemory 恢复时（`_load_from_disk`）**不重建联想网络**——只在新 append 时增量加节点。结果：**每次重启，整个联想图（共现/因果/情绪链接）丢失，只能从重启后的新 episode 重新积累**。这违背了"跨会话记忆累积"（session_id=genesisx_persistent）的意图。
+**🔍问题 P3-16**：默认嵌入 `_get_embedding` 是 `md5(text)→np.random.seed→randn`——**确定性伪随机，无语义**。同一段文本每次进程内相同（因 md5 seed），但不同文本的"相似度"纯随机。联想网络的"语义联想"权重组分是噪声（见 P3-7）。
+**🔍问题**：`_compute_temporal_similarity` 用 `created_at`（wall-clock datetime）而非 tick——多 session 间 wall-clock 跳变会让时间联想失真；`add_episode_memory` 的双向共现链接（L668-676）会让边数翻倍且方向语义混乱（图本应有向）。
+
+### 3.10 `semantic_novelty.py` (750行) — 嵌入后端（最完整）
+**职责**：`SemanticNoveltyCalculator`——论文 §3.10.4 要求的"语义嵌入新颖度"的**正经实现**（对比 retrieval/familiarity 的伪嵌入）。支持 5 后端：`SENTENCE_TRANSFORMERS`(本地模型,推荐)/`OPENAI`/`DASHSCOPE`/`LOCAL_LLM`(Ollama)/`TFIDF`(回退,无依赖)。`EmbeddingConfig.from_env()` 读 `EMBEDDING_BACKEND` 等环境变量。
+
+**新颖度公式**（论文）：`C_nov = 1 - max_{s∈Schema} cos(emb(insight), emb(s))`。`compute_novelty`/`compute_novelty_batch` 返回 `(score, is_novel)`。带内存缓存(FIFO,max_cache_size)+可选磁盘缓存(`.npy`+索引 json)。
+
+**🔍问题 P3-17**：模块级便利函数 `compute_novelty(insight, existing, ...)`（L727）**每次调用都 `new` 一个 `SemanticNoveltyCalculator`**——缓存全失效，且若 backend=sentence-transformers 会重复加载模型。dream.py 走的就是这个函数。
+**🔍问题 P3-18（设计）**：`EmbeddingConfig.auto_detect_backend` 是**实例方法却用 `cls` 参数名**（L253 `def auto_detect_backend(cls)`），且 `EmbeddingConfig.from_env` 不调用它——自动检测形同虚设，默认 `EmbeddingBackend.TFIDF`。当前运行环境(.env 是 stepfun **chat** 模型)无 embedding API 配置，实际走 TF-IDF（字符三元组哈希到 384 维，比 MD5 好但仍是浅嵌入）。
+**🔍问题**：`_compute_embedding_local` 解析 Ollama 响应 `result.get("embedding", result.get("embeddings",[])[0])`——若 key 都不在会 `KeyError`/`IndexError`；`compute_embedding` 的 backend 分支用 `.endswith("api")` 字符串判定，CUSTOM_API 匹配但 OPENAI 也被显式列出，逻辑冗余。
+
+### 3.11 `salience.py` (82行) — 显著性公式
+**职责**：`compute_salience(episode)` 实现论文 §3.10.4：`Sal = a_δ·|δ| + a_u·(1-Prog) + a_n·Novelty`，默认权重 `a_δ=1.0/a_u=0.5/a_n=0.3`，温度 `κ_sal=3.0` 做 sigmoid 缩放到 [0,1]。
+
+**v15 适配**：用 5 维价值系统做代理——`unmet_score` 用 `episode.gaps["competence"]`（任务未完成代理），`novelty_score` 用 `episode.gaps["curiosity"]`（新颖性代理）。
+
+**🔍问题 P3-19**：被 consolidation.py 导入使用，但**全项目无其他运行时调用方**（grep `compute_salience` 仅 consolidation + tests）——即显著性公式只在"巩固时对全量 episode 重算"，写入 episode 时（PHASE 12）并不计算存储 salience 字段。EpisodicMemory 的 `query_high_salience` 用的是 `|delta|` 不是这个公式——**两套"显著性"定义并存**。
+**🔍问题**：`competence`/`curiosity` gap 作为代理是论文公式的近似，proxy 质量存疑（competence gap 高 ≠ 目标未完成）。
+
+### 3.12 `personality_encoding.py` (624行) 🔍 孤立 — 论文§3.4.4
+**职责**：论文 §3.4.4"人格调制的记忆编码"完整实现。4 个调制器：
+- `PersonalityModulatedTagging`：`tag_intensity = |mood|·(1+stress)·(1+λ_es·ES_t)`
+- `CrossDomainAssociationCalculator`：`P_cross = P_base·(1+λ_et·ET_t)`（高探索倾向→更多跨域联想）
+- `PersonalityModulatedConsolidation`：`θ = θ_base·(1+λ_ct·CT_t)`（高保守倾向→巩固阈值更高）
+- `NoveltySensitivityCalculator`：`sensitivity = base·(1+λ_et·ET_t)`
+- `PersonalityModulatedEncoder.encode()` 整合四者；`update_personality_from_experience` 慢速更新 ET/CT。
+
+**🔍问题 P3-20（重要）— 整个文件运行时孤立**：全项目 grep `PersonalityModulatedEncoder`/`create_encoder` **零外部引用**（仅自身 + memory/__init__ 重导出 + 测试）。即论文 §3.4.4 的整套人格调制编码机制**写了但没接进 life_loop 的记忆写入路径**（PHASE 12 episodic.append 不调它）。`PersonalityMiddleVars`(ET/CT/ES) 与 axiology/personality.py 的大五人格→中间变量是**两套并行的人格中间变量定义**（见第2章 P2-x 相关）。
+**🔍问题**：`MemoryDomain` 枚举有 `PROCEDURAL`/`SEMANTIC` 但 CLS 实际只有 episodic/schema/skill 三层——域映射未实现。
+
+### 3.13 `gates.py`(187) + `pruning.py`(363) + `indices.py`(274) — 🔍 孤立三件套
+> 三者都在 `tests/test_memory.py` 有覆盖，但**运行时基本不接入**（life_loop 不用）。是 CLS 记忆的"第二套基础设施"，与 episodic/schema/skill 的内置方法功能重叠。
+
+**`gates.py` `MemoryGate`**：海马门控——`should_store_episodic`(新颖度/显著性/|δ|/容量惩罚)、`should_consolidate_to_schema`(频次≥3 或 reward>0.8)、`should_extract_skill`(成功率≥0.8)。`get_priority_score` = `0.3·novelty+0.4·reward+0.3·delta`。
+- **🔍问题**：life_loop PHASE 12 无条件 `episodic.append`（不调 gate）——**写入门控完全没启用**，所有 episode 都进 episodic。门控阈值默认 `novelty_threshold=0.6` 等魔法数硬编码。
+
+**`pruning.py` `MemoryPruner`**：容量管理（N_ep=50000/N_sch=1000/N_sk=300，与论文 Appendix A.7 对齐——**这是容量常数的另一处定义**，见第1章 P1-3 三重定义问题）。`select_episodes_to_prune`(按 importance=`0.3reward+0.2delta+0.2recency+0.3novelty`)、`consolidate_episodes`(聚类→schema)、`extract_skills`(按 tool_id 成功率)。
+- **🔍问题 P3-21**：与 `schema._evict_lowest_confidence`/`skill._evict_lowest_performing`/`episodic.prune_disk_by_salience` 功能重叠——**剪枝逻辑三套**（pruning.py 通用版 + 各记忆类内置版 + consolidation._prune_episodes）。archivist_organ 引用 pruning 但实际容量淘汰走各记忆类内置。
+
+**`indices.py` `MemoryIndex`**：多索引（time/value/tag/embedding）快速检索。`retrieve_by_time/value/tag/similarity`。
+- **🔍问题**：与 `EpisodicMemory` 的内置 `_by_tick`/`_sorted_ticks`/`query_by_*` **完全重叠**——EpisodicMemory 自己维护了 tick 索引，MemoryIndex 又做一遍。snapshot.py/eval 引用 indices 但主检索路径走 retrieval.py。**双重索引基础设施**。
+
+### 3.14 `organ_guide_manager.py` (382行) — 器官使用指南
+**职责**：`OrganGuideManager`——为器官/肢体/插件生成并存储"使用指南"（JSON，存 `memory/limb_guides/data/organ_guides.json`）。`OrganGuide.to_llm_prompt()` 把指南格式化给 LLM（"我有什么器官，怎么用"）。被 `core/growth/growth_manager.py` 调用（生成新肢体时注册指南）。
+
+**🔍问题**：与 `core/capability_*`（能力管理三件套，见第8章 P8-19）概念重叠——"器官能力描述"散落 organ_guide_manager / capability_manager / plugins/growth 多处。`_generate_usage_examples` 关键词表硬编码（get/fetch/post/read/write...）。
+
+### 3.15 `skills/`(7文件) + `limb_guides/`(5文件) — 🔍 严重重复
+> 两包名义上分工：`skills/`=外部工具技能（网上下载，调第三方API）；`limb_guides/`=肢体指南（自己生成，调自己的器官）。**但实际是逐字节复制的死代码**。
+
+**`skills/`**（活的）：`base.py`(BaseSkill/SkillResult/SkillCost/SkillRegistry **非线程安全版**) + `skill_registry.py`(SkillRegistry **线程安全版** + 全局单例) + 4 个具体技能(file/web/pdf/analysis，各自调 `tools.tool_executor.LLMToolExecutor`)。
+
+**🔍问题 P3-22（🔴 重要，死代码 + 导入即崩）**：
+1. **`limb_guides/` 4 个指南文件与 `skills/` 4 个技能文件逐字节相同**（已用 md5 校验：file_ops_guide≡file_skill、web_fetcher_guide≡web_skill、pdf_processing_guide≡pdf_skill、data_analysis_guide≡analysis_skill）——连**类名都没改**（指南文件里类名仍是 `FileSkill`/`WebSkill`/`AnalysisSkill`/`PDFSkill`）。
+2. **`limb_guides/__init__.py` 导入不存在的名字**：它 `from .file_ops_guide import FileOpsGuide` 等，但文件里定义的是 `FileSkill`——**`import memory.limb_guides` 必抛 ImportError**。
+3. 因此 `memory/__init__.py:48` 的 `try: from .limb_guides import ...` **恒走 except**，`_limb_guides_available=False`，警告被收集但运行时静默——**整个 limb_guides 包是死的**。
+4. 即便修复导入，4 个"指南"也只是 4 个"技能"的副本，`limb_guides/` 包存在的意义（区别于 skills/）完全没体现。
+
+**🔍问题 P3-23**：`skills/` 内有**两个 `SkillRegistry` 类**——`base.py:SkillRegistry`(172-247, 非线程安全) 和 `skill_registry.py:SkillRegistry`(线程安全+全局单例)。`skills/__init__.py` 导出后者，但前者仍占 76 行死代码。
+
+### 3.x memory/ 速查与调试点
+
+**精读优先级**：`episodic.append`+持久化(数据落盘) > `consolidation.consolidate`(知识压缩链路) > `retrieval.retrieve_episodes`(检索质量) > `familiarity` 联想网络(最大的创新点也是最大死代码风险)。
+
+**接入真相表**（life_loop PHASE 对应）：
+| memory 模块 | life_loop 接入 | 状态 |
+|---|---|---|
+| EpisodicMemory | PHASE 12 `append` + PHASE 3 检索 | ✅ 接入，持久化正常 |
+| SchemaMemory | consolidation 写入 | ⚠️ 接入但**不持久化**(P3-5) |
+| SkillMemory | consolidation 写入 | ⚠️ 接入但**不持久化**(P3-5) |
+| MemoryRetrieval | PHASE 3 | ✅ 接入 |
+| DreamConsolidator | PHASE 15 周期触发 | ✅ 接入 |
+| smart_retrieval | PHASE 3 决策 | ✅ 接入(规则版) |
+| AssociativeMemory | episodic 内部持有 | ⚠️ 写入接入但**不持久化**(P3-15) |
+| semantic_novelty | consolidation/dream 调用 | ✅ 接入(默认TF-IDF) |
+| dream.py(DreamDirector) | — | 🔴 **完全孤立**(P3-13) |
+| personality_encoding | — | 🔴 **完全孤立**(P3-20) |
+| gates.py | — | 🔴 **完全孤立**(仅测试) |
+| pruning.py | archivist 引用 | 🟡 半孤立(P3-21) |
+| indices.py | snapshot/eval 引用 | 🟡 半孤立(P3-21) |
+| limb_guides/ | — | 🔴 **导入即崩→静默禁用**(P3-22) |
+| organ_guide_manager | growth_manager | ✅ 接入 |
+
+**高危区**：
+1. **CLS 第2/3层不持久化**（P3-5）——schema/skill 重启清零，知识无法跨会话累积
+2. **联想网络不持久化**（P3-15）——重启丢失全部联想链接
+3. **伪嵌入污染检索/联想**（P3-6/P3-7/P3-16）——默认后端无语义，semantic_weight 是噪声
+4. **证据门虚设**（P3-10）——巩固的"强证据"要求几乎总满足
+5. **大量孤立代码**（P3-13/P3-20/P3-21/P3-22）——dream.py/personality_encoding/gates/limb_guides 共 ~1900 行死/半死代码
+
+**与论文的对应**：CLS 三层 = §3.4；检索 = §3.4（混合）；熟悉度/联想/普鲁斯特 = §3.4.3；人格调制编码 = §3.4.4；显著性 = §3.10.4；梦-反思-洞察 = §3.10.4；容量 N_ep/N_sch/N_sk = Appendix A.7。
 
 ---
 
@@ -627,7 +859,7 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 
 ## A. 全局问题清单（按优先级）
 
-> 精读 Phase 1-2(common+axiology+affect) 与 Phase 8(core) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。
+> 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。
 
 ### 🔴 高优先级（影响正确性/可维护性）
 
@@ -642,6 +874,10 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P8-11 | **tool/tool_id 键不一致**：gap_detector 读 `params["tool"]`，executor 读 `params["tool_id"]` | core/handlers/{gap_detector:243,action_executor:505} | USE_TOOL 的能力缺口检查永远拿空值，成长系统不被 USE_TOOL 驱动 |
 | P8-7 | **自定义基因被缓存吞掉**：`_get_differentiator()` 用空 config 缓存，legacy `select_organs` 用它，custom_genes 永不生效 | core/differentiate.py | 器官分化配置失效 |
 | P8-18 | **6 模块共 ~2793 行孤立代码**：exceptions/scheduler/capability_router 完全死；emotion_decay/exploration/abstract_state 半死 | core/ | core 最大技术债，需决策删除/接入 |
+| P3-5 | **Schema/Skill 永不持久化**：life_loop 用 `SchemaMemory()`/`SkillMemory()` 无参构造，shutdown 不调 save_to_disk，巩固产物重启清零 | memory/{schema,skill}.py + core/life_loop.py:190-191 | CLS 第2/3层知识无法跨会话累积，违背论文核心目标 |
+| P3-15 | **联想网络无法持久化**：`import_state` 是 `pass` 空实现，EpisodicMemory 重启不重建联想图 | memory/familiarity.py:869 | 重启丢失全部共现/因果/情绪/语义联想链接 |
+| P3-22 | **limb_guides/ 导入即崩 + 与 skills/ 逐字节重复**：4 个指南文件类名仍是 FileSkill 等，__init__ 导入 FileOpsGuide 必抛 ImportError→静默禁用整个包 | memory/limb_guides/ | ~600 行死代码（含 P3-22 的副本） |
+| P3-6/P3-7 | **嵌入实现散落3处且2处是伪嵌入**：retrieval 用 MD5 伪嵌入、familiarity 用 md5-seed 伪随机，仅 semantic_novelty 有真嵌入 | memory/{retrieval,familiarity,semantic_novelty}.py | 默认后端下语义检索/联想是噪声 |
 
 ### 🟡 中优先级（技术债）
 
@@ -661,6 +897,15 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P8-17 | 插件/肢体代码无沙箱 exec（安全）；devour(".") 可读任意文件；flex 黑名单不全 | core/growth/ + core/plugins/ |
 | P8-19 | 能力管理三件套碎片化：capability_router 孤立，三者 API 重叠互不引用 | core/capability_*.py |
 | P8-20 | 三套重叠"调度"概念：scheduler(死)/autonomous_scheduler(仅chat)/life_loop inline 离线逻辑 | core/ |
+| P3-13 | **dream.py(671行) 完全孤立**：DreamDirector/DreamEngine 是 consolidation.DreamConsolidator 的第二套实现，零运行时引用 | memory/dream.py | 决策接入或删除 |
+| P3-20 | **personality_encoding.py(624行) 完全孤立**：论文§3.4.4人格调制编码写了但没接进 episodic.append 写入路径 | memory/personality_encoding.py | 论文功能未生效 |
+| P3-10 | **巩固证据门虚设**：默认 min_user_confirmations=0，任意非CHAT action 即满足"强证据"；检查的 user_confirmed/rating/feedback 字段在 EpisodeRecord 不存在 | memory/consolidation.py | 高影响洞察的证据验证形同虚设 |
+| P3-1/P3-2 | **持久化逻辑绕开 JSONLWriter 重写3套**：episodic/schema/skill 各自 orjson/json 手写，且 episodic 每 tick 一次 open/append/close | memory/{episodic,schema,skill}.py | IO 开销 + 序列化行为不一致 |
+| P3-21 | **剪枝/索引逻辑三套重叠**：pruning.py 通用版 + 各记忆类内置版 + consolidation._prune_episodes；indices.py 与 EpisodicMemory 内置索引重复 | memory/{pruning,indices}.py + memory/{episodic,schema,skill}.py | 维护负担 |
+| P3-9 | **smart_retrieval 的 LLM 决策(ai_decide_retrieval)是死代码**，永远走规则；SEMANTIC/BASIC 关键词表重叠 | memory/smart_retrieval.py | 检索决策质量受限 |
+| P3-18 | **EmbeddingConfig.auto_detect_backend 形同虚设**：实例方法误用 cls 参数名，默认 backend=TFIDF；当前环境无 embedding API | memory/semantic_novelty.py | 默认走浅嵌入(TF-IDF) |
+| P3-14 | compute_novelty 模块函数(关键字参)与 SemanticNoveltyCalculator 方法(参数名不同)两种调用风格+两套参数名，dream.py 走函数版(每次新建calc) | memory/{dream,semantic_novelty}.py | 维护易错 |
+| P3-16 | familiarity 默认嵌入是 md5-seed 的确定性伪随机(randn)，联想网络的"语义联想"是噪声 | memory/familiarity.py | 联想质量退化 |
 
 ### 🟢 低优先级（清理项）
 
@@ -675,6 +920,14 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P8-8 | life_loop 每 tick 新建 Differentiator(仅用 advance_stage)，默认基因重复注册 | core/life_loop.py:1015 |
 | P8-14 | MetabolicLedger.from_dict 不恢复 unlimited 标志；FieldStore 初始值硬编码非配置驱动 | core/stores/{ledger,fields}.py |
 | P8-16 | limb_builder.list_limbs 按 label 过滤但 deploy 从不设 label，恒返回空 | core/growth/limb_builder.py |
+| P3-3 | `_persist_episode` 用 print 调试输出而非 logger，每条 episode 都打印 | memory/episodic.py |
+| P3-4 | schema_id 用 claim+scope 哈希，文字微差产生新 id 撑爆容量；模板 claim 的 reward 微变即新建 | memory/schema.py |
+| P3-8 | retrieve_episodes 与 retrieve_by_semantic_similarity 两套语义检索入口重叠 | memory/retrieval.py |
+| P3-11 | `_extract_skills` 只存单条 action 快照(非真序列)，skill 名按 action_type 去重导致同类型只留首条 | memory/consolidation.py |
+| P3-12 | `_prune_episodes`(阈值0.3) 与 `_sample_episodes`(质量阈值) 两处阈值语义不同易混 | memory/consolidation.py |
+| P3-17 | 模块级 `compute_novelty` 每次调用 new 一个 calculator，缓存全失效/重复加载模型 | memory/semantic_novelty.py |
+| P3-23 | skills/ 内有两个 SkillRegistry 类(base.py 非线程安全 + skill_registry.py 线程安全)，前者76行死代码 | memory/skills/base.py |
+| P3-19 | compute_salience 仅被 consolidation 用；写入 episode 时不存 salience 字段，query_high_salience 另用 \|delta\|——两套"显著性"定义 | memory/salience.py |
 
 ---
 
@@ -688,8 +941,8 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 ### 续做路线图（按推荐顺序）
 ```
 新会话1: "读 CODE_MAP.md，续写第8章 core/"     ✅ 已完成
-新会话2: "读 CODE_MAP.md，续写第3章 memory/"   ← 下一个推荐
-新会话3: "读 CODE_MAP.md，续写第5章 organs/"
+新会话2: "读 CODE_MAP.md，续写第3章 memory/"   ✅ 已完成
+新会话3: "读 CODE_MAP.md，续写第5章 organs/"   ← 下一个推荐
 新会话4: "读 CODE_MAP.md，续写第6章 tools/"
 新会话5: "读 CODE_MAP.md，续写第4章(认知感知代谢)+第7章(安全持久化)"
 新会话6: "读 CODE_MAP.md，续写第9章(入口Web) + 更新A节问题清单"
@@ -714,6 +967,6 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 
 ---
 
-*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) 已完成精读。Phase 3-7,9 待续。全局问题清单已收录 14 + 20 = 34 项。*
+*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) + Phase 3(memory/, 29文件/8733行) 已完成精读。Phase 4-7,9 待续。全局问题清单已收录 14 + 20 + 23 = 57 项（P3-1 ~ P3-23）。*
 
 
