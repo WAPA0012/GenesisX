@@ -156,7 +156,12 @@ class EmbeddingConfig:
         - EMBEDDING_MODEL: 模型名称
         - LOCAL_LLM_URL: 本地模型服务URL
         """
-        backend_str = os.environ.get("EMBEDDING_BACKEND", "tfidf")
+        backend_str = os.environ.get("EMBEDDING_BACKEND", "")
+
+        # 修复 P3-18: 未显式指定后端时，自动检测可用后端
+        if not backend_str:
+            return cls.auto_detect_backend()
+
         try:
             backend = EmbeddingBackend(backend_str)
         except ValueError:
@@ -250,6 +255,7 @@ class EmbeddingConfig:
         )
         return config
 
+    @classmethod
     def auto_detect_backend(cls) -> 'EmbeddingConfig':
         """自动检测最佳后端.
 
