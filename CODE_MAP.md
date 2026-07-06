@@ -5,7 +5,7 @@
 > **生成方式**：通读源码 + 论文对照，标注 `🔍问题` 为值得后续迭代的点。
 > **版本基准**：v1.3.0，5 维价值系统（已从早期 9 维精简）。
 > **最后更新**：2026-07-06
-> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ⏳ 第3-9章待续（148文件/56k行）
+> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ⏳ 第3-7,9章待续（105文件/38k行）
 
 ---
 
@@ -19,7 +19,7 @@
 - [5. 器官层 `organs/`](#5-器官层-organs) ⏳待续
 - [6. 工具层 `tools/`](#6-工具层-tools) ⏳待续
 - [7. 安全 + 持久化 `safety/` + `persistence/`](#7-安全--持久化) ⏳待续
-- [8. 核心引擎 `core/`](#8-核心引擎-core) ⏳待续
+- [8. 核心引擎 `core/`](#8-核心引擎-core-最重要) ✅
 - [9. 入口 + Web `lifecycle/` + `web/` + 顶层脚本](#9-入口--web)
 - [A. 全局问题清单（按优先级）](#a-全局问题清单)
 - [B. 新会话上手指南](#b-新会话上手指南)
@@ -299,11 +299,322 @@ setpoint 管理散落 3 处（加 axiology_config.py）。
 
 ---
 
-## 8. 核心引擎 `core/` — 待续 ⭐最重要
+## 8. 核心引擎 `core/` ⭐最重要
 
-> ⏳ 43 文件/18338 行——**全系统最大模块**。`life_loop.py`(主循环) + `differentiate.py`(器官分化) + `tick.py` + `stores/`(字段/槽位/信号/账本) + `evolution/`(进化引擎,默认禁用) + `growth/`(肢体生成) + `handlers/`(动作执行910行/聊天/缺口检测) + `plugins/`。
-> **续写提示（最重要）**：`life_loop.py` 的 8 阶段初始化 + `run_session()`/`tick()` 主循环必须逐行精读——这是编排一切的中枢。然后 `tick_loop.py`(17阶段) + `differentiate.py`(基因表达)。`handlers/action_executor.py`(910行)是动作落地的关键。`evolution/` 虽禁用但代码完整(clone→mutate→transfer)，值得记录。
-> **已知线索**：`life_loop.py` 顶部注释显示 5 维 Drive 系统被注释禁用；`core/life_loop_backup.py` 是备份文件（疑似可删）。
+> 43 文件/18338 行——**全系统最大模块**。`LifeLoop.tick()` 是编排一切的中枢（17 阶段流水线），向下驱动 axiology/affect/memory/cognition/organs/safety 全部子系统。本章逐文件梳理，并在末尾汇总本章新发现的 20 项问题（P8-1 ~ P8-20）。
+>
+> **目录结构**：
+> ```
+> core/
+> ├── life_loop.py        (1883)  ⭐主循环，LifeLoop 类
+> ├── life_loop_backup.py (2565)  🔍备份(可删)
+> ├── differentiate.py    (633)   器官分化/基因表达
+> ├── tick.py             (62)    TickContext 数据载体
+> ├── state.py            (409)   GlobalState 全局状态聚合
+> ├── abstract_state.py   (478)   LLM 切换时的抽象状态层
+> ├── invariants.py       (63)    运行时不变量检查
+> ├── exceptions.py       (587)   🔍异常体系(未被使用)
+> ├── resource_config.py  (249)   resources.yaml 加载
+> ├── scheduler.py        (451)   🔍调度器(孤立未用)
+> ├── autonomous_scheduler.py (707) 闲时自主任务守护进程
+> ├── exploration.py      (412)   探索任务模板库
+> ├── emotion_decay.py    (615)   🔍精细情绪衰减(未接入)
+> ├── capability_*.py     (×3)    能力管理三件套(见下)
+> ├── handlers/   action_executor(1461)+chat+caretaker+gap
+> ├── stores/     fields+slots+signals+ledger+factory
+> ├── evolution/  (8文件,默认禁用) clone→mutate→eval→transfer→archive
+> ├── growth/     (4文件) LLM 生成肢体(新能力)
+> └── plugins/    plugin_manager+templates/ 预制能力
+> ```
+
+### 8.1 `life_loop.py` (1883行) ⭐⭐ 编排中枢
+
+**职责**：`LifeLoop` 类——数字生命的心脏。`__init__` 分 8 个阶段初始化全部子系统；`run_session()` 跑 tick 循环并做错误降级；`tick()` 执行 17 阶段完整流水线；`shutdown()` 持久化状态。继承 `GapDetectorMixin`（而非组合，见 8.5）。
+
+#### 8 阶段初始化（`__init__` → `_init_*` 方法链）
+```
+① basic_config  → session_id / run_dir / replay_mode / 进度回调
+② stores        → FieldStore + SlotStore + SignalBus + MetabolicLedger + _init_state_from_config
+③ memories      → Episodic/Schema/Skill + MemoryRetrieval + DreamConsolidator + 恢复tick/聊天历史
+④ cognition     → GoalCompiler + Planner + PlanEvaluator + Verifier
+⑤ organs_tools  → 器官LLM会话 + 6器官 + ToolRegistry + 动态工具 + 双器官管理器
+⑥ advanced      → 进化(默认关)/插件/成长/能力管理器/缺口检测器
+⑦ affect        → ValueFunction + RPEComputer + WeightUpdater + ValueLearner + 昼夜节律 + 情感调制
+⑧ loggers       → JSONLWriter(episodes/states/tool_calls) + ActionExecutor + ChatHandler + CaretakerMode
+```
+关键设计：器官创建时注入 `llm_session`（来自 `_organ_llm_manager`，三模式 independent/shared/disabled，见 8.x organs 章）；未走 LLM 的器官回退规则模式。
+
+#### `run_session(max_ticks)` — 论文 §3.13 错误降级
+逐 tick 调用，对 `Exception` **按错误消息字符串匹配**分四类处理：
+- 含 "tool" → 连续 3 次进 CaretakerMode（只保留 caretaker 器官）
+- 含 "memory" → 紧急巩固（budget 5000, salience 0.4，激进清理）
+- 含 "value"/"parameter" → `caretaker_mode.reset_to_safe_defaults()`
+- 其他 → 连续 3 次进 CaretakerMode
+⚠ 注意：自定义异常类 `ToolExecutionError`/`MemoryOverflowError`（`core/exceptions.py`）**从未被 raise**，这里的判断全靠 `str(e)` 子串匹配——脆弱（见 P8-6）。
+
+#### `tick(t)` — 17 阶段完整流水线（⭐最核心，逐阶段）
+```
+PHASE 0   caretaker_mode.check_and_exit()          — 维护模式退出检查
+PHASE 1   _update_body(dt)                          — 代谢:能量/疲劳恢复(昼夜节律调制), 无聊增长×0.5
+PHASE 2   observe_environment(...)                  — 观察:field_snapshot + 可选 user_input
+PHASE 3   smart_retrieval.analyze_retrieval_need    — 智能检索决策(none/basic/semantic), 按需检索 episodes/schemas/skills
+PHASE 4   build_context(...)                        — 构建 context, 含 observations/drive_signals/drives_prompt
+PHASE 4.5 drive_state → organ_manager.get_all_drive_signals  — 驱动力信号(旧版)
+PHASE 4.6 evolution_system.check_evolution_trigger  — 进化检查(默认禁用, AttributeError 吞掉)
+PHASE 4.7 gap_detector.update_known_capabilities    — 能力缺口检测器刷新已知能力
+PHASE 5   axiology: features→gaps→WeightUpdater→weights→utilities  — 价值计算(含软优先级覆盖)
+PHASE 6   goal_compiler.compile_multi_goal(max=3)   — 多目标编译(冲突协调)
+PHASE 7   select_organs + 器官 propose_actions      — 器官分化+提案(serial/mixed/parallel 三模式)
+PHASE 8   plan_evaluate + H4 单外部动作强制          — 评估+最多1个外部动作(论文红线)
+PHASE 9   safety: 9a完整性 9b验证器 9c风险 9d预算 9e能力缺口  — 五重安全检查
+PHASE 10  action_executor.execute(action, context)  — 动作执行 + ledger 扣成本 + 同步到 state
+PHASE 11  compute_reward + value_function.update + compute_rpe + 维度级RPE + mood/stress更新 + AffectModulation  — 奖励与情感闭环
+PHASE 12  episodic.append(EpisodeRecord)            — 写记忆
+PHASE 13  check_invariants                          — 不变量检查
+PHASE 14  value_learner.update(每 interval ticks)   — 价值学习(更新 setpoints)
+PHASE 15  条件触发 consolidator.consolidate(梦境巩固) — 巩固+重置疲劳
+PHASE 16  持久化 override 状态                        — 优先级覆盖状态落盘
+```
+**性能**：各阶段计时，>1s 时输出最慢 3 阶段。PHASE 7（器官）通常最慢，受 `ORGAN_PARALLEL_MODE` 影响（serial ~40-60s / mixed ~15-25s 默认 / parallel ~8-15s）。
+
+**器官并行三模式**（PHASE 7，环境变量 `ORGAN_PARALLEL_MODE`）：
+- `serial`：按价值权重排序逐个处理，最稳
+- `mixed`（默认）：按依赖分 3 组（`[scout,builder,archivist]`→`[mind,caretaker]`→`[immune]`），组内并行组间串行
+- `parallel`：全并行（有依赖风险）
+
+**特殊 hack（PHASE 11）**：成功的 CHAT 动作被**强制注入正向 RPE**——`delta_per_dim["attachment"]=abs(...)+0.05`、`competence +0.03`，外加 `reward += 0.2`。注释明确这是为了让对话成功产生正情绪的临时手段。🔍这类硬编码修正散落多处，说明纯 axiology 计算对"社交成功"的奖励信号建模不足。
+
+#### `shutdown()` — 优雅关闭
+关闭两个 JSONLWriter → 持久化 override 状态 → 持久化 value 参数 → `_persist_final_state()`。每步 try/except 独立，保证一个失败不阻断其余。
+
+#### 状态恢复（跨重启）
+- `_restore_tick_from_history()`：从 episodes.jsonl 读最大 tick，设为 max+1
+- `_restore_chat_history()`：从历史 CHAT episode 重建 chat_history 槽位，**只保留最近 2 条**（注释：避免文学风格污染）
+
+**🔍问题 P8-1（重要）**：`life_loop.py:48` `from tools.capability import CapabilityManager` 与 `:71` `from .capability_manager import CapabilityManager, create_capability_manager` **重名导入**——后者覆盖前者。`tools.capability.CapabilityManager`（基于 CapabilityToken 的轻量类）从未被使用，是**死导入**。
+
+**🔍问题 P8-2**：`life_loop_backup.py`(2565行) 比 `life_loop.py`(1883行) 还大。备份文件长期堆积，疑似可删。需 git 确认是否已被新版取代后删除。
+
+---
+
+### 8.2 `tick.py` (62行) + `invariants.py` (63行) + `state.py` (409行)
+
+#### `tick.py` — TickContext 数据载体
+`@dataclass TickContext`：贯穿一个 tick 所有阶段的可变载体。字段 `t/dt/phase/obs_batch/retrieved/proposed_actions/metadata` 等。方法仅 `advance_phase`/`add_observation`/`cache_feature`。
+**🔍问题 P8-3**：TickContext **没有存放 PHASE 7 的器官分化结果**（expressed_organs/priorities 留在 life_loop 局部变量里），与"上下文贯穿所有阶段"的设计意图不一致。
+
+#### `invariants.py` — 运行时不变量
+`check_invariants(state, weights, ledger, actions)` 返回 Dict：权重单纯形（和≈1）、账本非负、单外部动作、状态字段范围检查。
+**🔍问题**：`check_single_external_action` 硬编码 `SLEEP/REFLECT` 为"内部"（黑名单式），若新增内部动作类型会误判为外部。应改为白名单（外部= `{USE_TOOL, CHAT}`）或 Action 加 `is_external` 标志。注释还提"8 个维度"但现在是 5 维，tolerance `1e-3` 可能过松。
+
+#### `state.py` ⭐ GlobalState — 全局状态聚合 `S_t`
+论文 §3.2 状态向量 `⟨O_t, X_t, M_t, K_t, θ, ω_t⟩` 的实现。dataclass，**可序列化**（`to_dict`/`from_dict`）。
+- **真实系统资源**（psutil）：`compute`(CPU%)、`memory`(占用率)、`resource_pressure=0.6·compute+0.4·memory`，紧急阈值 0.35
+- **活动疲劳** `activity_fatigue`（替代旧 energy/fatigue 语义）
+- **情感** mood[-1,1] / stress / relationship / arousal / boredom
+- **价值系统** weights(5维,默认0.2) / gaps / setpoints(HOMEOSTASIS0.7/ATTACHMENT0.7/CURIOSITY0.6/COMPETENCE0.75/SAFETY0.8)
+- **覆盖状态**（论文§3.6.4）：`override_active:set` / `override_trigger_time` / `gaps_at_trigger`
+- **兼容属性**：`energy`↔`1-activity_fatigue`、`fatigue`↔`activity_fatigue`、`bond`/`trust`↔`relationship`
+
+**🔍问题 P8-4（重要）— GlobalState 与 FieldStore 双重真相源**：7 个情感标量字段（energy/mood/stress/fatigue/bond/trust/boredom）**同时存在于 `GlobalState` 和 `FieldStore`**，靠 life_loop 的 `_sync_state_to_global`/`_sync_fields_to_global` **手工同步**。FieldStore 是运行时活态（snapshot 传给器官/特征提取），GlobalState 是可序列化聚合。两套真相源 + 手工同步 = 高危区。
+**🔍问题 P8-5**：`update_body()` 每 tick 调 `psutil.cpu_percent(interval=0.1)` —— **阻塞 100ms**，拖慢主循环。
+**🔍问题 P8-6**：dataclass 默认值与 `from_dict` 回退值不一致（mood: 0.0 vs 0.5；stress: 0.15 vs 0.2；boredom: 0.30 vs 0.0）——默认 GlobalState 经 `to_dict→from_dict` 往返会**静默改变值**，影响持久化正确性。
+**🔍问题**：`trust` setter 是 `relationship=(relationship+value)/2`（有损平均），而 `bond` setter 是直接赋值——不对称，`g.trust=x; g.trust≠x`。
+
+---
+
+### 8.3 `differentiate.py` (633行) — 器官分化/基因表达
+
+**职责**：论文"器官分化"的实现——基于发育阶段(stage)、活动模式(mode)、状态标量、信号，决定每个 tick 哪些器官被"表达"(expressed)。
+
+**核心类**：
+- `Stage(Enum)`：EMBRYO/JUVENILE/ADULT/ELDER；`advance_stage(current, ticks)` 阈值 100/500/5000
+- `Gene`：`express_conditions`/`suppress_conditions`（字符串 DSL）+ `priority`。`should_express(context)` 抑制优先于表达
+- `Genome`：6 个默认基因（caretaker p0 / immune p1 / mind p2 / scout p3 / builder p4 / archivist p5）。`differentiate(context)` 任一基因表达则器官表达
+- `Differentiator(config)`：`select_organs(stage, mode, state, signals)` 主入口
+
+**基因条件 DSL**：字符串如 `"fatigue > 0.9 and stage == 'adult'"`，用 **AST 白名单 + `eval`** 执行（屏蔽 Import/dunder，限制嵌套深度 5，长度上限 200）。
+
+**🔍问题 P8-7（重要，真实 bug）— 自定义基因被缓存吞掉**：模块级 `_get_differentiator()` 用**空 config `{}`** 实例化并缓存；legacy shim `select_organs(...)`（life_loop 实际导入的）用这个缓存实例——所以 `config["genome"]["custom_genes"]` **在器官选择时被静默忽略**。而 life_loop:1015 另建 `Differentiator(config)` 只为调 `advance_stage`，用完即弃。结果：自定义基因永不生效。
+
+**🔍问题 P8-8**：life_loop 每 tick 新建一个 `Differentiator` 实例（只为 `advance_stage`），默认基因重复注册，浪费。
+**🔍问题**：`Mode` 枚举有 `PLAY` 但无默认基因使用它（死枚举值）；`_get_nesting_depth` 的 `ast.Call` 分支永不执行（Call 不在白名单）；`can_organ_override` legacy shim 的 `action` 参数未使用。
+
+---
+
+### 8.4 `abstract_state.py` (478行) — LLM 配置切换的抽象状态层
+
+**职责**：论文 §3.4.2 抽象状态层 𝕊_t——模型无关的表示（情绪/目标/记忆指针/上下文摘要），用于在不同 LLM 配置（single/core5/full7）间保持连续性。
+
+**核心类**：`AbstractState`(组合 `AbstractEmotionalState`/`AbstractGoal`/`AbstractMemoryPointer`/`AbstractContextSummary`) + `StateTransitionManager` + `BlackboardWithAbstractState`。
+
+**🔍问题 P8-9（重要）— 抽象层基本未实现**：
+- `to_concrete(target_config)` **忽略其参数**，产出与配置无关的相同 dict——配置特定具象化（该层存在的全部意义）未实现
+- `stress = 1.0 - valence`（L270）——把 stress 和 mood 当作同一轴的有损重建，语义错误
+- `update_from_concrete` 只更新情绪/目标，记忆指针和上下文摘要**永不填充**
+- L462 `Blackboard = None` 注释"将在导入时处理"但**从未赋值**——死符号
+- 抽象层有 `to_dict` 但无 `from_dict`（不对称持久化）
+
+**结论**：这 478 行是为"LLM 热切换"预留的脚手架，但核心转换逻辑未完成，且未被 life_loop 调用。**疑似死代码或半成品。**
+
+---
+
+### 8.5 `handlers/` — 动作落地与功能拆分（4 文件）
+
+> 从原 LifeLoop 拆分出的功能模块。`ActionExecutor`/`ChatHandler`/`CaretakerMode` 用**组合**（`__init__(life_loop)`），`GapDetectorMixin` 用**混入**（继承）——同一包内模式不一致。
+
+#### `handlers/action_executor.py` (1461行) ⭐ 动作执行关键路径
+`execute(action, context)` 按 `action.type` 分派：`SLEEP/EXPLORE/REFLECT/CHAT/LEARN_SKILL/USE_TOOL/OPTIMIZE`。
+
+**CHAT 路径（`_execute_chat`, 最复杂，~230行）**——"Claude Code 风格" Agentic Loop：
+1. 能力门控（查 `"qianwen_chat"` 工具，硬编码 tool_id）
+2. 硬编码拦截：消息含"生成/肢体/器官"→罐头拒绝；疲劳>0.8 且含"生成/创建/写一个/帮我做/分析/整理"→"我累了"
+3. 构建 system_prompt + chat_history(limit=10)
+4. 成本预估：`estimated_tokens=max(1000, len(prompt)+len(msg)+Σlen(history))`，money=`tokens×0.000001`
+5. **Agentic 循环**（max_rounds=50, max_tokens=100000）：
+   - `_call_llm` → 累加 tokens → 若无 `tool_calls` 则模型认为完成，break → 否则 `_execute_tool_calls`（并行 ThreadPoolExecutor max_workers=5, 每调用 timeout=30s）→ 截断 history(max 15条) → 继续
+6. `_process_embedded_tool_calls`（正则解析 `TOOL:..`/`tool_code(...)` 文本嵌入调用，降级方案）
+7. 扣 ledger 成本、增疲劳（`0.02·rounds+0.00005·tokens`）、改社交字段（bond+0.01/trust+0.005/boredom-0.05）
+
+**🔍问题 P8-10（重要，真实 bug）— 多轮响应被覆盖**：`_execute_chat` L342 `llm_response = round_response`（注释却写"累积"）——每轮非空响应**覆盖**而非拼接，前几轮的正文被静默丢弃。多轮工具调用场景下，用户只能看到最后一轮的文字。
+
+**🔍问题 P8-11（重要，真实 bug）— 能力缺口检测的 tool/tool_id 键不一致**：`gap_detector._check_action_capability` L243 读 `action.params.get("tool","")`，而 `action_executor._execute_use_tool` L505 读 `action.params.get("tool_id","")`。USE_TOOL 动作的能力缺口检查**永远拿到空 tool_name**，缺口永不触发 → 成长系统不会被 USE_TOOL 驱动。
+
+**🔍问题 P8-12**：`_call_llm` **不传 timeout**——若 LLM provider 挂起，整个 tick 卡死（只有工具调用有 30s 超时，LLM HTTP 调用本身无超时）。配合 CHAT_TIMEOUT=180s 环境变量，实际超时靠底层 `tools/llm_client.py`。
+**🔍问题 P8-13**：未知 ActionType 返回 `{"success":True}`（L87）——分派 bug 被静默成成功。
+**🔍问题**：`tool_executor.execute()` 调用签名不一致——`_execute_use_tool` 用 kwargs(`tool_id=,params=`)，`_execute_tool_calls` 用位置参数(`tool_name, arguments`)。
+**🔍问题**：无 `tool_executor` 时 USE_TOOL 返回 mock 成果（L553）——静默降级。
+**🔍问题**：大量硬编码魔法数（token价/轮数/历史长度/疲劳系数/社交增量/相似度阈值）；`_execute_chat` 单方法 ~230 行应拆分。
+
+**⚠ 注意**：CHAT 路径**不解析 `reasoning_content`**。step-3.7-flash 的推理内容（若有）必须在 `tools/llm_client.py` 内部处理，executor 把 LLM 当不透明对象。
+
+#### `handlers/chat_handler.py` (205行)
+构建 CHAT 系统提示词（中文人格"你是 Genesis X…"，嵌入 energy/mood/stress 等带状描述）+ 管理 chat_history 槽位。
+**🔍问题**：`generate_contextual_greeting`（英文）与 `action_executor._generate_contextual_greeting` **逐字节重复**；`search_relevant_memory` 是 deprecated 空桩（返回""）；历史长度三处不一致（fetch 10 / save 50 / SLEEP trim 10）。
+
+#### `handlers/caretaker_mode.py` (125行)
+安全降级模式（论文§3.13）。`enter()` 禁用除 caretaker 外所有器官；`check_and_exit()` 当 tick-进入≥10 且 stress<0.5 时退出；`reset_to_safe_defaults()` 钳制状态+重置权重。
+**🔍问题**：魔法数全硬编码（recovery 10/stress 0.5/energy 0.3/mood 0.5）；`reset_to_safe_defaults` 的 energy 逻辑只升不降（`max(0.3, current)`）——energy=0.95 的"漂移"不被修正。
+
+#### `handlers/gap_detector.py` (278行) — `GapDetectorMixin`
+LifeLoop 继承的混入，从用户请求/驱动信号/探索历史三源汇总能力缺口，排名后返回 evolution_need。`_check_action_capability` 是执行前能力检查。
+**🔍问题**：`any(cap.lower() in str(known_capabilities).lower() ...)`（L247等）——**把 set 转字符串做子串匹配**，会产生误报（如 capability `"file"` 匹配 `"profile"` 的子串）；中文关键词→领域表硬编码；与 action_executor 的 tool_id 键不一致（见 P8-11）。
+
+---
+
+### 8.6 `stores/` — 四大状态存储（6 文件）
+
+> 一个 tick 的可变状态骨干。`life_loop._init_stores` 创建四件套。
+
+| Store | 存什么 | 生命周期 | 关键方法 |
+|---|---|---|---|
+| `FieldStore` | 8 个有界标量(energy/mood/stress/fatigue/bond/trust/boredom/curiosity) | 跨 tick 持久 | `get/set/increment/snapshot` |
+| `SlotStore` | 工作记忆(current_goal/plans/milestones/chat_history 等) | 持久,可回放 | `get/set/append/clear` |
+| `SignalBus` | 命名的时间衰减信号(半衰期,指数/线性) | 瞬时,自动过期 | `set/get/add/tick/cleanup` |
+| `MetabolicLedger` | 资源预算(cpu_tokens/io_ops/net_bytes/money/risk_score),reserve→spend→refund | 持久 | `can_reserve/reserve/spend/refund/normalize_all` |
+
+**tick 数据流**：器官读 `fields.snapshot()`+`signals.get_all()`+`slots.get("current_goal")` → 选动作 → `ledger.reserve` 预算 → 执行 → `ledger.spend` 实际扣 → `fields.set` 写回效应 → `signals.tick(dt)` 推进时间。
+
+**文件**：`fields.py`(BoundedScalar/Valence/Prob)、`slots.py`、`signals.py`(Signal 半衰期衰减)、`ledger.py`(ResourceBudget, 默认 cpu_tokens 无限)、`factory.py`(从 resources.yaml 建 ledger)、`__init__.py`。
+
+**🔍问题 P8-14**：`FieldStore` 与 `GlobalState` 重复存 7 个字段（见 P8-4）。
+**🔍问题**：`MetabolicLedger.from_dict` **不恢复 `unlimited` 标志**——重载后无限资源状态丢失；`spend()` 不检查 unlimited（无限资源仍累计 spent，语义怪）；`Valence` 类定义但 FieldStore 全用 Prob（死类）；字段初始值(0.8/0.5/0.2…)硬编码非配置驱动。
+
+---
+
+### 8.7 `evolution/` (8 文件, 默认禁用) — 自我进化引擎
+
+> ⚠️ **整体默认关闭**（`EVOLUTION_ENABLED=False`）。虽禁用但代码完整，记录其设计意图。
+
+**完整流水线**（`EvolutionEngine.evolve`，9 步）：
+```
+CLONE   clone_manager.create_clone  — shutil.copytree 整个项目到 ../evolution_instances/, 分配端口(8000+)
+MUTATE  mutation_manager.apply      — 选 MutationType → LLM/模板生成 proposal → 写入 clone → py_compile 校验
+EVALUATE evaluation_manager.evaluate — 10 项检查(语法/核心文件/工具/记忆/响应时间/错误率/人格保留/记忆完整性/价值对齐), overall_score≥0.7 才 transfer
+TRANSFER transfer_manager.transfer  — 备份 core/config/memory → 复制 target_files 回项目
+ARCHIVE  archive_manager.archive    — zip 旧体+metadata → ../evolution_archives/, 增 generation 计数
+RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
+```
+
+**关键区分**（每文件 docstring 强调）：**Growth=同一个体变强；Evolution=复制-变异-选择产生新一代**。
+
+**🔍问题 P8-15（重要）— 进化管道实际是空操作**：
+- `mutation_manager._generate_with_llm` 有 `# TODO: 实现 JSON 解析`——LLM 响应**未解析**，proposal 的 `changes={}` 恒空
+- `apply_mutation` 对空 changes 返回 True（成功）——**无操作变异"成功"**
+- `transfer` 遍历空 `target_files`——**transfer 也是空操作**
+- 即便启用，整个变异-迁移链什么都没做。evaluation 的"人格保留"靠**基因组 YAML 文件大小比**（非内容），value_alignment 靠文件是否存在——信号极弱。
+
+**🔍问题**：`clone_id=f"clone_{int(time.time())}"` 秒级时间戳，同秒两次进化碰撞；引擎无锁，并发 `evolve()` 会覆盖 `current_clone`；`TESTING` 枚举值定义但流程跳过（MUTATE→EVALUATE 无 TEST 阶段）；`validate_mutation` 定义但 `evolve` 从不调用（死方法）；`evaluation_manager.get_stats` 对非空历史会 `TypeError`（`to_dict` 多了 `overall_score` 键，dataclass 重建失败）。
+
+---
+
+### 8.8 `growth/` (4 文件) — 肢体(新能力)生成
+
+> ✅ **已启用**。LLM 驱动生成新能力模块（对比 plugins 是预制的）。与 evolution 的区别：growth 是同体增强。
+
+**核心流**（`LimbGenerator`）：
+1. `identify_requirement(context)` — 扫描用户消息关键词(api/http/爬取→EXTERNAL；csv/excel/数据→INTERNAL)
+2. `_generate_from_llm` — 中文 prompt(可嵌入相似 plugin 的代码≤800 字符作参考) → LLM → 正则提取代码 → 提取第三方 imports → 自动判定 INTERNAL/EXTERNAL
+3. `_test_limb` — 仅 `compile()` 语法检查（**不执行**）
+4. `_save_limb` — 写 `artifacts/limbs/{name}/__init__.py`+`metadata.json`
+5. `_register_limb` — 内存注册；可选 `LimbBuilder` 建 Docker 容器
+6. `GrowthManager.generate_limb` 额外：注册为 `organs.Limb` 器官到 UnifiedOrganManager + 写使用指南到记忆
+
+**V32 "吞噬/生长/灵活" API**：`devour(path)` 读文件、`grow(task)` 生成代码、`flex(filepath)` 沙箱执行（危险模式字符串黑名单）。
+
+**🔍问题 P8-16**：`limb_builder.list_limbs` 按 `label=genesisx.limb=true` 过滤，但 `deploy_limb` 从不设该 label → **list_limbs 恒返回空**。
+**🔍问题 P8-17（安全）**：`Plugin._create_instance` 和 `load_limb` 用 `exec(code, namespace)` **无沙箱执行**插件/肢体代码；`devour(".")` 可读当前目录任意文件；`flex_limb_v32` 危险模式黑名单不全（漏 `os.remove` 等，且误拦 `subprocess.run`）。
+**🔍问题**：`devour` 的 `save_to_memory` 参数被接受但从未使用（死参数）；类名推导逻辑(`_to_class_name`)在 limb_generator 和 plugin_manager 重复；魔法数遍布(800字符/温度0.2/0.3/好奇度0.7阈值等)。
+
+---
+
+### 8.9 `plugins/` (2 文件 + templates/) — 预制能力加载
+
+> ✅ 已启用。预制的能力模块（对比 growth 是 LLM 现写的）。两个内置：`http_api`(get/post/put/delete)、`data_processor`(pandas: read_csv/process_data/to_excel)。文件系统插件从 `core/plugins/templates/` 读 `{name}/__init__.py`+`metadata.json`。
+
+**v2.0 集成**：加载时自动注册为 `organs.Plugin` 器官 + 写使用指南。`get_similar_plugin_for_learning` 三级匹配（精确子集→最大重叠→关键词），供 growth 系统作代码参考。
+
+**🔍问题**：`exec(self.code, namespace)` 无沙箱（同 P8-17）；`get_similar_plugin_for_learning` 的关键词表只认 http_api/data_processor；`_register_as_plugged_organ` 是 `_register_as_organ` 的无说明别名；`SKIP_PATTERNS` 在 clone_manager 和 archive_manager 重复（且 `.pyc` vs `*.pyc` 不一致）。
+
+---
+
+### 8.10 孤立/半孤立模块（⚠️ 清理候选）
+
+精读发现 **大量 core 模块未被 life_loop 接入**，按孤立程度分类：
+
+| 文件 | 行数 | 状态 | 说明 |
+|---|---|---|---|
+| `exceptions.py` | 587 | 🔴**完全孤立** | 大型异常体系(CircuitBreaker/RetryWithBackoff/ErrorHandler)+get_error_handler() 单例，**全项目无人 import**。且 `common/error_handler.py` 是**另一套**并行未用的错误框架 |
+| `scheduler.py` | 451 | 🔴**完全孤立** | Scheduler 类(在线/离线+定时任务)，零调用者。被 autonomous_scheduler 取代 |
+| `capability_router.py` | 252 | 🔴**完全孤立** | 第三个能力门面(skill→organ→evolution, 产 OpenAI function schema)，从未被 import |
+| `emotion_decay.py` | 615 | 🟡**半孤立** | 精细情绪衰减(论文3.7.3, 多维指数衰减+Proust效应)，最精致但 **life_loop 用 `affect.*` 不用它**。仅 __init__ 重导出 + benchmark 引用 |
+| `exploration.py` | 412 | 🟡**半孤立** | 探索任务模板库，仅 autonomous_scheduler 懒加载它，且**方法名不匹配**（调 `generate_exploration_tasks` 但实际是 `generate_tasks`）——集成是坏的 |
+| `abstract_state.py` | 478 | 🟡**半孤立** | 见 8.4，核心转换未实现，未被 life_loop 调用 |
+
+**🔍问题 P8-18（重要）— 6 个模块共 ~2793 行孤立代码**：`exceptions.py`+`scheduler.py`+`capability_router.py` 完全死；`emotion_decay.py`+`exploration.py`+`abstract_state.py` 半死。这是 core 的**最大技术债**。优化时优先决策：删除 / 接入 / 标记实验性。
+
+**🔍问题 P8-19（重要）— 能力管理三件套碎片化**：
+- `capability_manager.py` ✅接入（plugin→limb→growth 查找）
+- `capability_gap_detector.py` ✅接入（检测缺口→喂 growth）
+- `capability_router.py` ❌孤立（skill→organ→evolution，产 function schema）
+三者 API 重叠（`list_*capabilities`/`has_capability`）却互不引用。只有前两者构成连贯活管道。
+
+**🔍问题 P8-20**：`autonomous_scheduler.py` 仅被 `chat_interactive.py` 用，**不在 tick 路径**。它与 `scheduler.py`(死)、life_loop 自己的 inline 离线逻辑——**三套重叠的"调度"概念**。
+
+---
+
+### 8.x core/ 速查与调试点
+
+**精读优先级**：`life_loop.tick()`(17阶段必懂) > `action_executor._execute_chat`(对话落地) > `differentiate.select_organs`(器官分化) > stores 四件套 > handlers 其余。
+
+**高危区**：
+1. **状态同步**（P8-4/P8-6）：GlobalState↔FieldStore 双真相源 + 往返不一致——任何动 mood/stress 的修改都要两边改
+2. **能力缺口→成长链路**（P8-11）：tool/tool_id 键不一致导致 USE_TOOL 永不驱动成长
+3. **多轮对话**（P8-10）：响应覆盖 bug 让多轮工具调用丢正文
+4. **自定义基因**（P8-7）：缓存吞掉 config，器官分化配置失效
+5. **参数来源**：core 内魔法数遍地（阈值/系数/超时/价格），与第1章 P1-3 的"参数三重定义"问题叠加
+
+**与论文的对应**：tick 17 阶段 ≈ 论文 Algorithm 1；PHASE 5 axiology = 论文 §3.5-3.6；PHASE 11 = 论文 §3.7；PHASE 9 = 论文 §3.13；override 状态 = §3.6.4；value learning = §3.12。
 
 ---
 
@@ -316,7 +627,7 @@ setpoint 管理散落 3 处（加 axiology_config.py）。
 
 ## A. 全局问题清单（按优先级）
 
-> 精读 Phase 1-2 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。
+> 精读 Phase 1-2(common+axiology+affect) 与 Phase 8(core) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。
 
 ### 🔴 高优先级（影响正确性/可维护性）
 
@@ -326,6 +637,11 @@ setpoint 管理散落 3 处（加 axiology_config.py）。
 | P2-3 | **axiology 严重代码重复**：value_dimensions.py(799行) 与 feature_extractors.py+utilities_unified.py 功能重叠 | axiology/ | 改一处忘另一处，行为不一致 |
 | P2-5 | **drives/ 5维驱动力被禁用**：life_loop.py 顶部注释禁用，但代码存在 | axiology/drives/ | 死代码或半成品，需决策启用/删除 |
 | P1-4 | **两套配置加载体系并存**：config.py(load_config→dict) vs config_manager.py(ConfigManager→对象)，且都有 load_config() 同名函数 | common/ | 极易混淆，维护负担 |
+| P8-4 | **GlobalState 与 FieldStore 双真相源**：7 个情感标量字段同时存于两处，靠 life_loop 手工 `_sync_*` 同步 | core/state.py + core/stores/fields.py + life_loop.py | 两套真值，动 mood/stress 必须两边改，遗漏即不一致 |
+| P8-10 | **多轮 CHAT 响应被覆盖**：`llm_response = round_response`(注释却写"累积")，前几轮正文丢弃 | core/handlers/action_executor.py:342 | 多轮工具调用场景用户只能看到最后一轮文字 |
+| P8-11 | **tool/tool_id 键不一致**：gap_detector 读 `params["tool"]`，executor 读 `params["tool_id"]` | core/handlers/{gap_detector:243,action_executor:505} | USE_TOOL 的能力缺口检查永远拿空值，成长系统不被 USE_TOOL 驱动 |
+| P8-7 | **自定义基因被缓存吞掉**：`_get_differentiator()` 用空 config 缓存，legacy `select_organs` 用它，custom_genes 永不生效 | core/differentiate.py | 器官分化配置失效 |
+| P8-18 | **6 模块共 ~2793 行孤立代码**：exceptions/scheduler/capability_router 完全死；emotion_decay/exploration/abstract_state 半死 | core/ | core 最大技术债，需决策删除/接入 |
 
 ### 🟡 中优先级（技术债）
 
@@ -337,6 +653,14 @@ setpoint 管理散落 3 处（加 axiology_config.py）。
 | P2-4 | setpoint 管理散落 3 处(setpoints/dynamic_setpoints/axiology_config) | axiology/ |
 | P1-7/P1-9 | auth.py(699行)+models/(786行) 多用户 Web 模块疑似过度工程 | common/+models/ |
 | P1-8 | database.py 仅 12 行形同虚设，SQLAlchemy 依赖可能可移除 | common/ |
+| P8-6 | GlobalState dataclass 默认值与 from_dict 回退值不一致(mood/stress/boredom)，to_dict→from_dict 往返静默改值 | core/state.py |
+| P8-9 | abstract_state 抽象层核心转换未实现(to_concrete 忽略参数, stress=1-valence 语义错)，未被接入 | core/abstract_state.py |
+| P8-12 | `_call_llm` 不传 timeout，LLM provider 挂起会卡死整个 tick | core/handlers/action_executor.py |
+| P8-13 | 未知 ActionType 返回 success:True，分派 bug 被静默 | core/handlers/action_executor.py:87 |
+| P8-15 | 进化管道实际空操作：mutation LLM 响应未解析(changes 恒空)→transfer 遍历空→整体 no-op | core/evolution/mutation_manager.py |
+| P8-17 | 插件/肢体代码无沙箱 exec（安全）；devour(".") 可读任意文件；flex 黑名单不全 | core/growth/ + core/plugins/ |
+| P8-19 | 能力管理三件套碎片化：capability_router 孤立，三者 API 重叠互不引用 | core/capability_*.py |
+| P8-20 | 三套重叠"调度"概念：scheduler(死)/autonomous_scheduler(仅chat)/life_loop inline 离线逻辑 | core/ |
 
 ### 🟢 低优先级（清理项）
 
@@ -344,6 +668,13 @@ setpoint 管理散落 3 处（加 axiology_config.py）。
 |---|---|---|
 | P1-2 | Goal.is_expired 参数 current_tick 未使用 | common/models.py |
 | P1-6 | error_handler 与 utils.retry_on_failure 重试逻辑重复 | common/ |
+| P8-1 | life_loop.py:48 与 :71 重名导入 CapabilityManager，前者死导入 | core/life_loop.py |
+| P8-2 | life_loop_backup.py(2565行) 比正本还大，疑似可删 | core/life_loop_backup.py |
+| P8-3 | TickContext 无器官分化结果字段，与"贯穿所有阶段"设计意图不符 | core/tick.py |
+| P8-5 | update_body 每 tick 调 psutil.cpu_percent(interval=0.1) 阻塞 100ms | core/state.py |
+| P8-8 | life_loop 每 tick 新建 Differentiator(仅用 advance_stage)，默认基因重复注册 | core/life_loop.py:1015 |
+| P8-14 | MetabolicLedger.from_dict 不恢复 unlimited 标志；FieldStore 初始值硬编码非配置驱动 | core/stores/{ledger,fields}.py |
+| P8-16 | limb_builder.list_limbs 按 label 过滤但 deploy 从不设 label，恒返回空 | core/growth/limb_builder.py |
 
 ---
 
@@ -356,8 +687,8 @@ setpoint 管理散落 3 处（加 axiology_config.py）。
 
 ### 续做路线图（按推荐顺序）
 ```
-新会话1: "读 CODE_MAP.md，续写第8章 core/"     ← 最重要，先搞清主循环
-新会话2: "读 CODE_MAP.md，续写第3章 memory/"
+新会话1: "读 CODE_MAP.md，续写第8章 core/"     ✅ 已完成
+新会话2: "读 CODE_MAP.md，续写第3章 memory/"   ← 下一个推荐
 新会话3: "读 CODE_MAP.md，续写第5章 organs/"
 新会话4: "读 CODE_MAP.md，续写第6章 tools/"
 新会话5: "读 CODE_MAP.md，续写第4章(认知感知代谢)+第7章(安全持久化)"
@@ -383,6 +714,6 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 
 ---
 
-*文档状态：Phase 1-2 已完成精读（46文件/14k行），Phase 3-9 待续。全局问题清单已收录 14 项。*
+*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) 已完成精读。Phase 3-7,9 待续。全局问题清单已收录 14 + 20 = 34 项。*
 
 
