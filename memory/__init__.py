@@ -43,18 +43,9 @@ except ImportError as e:
     _skills_available = False
     _module_import_warnings.append(f"Skills module not available: {e}")
 
-# 肢体使用指南（怎么用自己的肢体）
-try:
-    from .limb_guides import (
-        FileOpsGuide,
-        WebFetcherGuide,
-        DataAnalysisGuide,
-        PDFProcessingGuide,
-    )
-    _limb_guides_available = True
-except ImportError as e:
-    _limb_guides_available = False
-    _module_import_warnings.append(f"Limb guides module not available: {e}")
+# 肢体使用指南目录（memory/limb_guides/data/ 存 organ_guides.json）
+# 注：原 limb_guides 包的 4 个指南文件与 memory/skills/ 逐字节重复且导入即崩，
+# 已删除（CODE_MAP P3-22）。limb_guides/ 现仅作为 organ_guide_manager 的数据目录。
 
 # 器官指南管理器（自动管理器官使用指南）
 try:
