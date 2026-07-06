@@ -256,7 +256,7 @@ class DynamicToolRegistry:
             module = importlib.import_module(module_name)
 
             # 查找带有 _tool_def 属性的函数
-            for name, obj in inspect.getmembers(module, inspect.is_function):
+            for name, obj in inspect.getmembers(module, inspect.isfunction):
                 if hasattr(obj, "_tool_def"):
                     tool_def = obj._tool_def
                     self.register(
