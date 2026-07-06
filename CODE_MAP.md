@@ -5,7 +5,7 @@
 > **生成方式**：通读源码 + 论文对照，标注 `🔍问题` 为值得后续迭代的点。
 > **版本基准**：v1.3.0，5 维价值系统（已从早期 9 维精简）。
 > **最后更新**：2026-07-06
-> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ✅ 第5章 organs/ 已完成精读（15文件/7956行） ✅ 第6章 tools/ 已完成精读（23文件/9837行） ⏳ 第4,7,9章待续（38文件/13k行）
+> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ✅ 第5章 organs/ 已完成精读（15文件/7956行） ✅ 第6章 tools/ 已完成精读（23文件/9837行） ✅ 第4章 cognition/perception/metabolism 已完成精读（20文件/5430行） ✅ 第7章 safety/persistence 已完成精读（13文件/2604行） ✅ 第9章 入口+Web 已完成精读（15文件/约7k行）—— **全章精读完成，A 节问题清单 242→260 项**
 
 ---
 
@@ -15,12 +15,12 @@
 - [1. 基础层 `common/` + `models/`](#1-基础层-common--models) ✅
 - [2. 核心理论层 `axiology/` + `affect/`](#2-核心理论层-axiology--affect) ✅
 - [3. 记忆层 `memory/`](#3-记忆层-memory) ✅
-- [4. 认知/感知/代谢 `cognition/` + `perception/` + `metabolism/`](#4-认知感知代谢) ⏳待续
+- [4. 认知/感知/代谢 `cognition/` + `perception/` + `metabolism/`](#4-认知感知代谢) ✅
 - [5. 器官层 `organs/`](#5-器官层-organs) ✅
 - [6. 工具层 `tools/`](#6-工具层-tools) ✅
-- [7. 安全 + 持久化 `safety/` + `persistence/`](#7-安全--持久化) ⏳待续
+- [7. 安全 + 持久化 `safety/` + `persistence/`](#7-安全--持久化) ✅
 - [8. 核心引擎 `core/`](#8-核心引擎-core-最重要) ✅
-- [9. 入口 + Web `lifecycle/` + `web/` + 顶层脚本](#9-入口--web)
+- [9. 入口 + Web `lifecycle/` + `web/` + 顶层脚本](#9-入口--web) ✅
 - [A. 全局问题清单（按优先级）](#a-全局问题清单)
 - [B. 新会话上手指南](#b-新会话上手指南)
 
@@ -504,10 +504,452 @@ should_consolidate(cooldown/attempts/quality降级检查)
 
 ---
 
-## 4. 认知/感知/代谢 — 待续
+## 4. 认知/感知/代谢 `cognition/` + `perception/` + `metabolism/`
 
-> ⏳ `cognition/`(7文件,规划/目标/验证) + `perception/`(8文件,观察/上下文/新颖性) + `metabolism/`(5文件,昼夜节律/恢复/无聊)。共 20 文件/4672 行。
-> **续写提示**：cognition 重点 `planner.py`/`goal_compiler.py`；metabolism 重点 `circadian.py`(昼夜节律)。
+> 20 文件/约 5430 行，覆盖论文 §3.2（状态/感知/资源压力）+ §3.5（认知目标编译）+ §3.6.4（优先级覆盖/无聊门控）+ §3.8.2-3（目标协调）+ §3.9.3（规划评估）+ §3.11（动作验证）+ Appendix A.3（代谢）。这三层是 value→action 之间的"中间层"——把价值缺口编译成目标、把目标评估成动作、把生理状态/环境信号采集给价值系统。
+>
+> **本章最大发现**：**三个子包都呈现"半接线、半遗留"状态**——cognition 的 4 个核心模块（goal_compiler/plan_evaluator/verifier）接入 life_loop，但 planner 和整套 goal_progress 是死的；perception 8 个文件里只有 observer + context_builder 真正接入（其余 90% 行数是死代码）；metabolism 里 recovery.py 整体死、resource_pressure.py 与 core/state.py **公式语义相反**。详见 4.x 速查。
+>
+> **目录结构**：
+> ```
+> cognition/ (7 文件/2079 行)
+> ├── goal_compiler.py    (771) ⭐ PHASE 6 目标编译+冲突协调(唯一全接入)
+> ├── goal_progress.py    (562) 🔍 进度计算+GoalTracker(整模块死代码)
+> ├── planner.py          (296) ⚠️ 计划生成(life_loop 绕过,仅 blackboard 用)
+> ├── plan_evaluator.py   (137) ⭐ PHASE 8 J(p|S_t) 评分(接入)
+> ├── insight_quality.py  (206) 🔍 Q^insight(死代码,被 consolidation 版取代)
+> ├── verifier.py         (83)  ⭐ PHASE 9b 安全验证(接入)
+> └── __init__.py         (24)
+>
+> perception/ (8 文件/1675 行)
+> ├── observer.py         (48)  ⭐ PHASE 2 唯一观察入口(接入)
+> ├── context_builder.py  (109) ⭐ PHASE 4 context dict 装配(接入)
+> ├── self_perception.py  (491) 🔍 自我感知(工具注册未分发→断链)
+> ├── time_perception.py  (247) 🔍 时间感知(未集成,与 circadian/caretaker 三重重复)
+> ├── command_parser.py   (276) 🔍 用户命令解析(被 chat_handler 路径绕过)
+> ├── novelty.py          (226) 🔍 新奇度(被 memory/semantic_novelty 取代)
+> ├── signal_filter.py    (222) 🔍 信号过滤(完全未接入)
+> └── __init__.py         (56)
+>
+> metabolism/ (5 文件/918 行)
+> ├── circadian.py        (287) ⚠️ 24h 昼夜节律(2 个方法被 PHASE 1 用,与 caretaker 时间源冲突)
+> ├── resource_pressure.py(256) 🔴 RP_t(与 state.py 公式语义相反!)
+> ├── boredom.py          (152) ⚠️ 无聊度 η-系数(PHASE 1 调用但丢 4/7 参数)
+> ├── recovery.py         (173) 🔴 整模块死代码(PHASE 1 用内联公式绕过)
+> └── __init__.py         (50)
+> ```
+
+### 4.0 三子包在 tick 流水线中的位置
+
+```
+PHASE 1 _update_body     ← metabolism/{boredom,circadian}      ⚠️ 半接入
+PHASE 2 observe_env      ← perception/observer                 ✅ 接入
+PHASE 3 retrieve         ← memory/(见第3章)
+PHASE 4 build_context    ← perception/context_builder          ✅ 接入
+PHASE 5 axiology         ← (见第2章)
+PHASE 6 goal_compile     ← cognition/goal_compiler             ✅ 接入
+PHASE 7 organ propose    ← organs/(见第5章)
+PHASE 8 plan_evaluate    ← cognition/plan_evaluator            ✅ 接入
+PHASE 9a-9e safety       ← cognition/verifier(9b) + safety/(见第7章, 9a/9c/9d)
+PHASE 10 execute         ← action_executor
+```
+
+---
+
+### 4.1 `cognition/` (7 文件) — 规划/目标/验证
+
+#### 4.1.1 `goal_compiler.py` (771行) ⭐ PHASE 6 目标编译核心
+**职责**：`GoalCompiler`——把价值缺口（gaps）+权重（weights）+状态编译成可执行目标，含冲突协调。论文 §3.8 的落地。**cognition 包里唯一全接入的模块**。
+
+**关键类**：
+- `GoalProgressConfig`（L11-69）：进度参数 dataclass，含 `from_global_config()`（L49）——但**运行时只用默认 ctor**（L113），config 从未注入。
+- `GoalCompatibility`（L72-79）：`status ∈ {compatible, conflicting, sequential}`。
+- `CoordinationStrategy`（L83-88）：`strategy_type ∈ {priority, time_slice, sequential, parallel}`。
+- `GoalCompiler`（L91-771）：主类。字段 `goal_templates`（L110）、`compatibility_cache`（L111，**死字段**）、`progress_config`（L113）。
+
+**关键方法**（带 life_loop 调用关系）：
+| 方法 | 行 | 用途 | 接入？ |
+|---|---|---|---|
+| `_init_goal_templates` | L115 | 5 个 `ValueDimension` → 目标模板映射 | 内部 |
+| `compile_multi_goal` | L703 | ⭐ **life_loop.py:993 的入口**——多目标编译（≤3 个兼容目标） | ✅ 接入 |
+| `_generate_candidates` | L187 | `ρ = base_priority × gap × weight`，跳过 `gap<0.15` | 内部 |
+| `_select_goal` | L228 | 两阶段选择：Top-K=5 → 期望收益 `priority·(1+gap_urgency)·(1+weight) − cost·0.01` | 内部 |
+| `select_compatible_goals` | L607 | 贪心最大兼容集（论文 G*） | 内部 |
+| `check_compatibility` | L387 | 冲突矩阵（论文 §3.8.3） | 内部 |
+| `compile` | L156 | 单目标编译——**life_loop 不调，走多目标版** | 🔍 仅测试 |
+| `compute_progress` | L309 | 8 种目标类型的 `Prog(g,S)` | 🔍 **仅测试**（P4-2） |
+| `assess_gap_urgency`/`get_coordination_plan` | L525/L743 | 紧迫度/协调计划 | 🔍 仅测试 |
+
+**life_loop PHASE 6 数据流**（life_loop.py:993-1008）：
+```
+gaps/weights/field_snapshot  ──► compile_multi_goal(owner="self", max_goals=3)
+                                     ↓
+                              ≤3 个 Goal 对象
+                                     ↓
+slots.set("current_goal", goals[0]); slots.set("active_goals", goals)
+context["goal"] = goal.description  (字符串，喂 LLM/器官)
+```
+
+**🔍问题 P4-1（🔴 高，priority_level 全域未设置）**：`GoalCompiler` 只写 **deprecated 的旧字段 `Goal.priority`**（L212/L292，float 0-1），**从不写 `priority_level`**（models.py:160 注释明确的 1-6 级新枚举 `CRITICAL..OPTIONAL`，论文 §3.8.1）。全项目 grep `priority_level=` 在 cognition/ 全空。**结果：论文的 6 级优先级系统在运行时完全不生效，所有 Goal 恒为 `MEDIUM(3)` 默认值**。配合第1章 P1-1（旧 priority 仍被读取），整个优先级体系是断裂的。
+**🔍问题 P4-2（🟡 中，目标进度永不更新）**：`compute_progress`（L309，77 行覆盖 8 种目标类型）**life_loop 从不调用**——goal.progress 停在编译时初值 0.0，整个 PHASE 6+ 之后无反馈循环。配合 P4-22（goal_progress.py 也是死代码），目标进度跟踪体系整体失效。
+**🔍问题 P4-3（🟡 死代码）**：`assess_gap_urgency`（L525）、`get_coordination_plan`（L743）、`compile`（L156 单目标版）均无运行时调用。
+**🔍问题 P4-4（🟡 重复）**：进度计算有两套并行实现——`GoalCompiler.compute_progress`（字符串分派）vs `goal_progress.ProgressCalculator.calculate`（枚举分派）。**两套都没接入 life_loop**。
+**🔍问题 P4-5（🟢 魔数）**：`gap<0.15` 跳过（L198）、Top-K=5（L252）、cost penalty ×0.01（L280）、资源冲突阈值 0.1（L488）、`epsilon_priority=0.1`（L566）——全硬编码，无 config 入口。
+**🔍问题 P4-6（🟢 死字段）**：`compatibility_cache`（L111）初始化后**从不读写**。
+
+#### 4.1.2 `planner.py` (296行) ⚠️ 计划生成器（life_loop 绕过）
+**职责**：`Planner`——生成候选计划。docstring 自称"LLM-based"，但**实际 `propose_plans` 是纯规则**（`if/elif` 梯子），LLM 路径 `propose_with_llm`（L159）**零运行时调用**。
+
+**关键**：
+- `Plan(Dict)`（L15-24）：薄字典子类，键 `actions/reasoning/estimated_reward/estimated_cost/dimension`。
+- `Planner`（L27-296）：字段 `llm`(默认 None)/`timeout=30.0`(CognitionConstants)/`max_retries=3`。
+- `propose_plans`（L52）：**规则版**——按 goal 字符串走 8 个 `if/elif` 分支（如 `goal=="rest_and_recover"` → 单个 SLEEP 动作），每个分支只产 1 个 plan。
+- `propose_with_llm`（L159）：LLM 路径，带 ThreadPoolExecutor 超时 + 重试。**死代码**。
+
+**🔍问题 P4-7（🔴 高，集成断裂 + LLM 死路径）**：**life_loop PHASE 8 完全不调 Planner**——它在 life_loop.py:1189-1192 把器官提案的 actions 内联包成 `[{"actions":[a],"estimated_reward":0.5,"estimated_cost":100.0}, ...]` 直接喂给 PlanEvaluator。Planner 的唯一运行时调用者是 `tools/blackboard.py`（M_REASON 专家，L512/L784），但黑板默认休眠（见第6章），且即便启用，M_REASON 拿到的是规则版 plan（不是 LLM 版），且只写成 context 字符串不执行。**即 docstring 宣传的"LLM-based planner"是死的**。
+**🔍问题 P4-8（🟡 类型不匹配）**：`propose_plans(goal: str)` 接收字符串，但 `GoalCompiler` 产出 `Goal` 对象（`.goal_type`）。blackboard 传 `current_goal` 可能是 `"respond_to_user"`——planner 的 if/elif 不认这个，落到默认 CHAT 分支。
+**🔍问题 P4-9（🟡 plan dict shape 不一致）**：Planner 产的 plan 含 `dimension` 字段，life_loop 内联的不含。`PlanEvaluator._score_plan`（L108 `plan.get("dimension", None)`）必须两边兼容——结果 life_loop 的 plan 总走"generic plan"分支（L116-117），planner 的走维度加权分支（L111-112），评分逻辑不一致。
+**🔍问题 P4-10（🟢）**：`num_plans` 参数（L58）无效——每分支只产 1 个 plan，`plans[:num_plans]` 恒返回 1 个。
+**🔍问题 P4-11（🟢）**：L232 `import signal` 未使用（早期基于信号的超时残留）。
+
+#### 4.1.3 `plan_evaluator.py` (137行) ⭐ PHASE 8 评分核心
+**职责**：`PlanEvaluator`——按论文 §3.9.3 的价值函数 `J(p|S_t)` 评分并选最优。**PHASE 8 的活路径**。
+
+**评分公式**（`_score_plan` L72-135）：
+```
+J(p|S_t) = weighted_value − λ_cost·Cost(p) − λ_risk·Risk(p) − budget_penalty
+```
+- **weighted_value**（L107-119）：plan 有匹配的 `dimension` → `weights[dim]·n_dims·estimated_reward`；否则 `max(weights)·n_dims·estimated_reward`（`n_dims=len(weights)` 补偿 Σw=1 归一化）。
+- **λ_cost=0.001**（L122 魔数）、**λ_risk=0.5**（L126 魔数）。
+- **budget_penalty=2.0**（L132 硬约束）：当 `estimated_cost > budget_remaining`。
+
+**life_loop PHASE 8 数据流**（life_loop.py:1196-1206）：
+```
+plans = [{"actions":[a],...} for a in proposed_actions]
+budget_remaining = (1.0 − ledger.normalize_all()["cpu_tokens"]) × 100000   ← 放大 100000 倍
+scored = evaluator.evaluate_plans(plans, {dim.value: w}, budget_remaining)
+best_score, best_plan = scored[0]; selected_action = best_plan["actions"][0]
+```
+
+**🔍问题 P4-12（🟡 风险惩罚形同虚设）**：`_score_plan` 读 `action["risk_level"]`（L99-101）算 `total_risk`，但 life_loop 内联的 plan dict（L1190）包 `Action` 对象时**不复制 risk_level**（Action 默认 risk_level=0.0）——结果 `total_risk` 恒为 0，`λ_risk·Risk` 项是 no-op。
+**🔍问题 P4-13（🟡 预算惩罚失效）**：life_loop 把 `cpu_remaining_fraction × 100000`（L1199）传给 `budget_remaining`，而 plan 的 `estimated_cost` 才 10-300 量级——`estimated_cost > budget_remaining`（L131）几乎永不触发，`budget_penalty` 退化为死分支（除非资源 100% 耗尽）。
+**🔍问题 P4-14（🟢 魔数）**：`λ_cost=0.001`/`λ_risk=0.5`/`budget_penalty=2.0` 硬编码。
+**🔍问题 P4-15（🟢）**：`select_best`（L44）从不被 life_loop 调（它手动 `evaluate_plans` + 取 `[0]`）。
+
+#### 4.1.4 `verifier.py` (83行) ⭐ PHASE 9b 动作验证
+**职责**：`Verifier`——执行前的轻量安全门，4 个顺序检查。论文 §3.11。
+
+**`verify_action(action, state, capabilities)` → `{ok, error?}`**（L16-65）：
+1. **能力**（L33）：`action.capability_req` 全部在 `capabilities` 列表里。
+2. **模式**（L41）：sleep 模式禁 `risk_level>0.1`。
+3. **能量**（L49）：`energy<0.2` 禁 EXPLORE/LEARN_SKILL。
+4. **压力**（L57）：`stress>0.7` 禁 `risk_level>0.5`。
+
+**life_loop PHASE 9b**（life_loop.py:1248-1262）：失败时按 **error 字符串子串匹配**路由 fallback（"energy"→SLEEP、"stress"→REFLECT、其他→REFLECT）。
+
+**🔍问题 P4-16（🟡 脆弱耦合）**：fallback 路由靠 `if "energy" in result["error"]` 子串匹配 verifier 的英文 error 字符串（life_loop.py:1257-1260）——任何 error 文案改动都会破坏路由。
+**🔍问题 P4-17（🟢 魔数）**：`risk>0.1`/`energy<0.2`/`risk>0.5`/`stress>0.7` 全硬编码。
+**🔍问题 P4-18（🟢）**：`verify_batch`（L67）从不调用（life_loop 只验证单个 `selected_action`）。
+
+#### 4.1.5 `insight_quality.py` (206行) 🔍 整模块死代码
+**职责**：`InsightQualityAssessor`——论文 §3.5.2(7)/§3.10.4 的 Q^insight。**全项目零运行时引用**（仅 `tests/test_insight_quality.py`）。
+
+**Q^insight 公式**（L74-81）：`Q = 0.4·compression + 0.3·transferability + 0.3·novelty`。
+- compression（L83-113）：`0.7·ratio + 0.3·efficiency`。
+- transferability（L115-144）：英文关键词计数（when/if/then/always/never/should/pattern/strategy/rule）。
+- novelty（L146-206）：`C_nov = 1 − max_similarity`，**import `from tools.embeddings import get_embedding, cosine_similarity`**（L168，lazy import），ImportError 时退化为 Jaccard 词汇重叠。
+
+**🔍问题 P4-19（🔴 整模块死代码）**：`InsightQualityAssessor` 零运行时调用。
+**🔍问题 P4-20（🔴 Q^insight 三重实现）**：三处实现公式不同：
+| # | 位置 | 压缩 | 可迁移性 | 新颖性 | 状态 |
+|---|---|---|---|---|---|
+| 1 | `cognition/insight_quality.py` | `0.7·ratio+0.3·efficiency` | 英文关键词 | tools/embeddings | 🔴 死 |
+| 2 | `memory/consolidation.py` InsightQualityEvaluator | `log(n+1)/log(10)` | `avg_reward` | SemanticNoveltyCalculator | ✅ **活**（PHASE 15） |
+| 3 | `eval/gxbs.py` compute_insight_quality | `(C_comp+C_trans+C_nov+C_corr)/4` | — | — | 评测 |
+注：consolidation 版注释自称"权重与 insight_quality.py 一致"（0.4/0.3/0.3），但**三个分量算法完全不同**。
+**🔍问题 P4-21（🟡）**：transferability 关键词表纯英文，对中文 LLM 输出无效。
+
+#### 4.1.6 `goal_progress.py` (562行) 🔍 整模块死代码
+**职责**：进度计算 + GoalTracker（论文 §3.8.1）。**全模块零运行时引用**（仅 `__init__` 重导出）。
+
+**关键类**：`GoalType`(8 值枚举)、`GoalStatus`(6 值)、`ProgressCalculator`(8 个 `calculate_*` 静态方法 + `calculate` 分派器)、`Milestone`、`ProgressCalculatorWithMilestones`、`GoalTracker`（内存 `Dict[str, Goal]`，**无 save/load**）。
+
+**🔍问题 P4-22（🔴 整模块死代码）**：`ProgressCalculator`/`GoalTracker`/`Milestone`/`ProgressCalculatorWithMilestones` 全部零运行时引用。
+**🔍问题 P4-23（🔴 分类法冲突）**：三套目标类型系统并存且互不匹配：
+| # | 位置 | 类型数 | 例子 |
+|---|---|---|---|
+| 1 | `goal_progress.GoalType` 枚举 | 8 | MAINTAIN/ACHIEVE/EXPLORE/PRACTICE/REFLECT/SOCIAL/CONTRACT/OPTIMIZE |
+| 2 | `goal_compiler` 模板 | 5 | rest_and_recover/strengthen_bond/explore_and_learn/improve_skills/verify_safety |
+| 3 | `planner` 字符串 | 8+ | rest_and_recover/.../optimize_resources |
+`ProgressCalculator.calculate`（L267）检查 `GoalType.MAINTAIN.value`（"maintain"）等字符串，**永远不匹配** goal_compiler 的 "rest_and_recover"。即便接入也走 default 分支。
+**🔍问题 P4-24（🟡 无持久化）**：`GoalTracker._goals` 是内存 dict，无 save/load 方法。
+**🔍问题 P4-25（🟢）**：`register_custom_calculator`（L64-97）扩展 API 从未使用。
+
+---
+
+### 4.2 `perception/` (8 文件) — 观察/上下文/感知器
+
+> **核心结论**：8 个文件中只有 `observer.py` + `context_builder.py`（共 157 行）真正接入 life_loop，**其余 6 个（1518 行，90.6%）是死代码/被取代/断链**。perception 包是"早期骨架被后续子系统取代"的典型——novelty 让位 memory/、time 让位 metabolism/、command 让位 handlers/、self_perception 卡在工具分发断链。
+
+#### 4.2.1 `observer.py` (48行) ⭐ PHASE 2 观察入口
+**职责**：纯函数 `observe_environment(tick, mode, state, user_input=None) → List[Observation]`——life_loop PHASE 2 **唯一**的感知入口。
+
+**产出 3 种 Observation**：
+- `type="user_chat"`（L21-27）：仅当 `user_input` 非空；payload 含 message/source="user"。**（呼应第5章 P5-17：mind_organ `_should_respond_to_user` 检查 `obs.type=="user_chat"`——这里确认字符串对齐，CHAT 路径是通的）**
+- `type="heartbeat"`（L30-34）：每 tick 必加。
+- `type="body_state"`（L37-46）：从 state 读 `energy/mood/stress/fatigue`。
+
+**接入**：`life_loop.py:815`。注意 life_loop 传的是 `field_snapshot`（fields 快照）而非 `self.state`。
+
+**🔍问题 P4-26（🟢 设计单薄）**：observer 实质只是"状态字典打包成 Observation"，没有真正的环境感知（无外部信号源/传感器抽象）。所谓 PHASE 2"感知环境"实为"状态采样"。
+**🔍问题 P4-27（🟡 字段硬编码三处）**：body_state 的 4 键（energy/mood/stress/fatigue）与 `context_builder.py:25-29`、life_loop drive_state（L908-918）三处硬编码重复。
+
+#### 4.2.2 `context_builder.py` (109行) ⭐ PHASE 4 上下文装配
+**职责**：`build_context(state, recent_episodes, retrieved_memories) → dict`——PHASE 4 唯一调用，把 state + 检索结果组装成喂 LLM/器官的 context dict。
+
+**context dict 契约**（全系统约定的键）：
+| 键 | 来源 | 行 |
+|---|---|---|
+| `state` | energy/mood/stress/fatigue/boredom/mode | L24-31 |
+| `goal` | current_goal（Goal 对象/str/任意→str） | L34-44 |
+| `recent_successes`/`recent_attempts` | 最近 10 个 episode 的 reward>0 计数 | L47-53 |
+| `retrieved_memories` | episodes[:5] 的 {tick, observation[:100], reward} | L57-98 |
+| `retrieved_schemas`/`retrieved_skills` | schemas[:3]/skills[:3] | L82-95 |
+| `budget_tokens` | **硬编码 10000** | L106 |
+| `recent_errors` | **硬编码 0** | L107 |
+
+**注**：`context["observations"]`（PHASE 4 后追加 L903）、`context["drive_signals"]`/`context["drives_prompt"]`（PHASE 4.5 追加 L921-922）是 life_loop 在 build_context 之外**追加**的，不在本函数内。
+
+**🔍问题 P4-28（🔴 硬编码假数据）**：L106-107 `budget_tokens=10000` / `recent_errors=0` 是写死的占位符（注释明说"Default"/"Simplified"）。若下游有真正的 budget 计算或错误恢复读这两个键，将永远收到固定值——不是"默认值"，是"假数据"。
+**🔍问题 P4-29（🟡 切片魔数）**：`episodes[:5]`/`schemas[:3]`/`skills[:3]`/`recent[-10:]`/`observation[:100]` 全内联魔数。
+**🔍问题 P4-30（🟢 脆弱序列化）**：L65 `str(ep.observation.payload)` 假设 payload 可 str 化，含 datetime/numpy 时会带 `__repr__` 噪音。
+
+#### 4.2.3 `self_perception.py` (491行) 🔍 最大文件——工具注册未分发（断链）
+**职责**：`SelfPerception`——读自身日志、感知系统资源（CPU/内存/磁盘）、算 HOMEOSTASIS 压力分。注释（L8）声称"配合 axiology/homeostasis"。
+
+**两类能力**：
+- **日志类**：`read_own_logs(log_file, lines, level, since, search)`（L41）、`get_recent_errors(hours, limit)`（L253）、`_summarize_logs`（L198，level_counts/top_modules）。
+- **资源类**：`system_stats() → dict`（L273，cpu_percent/memory/disk/process/uptime/platform/**pressure_score**/timestamp）、`get_health_status()`（L410，pressure<0.3 healthy/<0.6 moderate/<0.8 high_load/else critical）。
+
+**压力公式**（`_calculate_pressure_score` L373）：`0.3·cpu_pressure + 0.4·memory_pressure + 0.3·process_memory_pressure`，process_memory 压力 = `min(mb/1000, 1)`（1GB 阈值）。
+
+**接入**：🔴 **严重断裂**。`tools/tool_registry.py:104,115` **注册**了 `tool_id="read_own_logs"` 和 `tool_id="system_stats"`（capabilities_required=["self_awareness"]），**但 `tools/tool_executor.py` 的分发链（L257 tool_mapping → L326+ `if function_name == ...`）只有 read_file/write_file/list_directory/web_search/execute_code 5 个分支，无 read_own_logs/system_stats**。全项目 grep `read_own_logs\b` 的可调用命中只在 self_perception.py 自身和 `__init__.py`。
+
+**🔍问题 P4-31（🔴 broken integration——工具断链）**：`read_own_logs`/`system_stats` 是 self_perception 唯一对外接口，却卡在"注册未分发"。LLM 即便选这两个 tool_id，executor 也找不到 handler → 静默失败。**这是 self_perception 实质死代码化的根因。**
+**🔍问题 P4-32（🟡 pressure_score 未回流）**：`_calculate_pressure_score` 专为 HOMEOSTASIS 设计（L378 注释），但 pressure_score 只存在 system_stats 返回值里，**无代码写入 state/fields**——axiology 的 homeostasis 维度读不到。设计意图与实现脱节。
+**🔍问题 P4-33（🟡 魔数）**：权重 0.3/0.4/0.3、1GB 阈值、健康分档 0.3/0.6/0.8 全硬编码。
+**🔍问题 P4-34（🟢 撞名）**：`get_health_status()` 与 `caretaker_organ.py:582` 同名方法返回结构不同，易混。
+**🔍问题 P4-35（🟢 磁盘路径）**：L308 Windows 用 `expanduser("~")` 测盘，多盘机器可能不是程序所在盘。
+
+#### 4.2.4 `time_perception.py` (247行) 🔍 未集成——与 circadian/caretaker 三重重复
+**职责**：`TimePerception(timezone="Asia/Shanghai")`——当前时间/时段/季节的自然语言 + 结构化感知。
+
+**时段分桶**（`get_time_context` L67）：dawn5/morning8/noon12/aft14/eve18/night22（6 段）+ weekday/is_weekend/month/season(北半球固定)/day_of_year。`_natural_time`（L125）中文输出。
+
+**接入**：⚠️ 零导入（除 `__init__` try/except 兜底）。
+
+**🔍问题 P4-36（🔴 三重时段分桶 + 未回流）**：一天内的时间划分在系统内有 **3 个独立实现**，边界互不一致：
+| 实现 | 时段边界 | 时间源 | 接入？ |
+|---|---|---|---|
+| `perception/time_perception.py:79` | dawn5/morning8/noon12/aft14/eve18/night22 (6 段) | `datetime.now()` Asia/Shanghai | 🔴 未集成 |
+| `metabolism/circadian.py:130` | morning6/afternoon12/evening18/night22 (4 段) | `datetime.now(timezone.utc)` | ⚠️ 半接入 |
+| `organs/caretaker_organ.py:66` sleep window | sleep_start=22 / sleep_end=7（跨午夜） | `tick·tick_duration/3600%24` | ⚠️ 器官内部 |
+三者互不引用。
+**🔍问题 P4-37（🟡 时区不一致）**：time_perception 用 Asia/Shanghai；circadian 用 UTC；caretaker 用 tick 推算。同一时刻三个模块可能报不同时段。
+**🔍问题 P4-38（🟢 死字段）**：`_cached_time`（L26）声明后从未读写，TTL 缓存机制形同虚设。
+**🔍问题 P4-39（🟢 北半球硬编码）**：season 逻辑固定北半球。
+
+#### 4.2.5 `command_parser.py` (276行) 🔍 被绕过
+**职责**：`CommandParser`——从用户文本提取 tool_call/goal_set/query/feedback/meta（斜杠命令）。
+
+**集成**：🔴 **零实例化**。life_loop 从 `get_user_input()` 直接拿原始字符串喂 observer，**不经过 CommandParser**。
+
+**🔍问题 P4-40（🔴 死代码 + 入口被绕过）**：用户输入真实路径是 `get_user_input() → user_input 字符串 → observer(user_chat) → build_context`，CommandParser 完全不在路径上。斜杠命令 /reset /save、tool_call 提取均无此解析器参与。
+**🔍问题 P4-41（🟡 与 chat_handler 重叠 + 中文盲区）**：① 与 `core/handlers/chat_handler.py` 用户消息处理职责重叠但互不调用。② tool/goal 正则**全为英文**（`use X tool`/`I want to`/`please`），对一个中文数字生命项目几乎无法命中。
+**🔍问题 P4-42（🟢 魔数）**：tool_call=0.7/goal_set=0.8/query=0.5/meta=1.0 优先级阶梯硬编码。
+
+#### 4.2.6 `novelty.py` (226行) 🔍 被 memory/semantic_novelty 取代
+**职责**：`NoveltyDetector`——基于内容哈希 + embedding 余弦距离的新奇度打分 [0,1]。
+
+**集成**：🔴 **全代码库零实例化**。tests 测 novelty 用的是 `memory.semantic_novelty.SemanticNoveltyCalculator`。
+
+**🔍问题 P4-43（🔴 死代码 + 新奇度三重实现）**：新奇度计算 3 套：
+1. `perception/novelty.py` `NoveltyDetector`——**未集成**
+2. `memory/semantic_novelty.py` `SemanticNoveltyCalculator`（threshold=0.85）——**活**（被 axiology/cognition/dream 用）
+3. `axiology/feature_extractors.py` `_compute_semantic_novelty`——内部 fallback 调 #2
+perception 版是早期废弃实现。
+**🔍问题 P4-44（🟡 阈值不一致）**：`high=0.7/low=0.3/decay=0.95` 与 `axiology/parameters.py:193 low_novelty_threshold=0.20`、`cognition/goal_compiler.py:39 novelty_target=1.0` 三处不一致。
+
+#### 4.2.7 `signal_filter.py` (222行) 🔍 死代码
+**职责**：`SignalFilter`——基于优先级队列的输入过载保护 + 去重 + 节流（论文 3.2 "SignalBus with half-life decay"）。
+
+**集成**：🔴 零实例化。observer 直接产 Observation 进 ctx，**无优先级过滤层**。
+
+**🔍问题 P4-45（🔴 死代码 + 论文半衰期未实现）**：注释（L20-22）提及半衰期衰减，但代码只有 `dedup_window=5.0s` 简单去重，**无 priority 衰减逻辑**。且 `Signal` 别名（L57）与 `core/stores/signals.py` 的 `Signal` 类命名冲突（注释自承，靠别名兜底反而增加混淆）。
+**🔍问题 P4-46（🟡 魔数）**：`max_signals=10`/`dedup_window=5.0`/`maxlen=100`/`min_priority=0.1`/`overload=0.8` 全默认值。
+
+#### 4.2.8 `__init__.py` (56行) 包门面
+**🔍问题 P4-47（🟡 静默降级掩盖问题）**：Time/SelfPerception 用 `try/except ImportError` 兜底，依赖缺失时置 None 但**不警告**，运行期才暴露 AttributeError。
+
+---
+
+### 4.3 `metabolism/` (5 文件) — 昼夜节律/恢复/无聊
+
+> **核心结论**：5 文件中只有 boredom（半个，参数丢失）和 circadian（2 个方法）被 life_loop 调用；**recovery.py 整体死、resource_pressure.py 与 core/state.py 公式语义相反**、METABOLISM 常量整段失效。
+
+#### 4.3.1 `__init__.py` (50行) ⚠️ 死别名
+**🔍问题 P4-48（🟡 死 re-export）**：`rp_compute_effective_boredom`（L17）全仓库零引用；`update_stress`（L25 导出）零经 metabolism 路径引用——`life_loop.py:44` 直接 `from affect.stress_affect import update_stress`。两处死代码。
+**🔍问题 P4-49（🟡）**：`__all__` 导出 `compute_recovery_rate/needs_recovery/suggest_recovery_mode/RecoveryConfig`，但 recovery.py 在生产代码零调用（P4-53）。
+
+#### 4.3.2 `boredom.py` (152行) ⚠️ η-系数无聊度（PHASE 1 调用但丢参数）
+**职责**：论文 Appendix A.3 无聊度更新 + §3.6.4 资源门控的"有效无聊度"。
+
+**公式**（`update_boredom` L63-123）：
+```
+Boredom_{t+1} = clip[0,1]( Boredom_t + η_idle·1[novelty<0.2]·dt
+                          − η_nov·Novelty_t·dt
+                          − η_soc·1[social]·dt )
+effective_boredom = Boredom · 1[RP_t < θ_emergency]    # 紧急时返回 0
+```
+`BoredomConfig` 类常量：`ETA_IDLE=0.03`(L25)、`ETA_NOV=0.20`(L28)、`ETA_SOC=0.05`(L31)、`LOW_NOVELTY_THRESHOLD=0.2`(L34)。
+
+**接入**：`life_loop.py:1663` 调 `update_boredom(boredom, dt * 0.5)`——**只传 2/7 参数**。
+
+**🔍问题 P4-50（🟡 life_loop 丢 4/7 参数）**：签名有 `novelty/compute/memory/socially_engaged/apply_resource_override`，life_loop 全用默认值。后果：
+- `novelty=0.0` → `is_low_novelty` 恒真 → η_idle 项**每 tick 都加**（无聊单调上升）；
+- `compute/memory=1.0` → `is_emergency_state` 恒 False → 资源门控永不触发。
+**η_soc/η_nov/资源覆盖三条论文机制在生产路径全部失效**。
+**🔍问题 P4-51（🔴 魔数与 constants 严重失配）**：
+| 参数 | boredom.py | constants.METABOLISM |
+|---|---|---|
+| 空闲增长 | `ETA_IDLE=0.03` | `BOREDOM_ACCUMULATION=0.005` |
+| 新颖抑制 | `ETA_NOV=0.20` | `BOREDOM_REDUCTION_NOVELTY=0.10` |
+| 社交抑制 | `ETA_SOC=0.05` | `BOREDOM_REDUCTION_SOCIAL=0.05` ✅ |
+boredom.py 用自己的类常量，从不读 `METABOLISM`。两套数值并存且 idle 差 6×。外加 life_loop 又把 dt 乘 0.5（L1663 注释"增长速度减半"）——**第三层硬编码**。
+**🔍问题 P4-52（🟡 effective_boredom 三处重复）**：`boredom.py:126`/`resource_pressure.py:123`/`state.py:get_effective_boredom:307` 逻辑完全一致，三份拷贝。
+
+#### 4.3.3 `circadian.py` (287行) ⚠️ 24h 昼夜节律（时间源与模拟脱节）
+**职责**：`CircadianRhythm`——24 小时节律、能量余弦、疲劳恢复倍率、离线巩固窗口。
+
+**关键**：
+- `CircadianPhase`（L19）：MORNING(6-12)/AFTERNOON(12-18)/EVENING(18-22)/NIGHT(22-6)。
+- `__init__`（L44）：`time_mode="realtime"`(L50 默认)、`seconds_per_tick=1.0`、`sim_start_hour=6`、`offline_windows=[01:00-04:00 w=1.0, 14:00-15:00 w=0.6]`。
+- `_get_current_time`（L88）：`time_mode=="simulation"` 用 tick，否则 `datetime.now(timezone.utc)`。
+
+**公式**：
+- **能量**（`get_energy_level` L156-162）：`energy = 0.65 + 0.35·cos(2π·(hours−10)/24)`，clip[0.3,1.0]，peak=10:00/trough=03:00。
+- **疲劳恢复倍率**（`get_fatigue_recovery_rate` L280-285）：NIGHT→2.0/MORNING→1.5/AFTERNOON→0.8/EVENING→1.0。
+
+**接入**：`life_loop.py:551` 实例化；PHASE 1 `_update_body` 只调 **2 个方法**：`get_energy_level()`（L1644）、`get_fatigue_recovery_rate()`（L1645）。`should_consolidate`（life_loop L1530）是**同名局部变量**，非调用本类方法。
+
+**🔍问题 P4-53（🔴 时间源脱节）**：`time_mode` 默认 `"realtime"`，**全仓库无 yaml/json 配置 time_mode**（grep 证实）。因此 `get_energy_level/get_fatigue_recovery_rate` 用 `datetime.now(utc)` 真实墙钟 UTC 时，与 tick、与 `sim_start_hour`、与 caretaker 的 tick 推算的小时**三者互不相干**。simulation 模式从未启用，配置字段 `sim_start_hour/seconds_per_tick/offline_windows/time_mode` 全是死配置。
+**🔍问题 P4-54（🔴 与 caretaker 睡眠窗口冲突）**：
+| 维度 | circadian.py | caretaker_organ.py |
+|---|---|---|
+| 时间源 | `datetime.now(utc)` 墙钟 | `tick·tick_duration/3600%24`（L274-275） |
+| 窗口 | offline 01-04/14-15 | sleep 22-07（L66-67） |
+caretaker **从不 import circadian**，自建一套；circadian 默认窗口甚至不含 22-7。题述"sleep window 22-7"在 metabolism 包找不到，只在 caretaker。
+**🔍问题 P4-55（🟡 tick_duration 集成断裂）**：caretaker L270 `tick_duration = context.get("tick_duration", 10)`，但 `build_context` **从不写 tick_duration 键**（grep 证实 life_loop 也不写）→ caretaker 永远用默认 10s 推算小时 → 三方时间源全部不统一。呼应第5章 P5-23。
+**🔍问题 P4-56（🟡 魔数）**：`0.65/0.35`、phase 边界、recovery dict、`consolidation_threshold=0.6`、`base_consolidation_ticks=10`、`100 tokens/tick`、offline_windows 全硬编码。
+**🔍问题 P4-57（🟢 持久化缺口）**：`_sim_base_time`（L57）用 `datetime.now()` 在 init 固定，重启后重新锚定 → 模拟时钟每次重启"漂移"；circadian 对象不参与 state 序列化。
+
+#### 4.3.4 `recovery.py` (173行) 🔴 整模块死代码
+**职责（声称）**：论文 §3.8.2 恢复机制——能量/疲劳/压力的恢复速率与模式建议。
+
+**`compute_recovery_rate`（L42-109）** 按模式放缩：`sleep×2.0/friend×0.3/work×0.0`（fatigue: sleep×2.0/friend×0.3/work×0.0），状态调制 energy<0.3×1.5、fatigue>0.7×0.7。
+
+**🔍问题 P4-58（🔴 整模块死代码）**：`grep "compute_recovery_rate|needs_recovery|suggest_recovery_mode|RecoveryConfig"` 在 metabolism 外唯一命中是 `core/resource_config.py:42`（同名无关键）和 `eval/gxbs.py:114`（同名不同模块）。**life_loop._update_body 有自己的内联恢复逻辑**（L1651-1659）：
+```python
+# life_loop.py L1651-1659 (内联, 不用 recovery.py):
+if energy < circadian_energy:
+    new_energy = energy + (circadian_energy - energy) * 0.05
+else:
+    new_energy = energy * 0.99 + circadian_energy * 0.01
+new_fatigue = max(0.0, fatigue - 0.05 * dt * recovery_rate)
+```
+本模块的 sleep/friend/work 模式系统完全未被采用。
+**🔍问题 P4-59（🟡 魔数林立）**：0.05/0.08/0.03/0.3/0.7/0.8/2.0/1.5/0.5/0.3/0.1/0.0 全字面量，与 `METABOLISM.ENERGY_SLEEP_GAIN=0.15` 等不符，且 constants 本身也无人读（P4-64）。
+**🔍问题 P4-60（🟡 半成品）**：`suggest_recovery_mode` docstring 提"rest"模式，函数已注释"不使用 rest"。
+
+#### 4.3.5 `resource_pressure.py` (256行) 🔴 RP_t（与 state.py 公式语义相反！）
+**职责（声称）**：论文 §3.2 资源压力指数 RP_t，用于优先级覆盖 Ω_t、无聊门控、arousal 调制。
+
+**`ResourcePressureConfig`**（L19）：`alpha_compute=0.6`/`beta_memory=0.4`/`emergency_threshold=0.35`，`__post_init__` 校验 α+β=1。
+**`compute_resource_pressure`（L64-95）**：`RP_t = max(0, 1 − (α·Compute + β·Memory))`——资源充足→RP小（无压力），资源紧缺→RP大。`emergency := RP_t > 0.35`。
+
+**接入**：🔴 life_loop **不调本模块**，走 `state._update_resource_pressure()`。
+
+**🔍问题 P4-61（🔴 与 state.py 公式语义相反——最严重）**：
+| | resource_pressure.py (L92) | state.py `_update_resource_pressure` (L302-305) |
+|---|---|---|
+| 公式 | `RP = max(0, 1 − (α·C + β·M))` | `RP = α·C + β·M`（**无 `1−`**） |
+| 资源充足时 | RP→0（无压力）✅ 符合论文 | RP→1（满压力）❌ |
+| 资源紧缺时 | RP→1（满压力）✅ | RP→0（无压力）❌ |
+| α/β | 0.6 / 0.4 ✅一致 | 0.6 / 0.4 硬编码 |
+state.py 注释自述"修正后语义：占用率越高压力越大"，即 **state.py 故意反转了 metabolism/论文公式**。后果：
+- `state.resource_pressure` 与 `compute_resource_pressure()` 对同一 (compute,memory) 给出**相反**的紧急判断；
+- `metabolism.boredom` 的资源门控（P4-50）用本模块（资源紧缺才禁用无聊）；`state.get_effective_boredom()`（L307）用反转语义（占用率高才禁用）——同一"有效无聊度"两套相反触发条件；
+- 论文 §3.2 原式与 state.py 不符 → **生产路径用的是偏离论文的版本**。
+**🔍问题 P4-62（🟡 constants 缺失）**：α/β/0.35 三处独立硬编码（resource_pressure.py、state.py），`common/constants.py` **无** resource_pressure 常量。无单一真相源。
+**🔍问题 P4-63（🟡 `__main__` 测试块残留）**：L224-256 应移至 tests/。
+**🔍问题 P4-64（🔴 METABOLISM 常量整段失效）**：`grep` 确认 `MetabolismConstants`（L167-188：ENERGY_BASE_DECAY/FATIGUE_BASE_ACCUMULATION/BOREDOM_ACCUMULATION=0.005/...）在生产代码**仅被 `common/__init__.py` re-export，无任何读取点**。所有 metabolism 计算各用各的硬编码：state.py 用 0.01/0.005、boredom.py 用 0.03/0.20/0.05、recovery.py 用 0.05/0.08/0.03、circadian.py 用余弦/字典。**constants 层与实现层完全脱节，4 套数值并存**。这是第1章 P1-3"参数三重定义"在 metabolism 的具体爆发。
+
+---
+
+### 4.x cognition/perception/metabolism 速查与调试点
+
+**精读优先级**：
+- cognition：`goal_compiler.compile_multi_goal`（PHASE 6 必懂）→ `plan_evaluator._score_plan`（评分公式）→ 确认 `priority_level` 全域未设（P4-1）
+- perception：只需读 observer + context_builder（157 行就够）；其余文件视作清理候选
+- metabolism：先比对 `resource_pressure.py` vs `state.py`（P4-61 语义冲突）→ 再看 circadian 与 caretaker 的时间源（P4-53/54）
+
+**接入真相表**（life_loop PHASE 对应）：
+| 模块 | life_loop PHASE | 实际调用 | 状态 |
+|---|---|---|---|
+| `goal_compiler.compile_multi_goal` | PHASE 6 | life_loop.py:993 | ✅ 接入 |
+| `plan_evaluator.evaluate_plans` | PHASE 8 | life_loop.py:1196 | ✅ 接入 |
+| `verifier.verify_action` | PHASE 9b | life_loop.py:1248 | ✅ 接入 |
+| `observer.observe_environment` | PHASE 2 | life_loop.py:815 | ✅ 接入 |
+| `context_builder.build_context` | PHASE 4 | life_loop.py:903 | ✅ 接入 |
+| `boredom.update_boredom` | PHASE 1 | life_loop.py:1663 | ⚠️ 接入但丢 4/7 参数(P4-50) |
+| `circadian.get_energy_level/get_fatigue_recovery_rate` | PHASE 1 | life_loop.py:1644-1645 | ⚠️ 接入(2 方法) |
+| `planner.propose_plans` | — | tools/blackboard.py:512,784 | 🟡 仅 blackboard，life_loop 绕过 |
+| `goal_compiler.compute_progress`/`assess_gap_urgency` | — | — | 🔴 死代码(仅测试) |
+| `goal_progress.py` 整模块 | — | — | 🔴 死代码(P4-22) |
+| `insight_quality.py` 整模块 | — | — | 🔴 死代码(P4-19) |
+| `self_perception` 工具 | PHASE 7 工具 | tool_registry 注册 | 🔴 **注册未分发**(P4-31) |
+| `time_perception.py` | — | — | 🔴 未集成(P4-36) |
+| `command_parser.py` | — | — | 🔴 被绕过(P4-40) |
+| `novelty.py` | — | — | 🔴 死代码(P4-43) |
+| `signal_filter.py` | — | — | 🔴 死代码(P4-45) |
+| `recovery.py` 整模块 | PHASE 1（绕过）| life_loop 内联 L1651 | 🔴 死代码(P4-58) |
+| `resource_pressure.py` | PHASE 1（绕过）| state._update_resource_pressure | 🔴 **公式与 state 相反**(P4-61) |
+| `constants.METABOLISM` | — | — | 🔴 整段死常量(P4-64) |
+
+**高危区**：
+1. **`priority_level` 全域未设置**（P4-1）：论文 §3.8.1 的 6 级优先级系统运行时不生效，所有 Goal 恒为 MEDIUM
+2. **resource_pressure 与 state.py 公式语义相反**（P4-61）：生产路径偏离论文，两套"有效无聊度"触发条件相反
+3. **METABOLISM 常量整段失效**（P4-64）：4 套数值并存，调参改一处无效
+4. **self_perception 工具断链**（P4-31）：注册未分发，LLM 选了也找不到 handler
+5. **目标进度永不更新**（P4-2/P4-22）：goal_progress.py + goal_compiler.compute_progress 两套都没接 life_loop，goal.progress 停在 0.0
+6. **Q^insight 三重实现**（P4-20）：cognition/insight_quality(死)、memory/consolidation(活)、eval/gxbs 公式不同
+7. **perception 包 90% 死代码**：6/8 文件未接入（novelty/signal_filter/command_parser/time_perception/self_perception/__init__ 兜底）
+8. **时间源三重不一致**（P4-53/54/55）：circadian(UTC墙钟) vs caretaker(tick推算) vs time_perception(上海时区) 互不对齐
+
+**重复实现清单**（供跨章交叉引用）：
+- **Q^insight**：cognition/insight_quality.py vs memory/consolidation.py vs eval/gxbs.py
+- **目标进度 Prog(g,S)**：goal_compiler.compute_progress vs goal_progress.ProgressCalculator（均未接）
+- **目标类型分类法**：goal_progress.GoalType(8 枚举) vs goal_compiler 模板(5) vs planner 字符串(8+)
+- **新奇度**：perception/novelty.py vs memory/semantic_novelty.py vs axiology/feature_extractors._compute_semantic_novelty
+- **时段判定**：perception/time_perception vs metabolism/circadian vs organs/caretaker sleep window
+- **命令解析**：perception/command_parser vs core/handlers/chat_handler
+- **健康状态**：perception/self_perception.get_health_status vs organs/caretaker.get_health_status
+- **effective_boredom**：metabolism/boredom vs metabolism/resource_pressure vs state.get_effective_boredom
+- **资源压力 RP_t**：metabolism/resource_pressure（论文版，死）vs state._update_resource_pressure（反转版，活）
+- **压力公式**：metabolism/resource_pressure(0.6·cpu+0.4·mem) vs state(同系数但语义反转) vs perception/self_perception(0.3·cpu+0.4·mem+0.3·proc_mem)
+- **Signal 类**：perception/signal_filter.Signal(别名) vs core/stores/signals.Signal（命名冲突）
+
+**与论文的对应**：状态向量 = §3.2（observer/context_builder + metabolism/circadian）；资源压力 RP_t = §3.2（resource_pressure.py 死 / state.py 活但偏离）；目标编译 = §3.8（goal_compiler.py）；规划评估 J(p|S_t) = §3.9.3（plan_evaluator.py）；动作验证 = §3.11（verifier.py）；无聊 η-系数 = Appendix A.3（boredom.py）；昼夜节律/恢复 = §3.8.2（circadian.py 活 / recovery.py 死）；Q^insight = §3.5.2(7)/§3.10.4（insight_quality.py 死 / consolidation.py 活）。
 
 ---
 
@@ -990,9 +1432,303 @@ get_last_thought()/clear_last_thought() ← 选择性记忆用
 
 ---
 
-## 7. 安全 + 持久化 — 待续
+## 7. 安全 + 持久化 `safety/` + `persistence/`
 
-> ⏳ `safety/`(7文件,预算/风险/契约/沙箱/幻觉检测) + `persistence/`(6文件,回放引擎3模式/事件日志/快照)。共 13 文件/2604 行。
+> 13 文件/约 2604 行，覆盖论文 §3.13（五重安全管道：完整性/验证/风险/预算/能力）+ §3.11.3（确定性回放与可复现性）+ §3.4 跨重启记忆持久化的工程支撑。这两层是"动作执行前的闸门"和"进程结束后的留存"。
+>
+> **本章最大发现（两个）**：
+> 1. **safety/ 的代码执行走最弱沙箱**——第6章 P6-20 记录的"4 重代码执行实现"在此确认：生产路径用的是 `tools/tool_executor._execute_code_sandboxed`（裸子串黑名单 + `exec`），而 `safety/sandbox.py`（路径策略沙箱）和 `tools/safe_executor.py`（AST 审计沙箱，最完善）**双双闲置**。论文 §3.11.3 的安全沙箱形同虚设。
+> 2. **persistence/ 整包是孤岛**——`core/life_loop.py` **完全不导入 `persistence.*`**。`replay_mode` 参数只被存为属性 + 打印一行 log（life_loop.py:137），**不驱动任何回放逻辑**。论文 §3.4 严格回放 / §3.11.3 可复现性 在 `persistence/` 已实现但未接入主循环 → 生产环境无确定性回放能力。真正的持久化由 `common.jsonl.JSONLWriter` + `memory/episodic.EpisodicMemory` + `life_loop._persist_final_state` 完成。
+>
+> **目录结构**：
+> ```
+> safety/ (7 文件/1217 行)
+> ├── __init__.py            (40)   聚合导出(含僵尸导出)
+> ├── integrity_check.py     (61)   ✅ PHASE 9a 状态完整性闸门
+> ├── risk_assessment.py     (50)   ✅ PHASE 9c 风险评分(接管 immune 职能)
+> ├── budget_control.py      (78)   ✅ PHASE 9d 预算闸门(漏检 3 维)
+> ├── contract_guard.py      (288)  🔴 死代码(契约/边界/欺骗检测)
+> ├── hallucination_check.py (300)  🔴 死代码(正则启发式幻觉检测)
+> └── sandbox.py             (400)  🔴 死代码(文件系统/网络策略沙箱,非代码exec)
+>
+> persistence/ (6 文件/1387 行)
+> ├── replay.py              (762)  ⭐ 3模式回放引擎(最大,仅测试引用)
+> ├── tool_call_log.py       (204)  ⚠️ tool_calls.jsonl 写入器(无人调用)
+> ├── event_log.py           (159)  ⚠️ episodes.jsonl 写入器(无人调用)
+> ├── snapshot.py            (116)  ⚠️ 快照管理器(无人调用,与 replay 重复)
+> ├── storage.py             (123)  🔴 KV 存储抽象(无人调用,后端未实现)
+> └── __init__.py            (23)
+> ```
+
+### 7.0 PHASE 9 五重安全检查 ↔ 模块映射（先看这个）
+
+论文 §3.13 的"五重安全检查"在 life_loop.py:1230-1290 实现，但**只有 3 个子相位真正由 safety/ 包承担**：
+
+| 子相位 | life_loop 行 | 实际逻辑位置 | 是否 safety/ 模块 | 失败动作 |
+|---|---|---|---|---|
+| **9a 完整性** | L1230 `check_integrity` | `safety/integrity_check.py` | ✅ | → SLEEP |
+| **9b 验证器** | L1248 `self.verifier.verify_action` | **`cognition/verifier.py`**（第4章） | ❌ 不在 safety/ | → SLEEP/REFLECT |
+| **9c 风险** | L1267 `assess_risk` (>0.8) | `safety/risk_assessment.py` | ✅ | → REFLECT |
+| **9d 预算** | L1278 `check_budget` | `safety/budget_control.py` | ✅ | → SLEEP |
+| **9e 能力缺口** | L1286 `self._check_action_capability` | **`core/capability_manager`**（第8章） | ❌ 不在 safety/ | 异步触发成长，不阻塞 |
+
+> 9a→9b 用 `else` 串联（L1236），9c/9d/9e 是独立 `if` 顺序闸门。**safety/ 包真正接线的只有 9a/9c/9d 三个函数级模块**（共 189 行），其余 1028 行（contract_guard + hallucination_check + sandbox）是死代码。
+
+---
+
+### 7.1 `safety/integrity_check.py` (61行) ✅ PHASE 9a 状态完整性闸门
+**职责**：`check_integrity(action, state) → {ok, reason?}`——动作 vs 内部状态（压力/能量/情绪）的硬约束。
+
+**4 个检查**（L6-59）：
+1. **自我修改禁令**（L29）：`"modify_self" in params` → 拒。
+2. **高压限流**（L33-40）：`stress > 0.9` 仅放行 CHAT/REFLECT/SLEEP。
+3. **低能保命**（L43-50）：`energy < 0.1` 仅放行 SLEEP（注释"修复：允许 SLEEP 否则死锁" L48）。
+4. **低落禁探索**（L53-59）：`mood < 0.1` 禁 EXPLORE/LEARN_SKILL。
+全程 `stress/energy/mood` 先 `max(0,min(1,x))` 归一化（L35/45/55）。
+
+**接入**：life_loop.py:1230（9a）。失败时 `selected_action = SLEEP(duration=1)`（L1233）。
+
+**🔍问题 P7-1（🟢 魔数）**：`0.9/0.1/0.1` 三阈值硬编码，与 risk_assessment 的 `0.8/0.2`、budget_control 的 `1000` 风格不一，无集中配置。
+**🔍问题 P7-2（🟢 黑名单过窄）**：`modify_self` 只查 params 键名，不覆盖 tool_id 含 modify 的工具调用。
+
+### 7.2 `safety/risk_assessment.py` (50行) ✅ PHASE 9c 风险评分
+**职责**：`assess_action(action, context=None) → float`——动作风险评分 [0,1]，**接管了免疫器官的风险职能**（呼应第5章 P5-20）。
+
+**公式**（L6-50）：
+```
+risk = clamp01( clamp01(action.risk_level)
+                + (0.8 if USE_TOOL 且 code_exec/exec/eval/os.system/subprocess else 0)
+                + (0.1 if stress>0.8 else 0)
+                + (0.15 if energy<0.2 else 0) )
+```
+code_exec 探测（L31-37）：`tool_id=="code_exec"` 或 params 代码串命中 `exec(/eval(/os.system(/subprocess/code_exec`。
+
+**接入**：life_loop.py:1267（9c），阈值 `risk_score > 0.8` → 降级为 `REFLECT(purpose=risk_avoidance)`（L1268-1270）。
+
+**🔍问题 P7-3（🟡 与 immune_organ 功能重叠）**：
+| 维度 | safety/risk_assessment.py | immune_organ.assess_action_risk (L794-822) |
+|---|---|---|
+| 接入 | ✅ life_loop 9c | ❌ 仅 tests/test_organ_coordination.py |
+| 模型 | action.risk_level + 状态加成 | action.risk_level + 信任分 + 安全模式倍率（permissive/balanced/cautious/strict/lockdown） |
+| 成熟度 | 简单 | 更丰富（动态安全模式、行动信任分表） |
+免疫器官的 `assess_action_risk` 更完善却只被测试调，证实"immune 未接线、safety/ 接管"。**建议合并或显式选其一**。
+**🔍问题 P7-4（🟢 魔数）**：`0.8/+0.1/+0.15` 与 life_loop 截断 `0.8` 硬编码。
+
+### 7.3 `safety/budget_control.py` (78行) ✅ PHASE 9d 预算闸门
+**职责**：`check_budget(action, state, budget_remaining) → {ok, reason?}`——动作执行前校验 CostVector 不超剩余预算。
+
+**默认值**：`DEFAULT_CPU_TOKENS_BUDGET=1000`（L7）、`DEFAULT_MONEY_BUDGET=1.0`（L8）。
+**逻辑**：取 `action.estimated_cost`，缺省回退 `CostVector(cpu_tokens=100)`（L31）→ 非负校验 → 比 `cpu_tokens`（L56）→ 比 `money`（L72）。
+**公式**：`ok = (cost.cpu_tokens ≤ remaining.cpu_tokens) AND (cost.money ≤ remaining.money)`。
+
+**接入**：life_loop.py:1278（9d）。`budget_remaining` 由 `self.ledger.resources[name].remaining()` 构造（L1274-1277）。
+
+**🔍问题 P7-5（🟡 预算校验不完整）**：`CostVector`（models.py:226）含 6 维 `cpu_tokens/io_ops/net_bytes/latency_ms/risk_score/money`，但 `check_budget` **只检查 cpu_tokens 和 money**，**io_ops/net_bytes/latency_ms/risk_score 完全漏检**——成本向量其他维度形同虚设。
+**🔍问题 P7-6（🟢 默认成本硬编码）**：缺省 `CostVector(cpu_tokens=100)`（L31）、阈值 `1000/1.0`（L7-8）魔法数，未走 `core/resource_config.py` 的 ResourceConfig，两套预算来源易漂移。
+
+### 7.4 `safety/contract_guard.py` (288行) 🔴 整模块死代码
+**职责（声称）**：契约/完整性/边界/欺骗四类违规检测 + 违规惩罚计算。
+
+**关键类**：
+- `ViolationType`（L23）：INTEGRITY/CONTRACT/BOUNDARY/DECEPTION。
+- `ContractViolation`（L31）：`violation_type/severity[0,1]/description/action`。
+- `ContractGuard`（L47）：
+  - `check_action(action, context) → (bool, ContractViolation?)`（L75）：依次 `_check_integrity → _check_contract → _check_boundaries`。
+  - `_check_integrity`（L127）：声明目标 vs tool_id 的关键词交集启发式（无交集即判 DECEPTION 严重度 0.3）；目标冲突检测。
+  - `_check_contract`（L184）：需审批工具（`requires_approval=["file_write","code_exec","api_call"]`）未经 `user_approved` 即 CONTRACT 严重度 0.8。
+  - `_check_boundaries`（L216）：file_ops 工具路径越界检查（`Path.relative_to`）。
+  - `get_violation_penalty`（L265）：`base_penalty × severity`，base 字典 `{INTEGRITY:-0.5, CONTRACT:-0.8, BOUNDARY:-0.6, DECEPTION:-1.0}`。
+
+**🔍问题 P7-7（🔴 整模块死代码）**：全仓 grep `ContractGuard`（除 safety/）**0 命中**。life_loop 9a-9e 无任何子相位调用 ContractGuard。288 行契约守卫从未运行。
+**🔍问题 P7-8（🔴 三套契约系统互不连通）**：
+1. `tools/tool_registry.py:20-21` `ToolSpec.preconditions/postconditions`——**字符串型**（如 `"energy > 0.1"`），全仓 grep 无任何代码 parse/eval，**纯文档性字段，永不求值**。
+2. `tools/tool_protocol.py:92-169` 另一套 `add_precondition(Callable)` 可调用对象系统，在 `execute()` 内求值（L149/L169）——但 tool_protocol 本身是死代码（见第6章 P6-12）。
+3. `safety/contract_guard.py` 第三套独立类——死代码。
+**三者互不连通，实际生效的只有 tool_protocol 那套（而它整体也是死的）**。论文 §3.11 的契约前置/后置条件机制在生产环境完全不工作。
+**🔍问题 P7-9（🟡 欺骗检测误报率高）**：`_check_integrity` 的 `set(declared_goal.lower().split()) & set(tool_id.split("_"))` 关键词交集法误报极高——`tool_id="file_ops"` 几乎不与任何自然语言目标词重叠，会把正常文件操作一律判 DECEPTION。这也是它即使被接线也不敢启用的重要原因。
+
+### 7.5 `safety/hallucination_check.py` (300行) 🔴 整模块死代码
+**职责（声称）**：基于正则启发式的幻觉检测（**非** LLM-as-judge）。
+
+**关键类**：
+- `HallucinationScore`（L18）：`is_hallucination/confidence[0,1]/evidence/category`。
+- `HallucinationChecker`（L34）：
+  - `confidence_threshold=0.7`（L48）。
+  - `uncertainty_patterns`（L51）：`r"I think"/"maybe"/"possibly"/"might be"/"could be"/"not sure"/"uncertain"`。
+  - `hallucination_indicators`（L62）：`r"as far as I know"/"if I recall correctly"/"I believe"/"I'm pretty sure"`——**定义后从未使用**（死字段）。
+  - `check_response(response, context) → HallucinationScore`（L69）：`max(uncertainty, unsupported, attribution) > 0.7` 即判幻觉。
+  - `_check_uncertainty_language`（L111）：`matches/max(1,words)·50`（魔数 50）。
+  - `_check_unsupported_claims`（L135）：无 sources 返回 0.3；句子切分 → 关键词 50% 重叠判支撑。
+  - `_check_source_attribution`（L173）：引用模式 `r"\[(\d+)\]"/"according to"/"source:"/"from (.+?),"`。
+
+**🔍问题 P7-10（🔴 整模块死代码）**：全仓 grep `HallucinationChecker`（除 safety/）**0 命中**。9a-9e 无对应子相位。本设计应为 PHASE 11（输出阶段）的 CHAT/反思内容把关，但 `ActionExecutor` 的 CHAT 路径（第8章）从未调用它。
+**🔍问题 P7-11（🟡 正则仅英文）**：`uncertainty_patterns`/`citation_patterns` 全是英文短语，对 GenesisX 中文输出场景（organ_llm_session.py 全中文 prompt）几乎永不触发，等于失效。
+**🔍问题 P7-12（🟢 死字段）**：`hallucination_indicators`（L62-67）定义后无引用。
+
+### 7.6 `safety/sandbox.py` (400行) 🔴 整模块死代码（4 重沙箱之一）
+**职责**：**文件系统/网络/资源策略沙箱**（注意：**不是**代码执行沙箱——它没有 `exec`，只做路径与配额检查）。
+
+**关键类**：
+- `SandboxConfig`（L17）：`allowed_dirs/forbidden_patterns/max_memory_mb=512/max_cpu_percent=50/network_allowed=False`。
+- `SandboxViolation(Exception)`（L35）：带 violation_type。
+- `Sandbox`（L43）：
+  - `check_path_access(path, op)`（L64）：symlink 双重检查（L83/L100）、`resolve`、`relative_to` 越界判定、`forbidden_patterns` 通配。
+  - `_verify_path_components`（L140）：逐级向上查 symlink（防 symlink 攻击）。
+  - `_check_system_paths`（L186）：跨平台关键目录黑名单（Win `C:\Windows`/`System32`/`Program Files`；Unix `/etc /sys /proc /dev /bin /sbin /usr/*`）。
+  - `check_path_access_for_write`（L236）、`check_network_access`（L254）、`check_resource_usage`（L276）、`get_safe_temp_dir`（L308）、`cleanup_temp`（L326）。
+- `SandboxManager`（L335）：`MAX_SANDBOXES=100`（L373）。
+
+**🔍问题 P7-13（🔴 整模块死代码）**：全仓 grep `Sandbox(`/`SandboxManager`（除 safety/）**0 命中**。`__init__.py` 导出但无人用。`tools/file_ops.py` 自带了一套 `allowed_dirs`/`forbidden_patterns`/`_is_path_allowed`（file_ops L101-142），根本不调 `safety.Sandbox`。
+**🔍问题 P7-14（🔴 确认"4 重沙箱/代码执行实现"问题——最完善的两套都闲置）**：
+
+| # | 位置 | 类型 | 实际机制 | 在 live 路径？ |
+|---|---|---|---|---|
+| 1 | `safety/sandbox.py` `Sandbox` | **文件系统/网络/资源策略** | `Path.resolve`+`relative_to`，无 exec | ❌ 死代码 |
+| 2 | `tools/safe_executor.py` `SafeCodeExecutor` | **AST 审计** + 受限 globals + 线程超时 | `ast.NodeVisitor` + `_create_safe_globals` + threading | ❌ 未被 life_loop 调用 |
+| 3 | `tools/code_exec.py` `CodeExecutionTool` | 子进程 + 关键词字符串过滤 | `_contains_forbidden` 正则 + `subprocess.run([sys.executable, tmp])` | ⚠️ 工具已注册但 life_loop 走 #4 |
+| 4 | `tools/tool_executor.py:501 _execute_code_sandboxed` | **子串关键词黑名单** | `if pattern in code` 直接拒 + `exec()` | ✅ **LIVE** |
+
+实测 live 路径：`life_loop → ActionExecutor.execute → life_loop.tool_executor (LLMToolExecutor).execute → _execute_code → _execute_code_sandboxed`（action_executor.py:538-539/788/916）。**最弱的 #4（裸子串匹配 + exec）反而是生产路径，最强的 #2（AST 审计）闲置**。配合第6章 P6-9（dynamic_tool_registry 用 `LLMToolExecutor(safe_mode=False)` 即 FULL_ACCESS）——**生产环境的代码执行实际上是无沙箱全开**。这是本包最严重的高危区，也是整个项目最高危的安全问题。
+**🔍问题 P7-15（🟡 Sandbox 缺资源限制执行能力）**：`check_resource_usage`（L276）只比较传入数值，**不实际采样**进程内存/CPU（无 `resource`/`psutil`），即 `max_memory_mb=512` 是声明值，无强制力。即便被接线也是空壳。
+
+---
+
+### 7.7 `persistence/replay.py` (762行) ⭐ 3 模式回放引擎（全包最大，仅测试引用）
+**职责**：`ReplayEngine`——确定性回放引擎，支持 3 模式，含 LLM 输出哈希校验、状态快照、分叉（fork）管理、漂移（divergence）检测。论文 §3.11.3 可复现性 + §3.4 严格回放。
+
+**3 模式**（`ReplayMode` Enum L31-35）：
+| 模式 | 行为 | LLM 非确定性处理 |
+|---|---|---|
+| `STRICT`（L33） | 完全确定性回放，**精确匹配** | `should_replay_output`（L410-411）始终返回 True（永不重新执行，只回放缓存输出）；`hash_exact` SHA-256 严格比对（L151-157） |
+| `SEMANTIC`（L34） | 允许 LLM 重执行 | `llm_tools={"llm_chat","llm_generate","llm_complete"}`（L417 硬编码）会重新执行；`hash_semantic`（归一化 lowercase/折叠空白/去尾标点 L131-134）+ Jaccard 相似度（阈值 `>0.4`，coverage `>0.5`，L181）判定 |
+| `FORK`（L35） | 从某 tick 分叉做 what-if | fork 点之前回放、之后重新执行（L423-425）；不校验（L187-188） |
+
+**关键类**：
+- `ReplayState`（L38-81）：回放状态快照。字段 `tick/session_id/fields/weights/gaps/mode/stage/current_goal/memory_stats/ledger`。`to_dict`/`from_dict`。
+- `DivergenceReport`（L84-92）：漂移报告，`divergence_type ∈ {state,output,hash}`，`severity ∈ {low,medium,high}`。
+- `LLMOutputHasher`（L95-188）：`hash_exact`（SHA-256 前 16 字符 L102-113）、`hash_semantic`（L115-136）、`verify_match`（L138-188，Jaccard=|∩|/|∪| L173-175，coverage 双向 L178-179）。
+- `StateSnapshotManager`（L191-289）：`save_snapshot`（每 `snapshot_interval` ticks 落盘 `snapshot_{tick:06d}.json`）、`load_snapshot`、`get_nearest_snapshot`（内存优先→磁盘倒序扫描）。
+- `ReplayEngine`（L292-666）：
+  - `__init__(replay_dir, mode, snapshot_interval=10)`（L302-337）：加载 `episodes.jsonl`/`tool_calls.jsonl`/`states.jsonl`。
+  - `should_replay_output(tool_id, tick)`（L399-425）：决定工具回放还是重执行。
+  - `verify_state_consistency(original, replayed, tolerance=0.01)`（L427-494）：逐字段比对 mode/stage（high）/affect（medium）/weights（low）。
+  - `fork_at`/`record_fork_action`/`save_fork_branch`（L568-628，写 `forks/{branch}_{ts}.jsonl`）。
+  - `get_divergence_summary`（L531-566，**仅返回最后 10 条** L564 硬编码 `[-10:]`）。
+- 模块级：`create_replay_engine`（L670-687）、`verify_replay_consistency`（L690-715，**存根**：注释自承"simplified, In production iterate through all ticks"）。
+- `__main__` 测试块（L719-762）。
+
+**记录 vs 回放**：记录侧依赖外部（life_loop/EventLogger/ToolCallLogger）写入 jsonl；引擎只读。STRICT 模式永不调用真实工具/LLM，全靠 `tool_calls.jsonl` 缓存输出。时间处理：tick 作为离散整数索引（`get_episode(tick)` 用列表下标 L387），无 wall-clock 回放。
+
+**🔍问题 P7-16（🔴 整包未接入 life_loop——头号问题）**：`replay_mode` 参数在 `LifeLoop.__init__`（L103/169）被接收并存为 `self.replay_mode`，但**仅用于 L137 的一行 log 打印**（`f"Replay mode: {self.replay_mode or 'None (live)'}"`）。全文件无任何 `should_replay_output`/`ReplayEngine` 调用，tick 执行时不查询回放缓存。**回放模式是 dead flag——life_loop 永远是 live 执行**。`persistence.ReplayEngine` 只在 `tests/conftest.py:355` 被实例化做测试。
+**🔍问题 P7-17（🔴 回放 schema 不匹配）**：`_load_episodes`（L339-350）读 `episodes.jsonl` 期望 `EventLogger.EpisodeSchema` 的扁平字段（含 `weights`/`gaps`/`delta`），但生产 `EpisodicMemory` 写入的是 `EpisodeRecord`（memory/schema.py，字段含 `state_snapshot`）。**回放引擎加载后会因字段缺失崩溃或得到默认值**。同理 `_load_tool_calls`（L352）期望 `tick` 字段，但 `tools/tool_system_v2.ToolCallLogger` 写的 schema 无 tick（见 P7-23）。
+**🔍问题 P7-18（🟡 存根/未完成）**：`verify_replay_consistency`（L690-715）注释自承"simplified"，未真正迭代所有 tick——返回的 `consistent` 只反映空 divergences 列表，恒为 True。
+**🔍问题 P7-19（🟡 硬编码魔数）**：`snapshot_interval=10`（L198/306/673）、Jaccard 阈值 `0.4`/coverage `0.5`（L181）、tolerance `0.01`（L432）、hash 截断 `[:16]`（L113/136）、`llm_tools` 集合（L417）、`[-10:]`（L564）。
+**🔍问题 P7-20（🟢 LLM 非确定性局限）**：STRICT 通过"只回放缓存、不重执行"规避非确定性（合理）；SEMANTIC 的 Jaccard/coverage 是弱启发式，对同义改写（"Hello"/"Hi"）会判 mismatch——已知局限非 bug。
+
+### 7.8 `persistence/event_log.py` (159行) ⚠️ episodes.jsonl 写入器（无人调用）
+**职责（声称）**：append-only JSONL 写 `episodes.jsonl`，带 Pydantic 校验 + fsync 崩溃恢复。
+
+**关键类**：
+- `EpisodeSchema(BaseModel)`（L22-62）：扁平字段 `tick/session_id/timestamp/observation/action/reward/delta/state/weights/gaps/goal/mode="work"/stage="adult"/cost/tags`。`validate_weights_simplex`（L54-62）校验 `0.99 ≤ Σweights ≤ 1.01`（魔数 L60）。
+- `EventLogger`（L65-159）：
+  - `__init__(log_path)`（L75-83）：建父目录、`touch()`、`_file_handle=None`（**L83/L155-159 是死代码**：字段声明但从不赋值，`close()` 永远 no-op）。
+  - `write_episode(episode_data)`（L85-114）：Pydantic 校验 → `model_dump()`(v2)/`dict()`(v1) → `orjson.dumps(OPT_APPEND_NEWLINE)` → `open('ab')`+`fsync`。
+  - `read_all_episodes()`（L116-141）：逐行读，JSONDecodeError 跳过+warn。
+
+**🔍问题 P7-21（🔴 episodes.jsonl 三重写入器）**：
+1. `persistence/event_log.py:EventLogger`——**本文件，无人调用**
+2. `memory/episodic.py:EpisodicMemory._persist_episode`（L108-130，**生产实际使用**，被 life_loop.py:1476 调）
+3. 间接：`life_loop.episode_writer`（common.jsonl.JSONLWriter，写的是 `states.jsonl`，见 L564——命名误导）
+三者 schema 不一致：EventLogger 用扁平 `observation/action/reward/delta`，EpisodicMemory 用 EpisodeRecord（字段含 `state_snapshot`）。**回放引擎读的是 EventLogger schema，与实际写入不匹配（P7-17）**。
+**🔍问题 P7-22（🟡 死代码）**：`_file_handle` 字段（L83）+ `close()`（L155-159）从未真正使用，每次 `write_episode` 都重新 `open('ab')`（L111），与 docstring"持有句柄"矛盾。
+
+### 7.9 `persistence/tool_call_log.py` (204行) ⚠️ tool_calls.jsonl 写入器（无人调用）
+**职责（声称）**：写 `tool_calls.jsonl` 审计日志，含输入/输出哈希、模型版本/参数、成本/延迟/风险、可选脱敏。
+
+**关键类**：
+- `ToolCallSchema(BaseModel)`（L24-56）：字段 `tick/session_id/timestamp/tool_id/tool_type/input_params/input_hash/output/output_hash/model_id/model_version/model_params/cost/latency_ms/risk_score/success/error/redacted`。
+- `ToolCallLogger`（L58-204）：
+  - `log_tool_call(...)`（L76-156）：12 参数；算 input_hash/output_hash → 可选脱敏 → fsync 写。
+  - `get_tool_calls_for_tick(tick)`（L172-175，**全表扫描过滤**，无索引）。
+  - `_hash_dict`（L177-184）：`orjson.dumps(OPT_SORT_KEYS)` → SHA-256 `[:16]`。
+  - `_redact_sensitive`（L186-204）：键名含 key/password/token/secret → `[REDACTED]`。
+
+**🔍问题 P7-23（🔴 tool_calls.jsonl 三重写入器，schema 不兼容）**：
+1. `persistence/tool_call_log.py:ToolCallLogger`——**本文件，无人调用**，schema 有 tick+cost+risk_score+redacted
+2. `tools/tool_system_v2.py:ToolCallLogger`（L63-160）——独立类，schema=`ToolCallRecord`（call_id/tool_name/parameters/input_hash/output/output_hash/success/error/execution_time/timestamp/model_version，**无 tick/cost/risk_score**）
+3. `life_loop.tool_writer`（common.jsonl.JSONLWriter，**生产实际使用**，由 ActionExecutor._log_tool_call L160-170 写，schema={tick,session_id,timestamp,action_type,params,result,cost}，**无 tool_id/input_hash/output_hash**）
+三者 schema 互不兼容。`replay.py:_load_tool_calls`（L352）按 `tick` 索引，而 tool_system_v2 版无 tick（默认 0）→ **回放时所有调用会聚到 tick 0**。
+**🔍问题 P7-24（🟡 无索引）**：`get_tool_calls_for_tick`（L172）每次全文件扫描，长日志 O(n)。
+**🔍问题 P7-25（🟢 脱敏仅英文）**：`_redact_sensitive` 只匹配 key/password/token/secret，中文/其他命名不覆盖。
+
+### 7.10 `persistence/snapshot.py` (116行) ⚠️ 快照管理器（与 replay 重复）
+**职责（声称）**：全量/增量状态快照存取，用于检查点与回放恢复。
+
+**`SnapshotManager`**（L19-117）：
+- `save_snapshot(tick, session_id, state, snapshot_type="full")`（L28-63）：写 `snapshot_tick_{tick}.json`，含 `{tick, session_id, timestamp, type, state}`。
+- `load_snapshot(tick)`/`list_snapshots()`（按 tick 排序）/`get_latest_snapshot()`/`prune_old_snapshots(keep_last_n=10)`。
+
+**🔍问题 P7-26（🔴 与 replay.StateSnapshotManager 重复）**：本文件 `SnapshotManager` 与 `replay.py:StateSnapshotManager`（L191-289）功能高度重叠（都存/取 tick→state 快照），但命名约定不同（`snapshot_tick_{tick}.json` vs `snapshot_{tick:06d}.json`）。两者互不兼容，**均未被 life_loop 调用**。
+**🔍问题 P7-27（🔴 与 life_loop._persist_final_state 重叠）**：实际运行时状态持久化由 `life_loop._persist_final_state`（L1841-1884）完成，手写 state_dict 写入 `final_state.json`（含 tick/mode/stage/energy/mood/.../weights/gaps）。该 dict 与 `ReplayState.to_dict`/`snapshot.py` 的 state 结构**部分重叠但不一致**——无统一序列化层，重启时只读 `final_state.json`，回放/快照体系形同虚设。
+**🔍问题 P7-28（🟡 增量是空壳）**：`snapshot_type="incremental"` 参数（L34）只进元数据，无任何增量差分/delta 计算。
+**🔍问题 P7-29（🟡 无 import）**：全工程仅 `persistence/__init__.py` 导出，无任何 `.py` 实际使用。
+
+### 7.11 `persistence/storage.py` (123行) 🔴 KV 存储抽象（无人调用）
+**职责（声称）**：统一存储接口，支持 file/jsonl/sqlite/memory 后端（声明），实际仅实现 FILE。
+
+**`Storage`**（L25-123）：
+- `write(key, data)`（L44-58）：FILE→`{key}.json`。
+- `read(key)`（L60-85）：cache 优先 → 磁盘。
+- `append(key, item)`（L87-100）：**读全部→append→写全部**（O(n²) 反模式）。
+- `delete`/`list_keys`/`clear_cache`。
+
+**🔍问题 P7-30（🔴 无人使用）**：全工程零 `from persistence.storage`/`Storage(` 调用。
+**🔍问题 P7-31（🟡 后端声明与实现不符）**：Enum 声明 SQLITE/MEMORY（L18-22），但 write/read/delete 全是 `if backend == FILE: ...` 后直接 return None（如 L85），SQLITE/MEMORY 路径无实现——**误导性 API**。
+**🔍问题 P7-32（🟡 append 性能缺陷）**：读全表→改→写全表，对长列表（如 episodes）退化为 O(n²)，违反 JSONL append-only 设计初衷。
+
+### 7.12 `persistence/__init__.py` (23行) ⚠️ 孤儿包门面
+**🔍问题 P7-33（🟡 孤儿包）**：grep `from persistence` 全工程仅 `tests/conftest.py:31` 命中。`core/life_loop.py` 导入的是 `common.jsonl.JSONLWriter`（L32）和 `memory.episodic.EpisodicMemory`（L188），**完全不导入 persistence.\***。Docstring 所称职责与实际运行时持久化**重复且未被采纳**。
+
+---
+
+### 7.x safety/persistence 速查与调试点
+
+**精读优先级**：
+- safety：先看 7.0 PHASE 9 映射表（搞清 9a/9c/9d 才是活路径）→ 确认 P7-14（代码执行走最弱沙箱）→ 看 contract_guard 三套契约系统（P7-8）
+- persistence：先确认 P7-16（整包未接入）→ 看 replay.py 3 模式设计（即便没接，设计本身有价值）→ 看 P7-21/23（三重写入器 schema 不兼容）
+
+**接入真相表**（life_loop PHASE 9 + shutdown）：
+| 模块 | life_loop 导入? | PHASE | 状态 |
+|---|:---:|---|---|
+| `safety/integrity_check.check_integrity` | ✅ life_loop:1230 | 9a | ✅ 接入 |
+| `safety/risk_assessment.assess_action` | ✅ life_loop:1267 | 9c | ✅ 接入 |
+| `safety/budget_control.check_budget` | ✅ life_loop:1278 | 9d | ✅ 接入 |
+| `safety/contract_guard.ContractGuard` | ❌ | — | 🔴 **完全死代码**(P7-7) |
+| `safety/hallucination_check.HallucinationChecker` | ❌ | — | 🔴 **完全死代码**(P7-10) |
+| `safety/sandbox.Sandbox` | ❌ | — | 🔴 **完全死代码**(P7-13) |
+| `persistence/replay.ReplayEngine` | ❌ | — | 🔴 **仅测试引用**(P7-16) |
+| `persistence/event_log.EventLogger` | ❌ | — | 🔴 **无人调用**(P7-21) |
+| `persistence/tool_call_log.ToolCallLogger` | ❌ | — | 🔴 **无人调用**(P7-23) |
+| `persistence/snapshot.SnapshotManager` | ❌ | — | 🔴 **无人调用**(P7-26) |
+| `persistence/storage.Storage` | ❌ | — | 🔴 **无人调用**(P7-30) |
+
+**shutdown() 真实接线**（life_loop.py:1742-1884）：
+- 关闭：`episode_writer.close()`（L1758）、`tool_writer.close()`（L1765）——均为 common.jsonl.JSONLWriter
+- 持久化：`_persist_override_state`→`override_state.json`（L1812）、`_persist_value_parameters`→`value_parameters.json`（L1826）、`_persist_final_state`→`final_state.json`（L1846）
+- **PHASE 16**（L1550 `ctx.advance_phase("persist_override")`）持久化 override 状态——**与 persistence 包无关**
+- **`persistence/` 整包在 life_loop 的 init/shutdown/PHASE16 中零接线**
+
+**高危区**：
+1. **代码执行走最弱沙箱**（P7-14 + 第6章 P6-9）：生产路径是 `tool_executor._execute_code_sandboxed`（裸子串黑名单 + exec），safe_executor AST 沙箱闲置，实际 FULL_ACCESS 全开——**整个项目最高危的安全问题**
+2. **persistence 整包孤岛**（P7-16）：life_loop 完全不导入 persistence.*，replay_mode 是 dead flag，论文 §3.11.3 可复现性在生产环境不工作
+3. **safety 包 81% 死代码**（P7-7/10/13）：contract_guard(288) + hallucination_check(300) + sandbox(400) = **988 行从未运行**
+4. **三套契约系统互不连通**（P7-8）：tool_registry 字符串版（不求值）/ tool_protocol Callable 版（整体死）/ contract_guard 类版（死）——论文 §3.11 契约机制完全不工作
+5. **回放 schema 不匹配**（P7-17）：replay 读 EventLogger schema，生产写 EpisodeRecord——即便接入回放也会因字段缺失崩溃
+6. **三重 episodes/tool_calls 写入器**（P7-21/23）：schema 互不兼容，是第3章 P3-2"持久化绕开 JSONLWriter"问题的延伸
+7. **风险评估双实现**（P7-3）：safety/risk_assessment（活，简单）vs immune_organ.assess_action_risk（仅测试，更完善）——安全模式倍率等机制白写
+8. **预算校验漏 3 维**（P7-5）：CostVector 6 维只查 cpu_tokens/money
+
+**与论文的对应**：五重安全管道 = §3.13（PHASE 9a-9e，但只有 9a/9c/9d 在 safety/，9b 在 cognition/，9e 在 core/）；动作验证 = §3.11（cognition/verifier）；契约前后置条件 = §3.11（三套都失效）；确定性回放/可复现性 = §3.11.3（persistence/replay.py 实现了但未接入）；强证据 = §3.10.4（见第3章 P3-10 巩固证据门虚设）。
 
 ---
 
@@ -1315,16 +2051,253 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 
 ---
 
-## 9. 入口 + Web — 待续
+## 9. 入口 + Web `lifecycle/` + `web/` + 顶层脚本
 
-> ⏳ `lifecycle/`(3文件) + `web/app.py`(Flask,40+路由) + `web/websocket_server.py` + 顶层 `run.py`/`daemon.py`/`chat_interactive.py`。
-> **续写提示**：`web/app.py` 的 40+ 路由要分类整理（状态/聊天/配置/器官/记忆/守护进程/主动消息）。initiative messaging（主动发消息）是特色功能。
+> 15 文件/约 7k 行（lifecycle 3 文件 + web 2 个 .py + 顶层 8 个脚本）。这是"数字生命"对外的脸和手——把 `LifeLoop`（第8章）暴露成 CLI 交互、Web UI、长驻守护进程。**理解本章的前提是已读第8章 core/**。
+>
+> **本章最大发现（两个）**：
+> 1. **`lifecycle/` 整包是第二条并行 tick 引擎——零接入**。`lifecycle/tick_loop.py`(704行) 自己实现了一套 17 阶段 `TickLoop`，但所有相位都是"简化实现"（retrieve 返回空、execute 不执行、memory_write 不写入、persist 不持久化、reward 恒 0）。run.py/web/daemon/chat_interactive **全部用的是 `core/life_loop.LifeLoop`**，没有任何入口 import lifecycle。`lifecycle/` 仅被 `tests/test_lifecycle.py` 引用——是早期原型，被 core/ 全面取代后沦为孤立脚手架（呼应第3-7章多处"孤立模块"模式，但这是整包级的孤立）。
+> 2. **Web 是唯一真正多线程的入口，却对共享的 `life_loop` 完全不加锁**。Flask `threaded=True` + auto-run 后台线程 + 同步聊天线程池 + 异步聊天守护线程 + initiative tick **5 条路径并发调 `manager.life_loop.tick()`/`send_message()`**，而 `LifeLoop` 内部状态（state/fields/organs/episodic/...）**无一加锁**。这是全项目最隐蔽的并发高危区。
+>
+> **目录结构**：
+> ```
+> lifecycle/ (3 文件/784 行)        🔴 整包孤立(第二条 tick 引擎)
+> ├── tick_loop.py          (704) 🔴 TickLoop——17阶段空壳实现(仅测试用)
+> ├── genesis_lifecycle.py  (75)  🔴 GenesisLifecycle——TickLoop 薄包装(孤立)
+> └── __init__.py           (5)
+>
+> web/ (2 .py + 6 html + 静态资源, Python 共 3168 行)  ⭐ 唯一真实 UI
+> ├── app.py                (2894) ⭐ Flask app + 60+ 路由 + GenesisXManager
+> └── websocket_server.py   (274)  🔴 WebSocket 服务(代码完整但被 app.py 硬禁用)
+>
+> 顶层脚本 (8 .py)
+> ├── run.py                (155)  ⭐ 主入口:CLI 冒烟测试(单次 run_session)
+> ├── chat_interactive.py   (607)  ⭐ 终端交互式聊天(自带工具循环)
+> ├── daemon.py             (532)  🟡 长驻守护进程(PID+健康检查,被 web/daemon/* 调)
+> ├── compile_code_docs.py  (338)  🟡 文档生成器(AST 扫源码,独立工具)
+> ├── migrate_session.py    (48)   🟢 一次性脚本(旧 session_id 迁移)
+> ├── run_tests.py          (57)   🟢 pytest 包装器
+> ├── test_tools.py         (29)   🟢 冒烟测试(POST /api/chat)
+> ├── setup.py              (76)   🟢 pip 安装入口
+> └── __init__.py           (8)
+> ```
+
+### 9.0 入口全景（先看这个：哪个脚本连哪个核心）
+
+```
+                     ┌─────────────────────────────────────────┐
+                     │       core/life_loop.LifeLoop (第8章)     │  ← 唯一真实引擎
+                     └─────────────────────────────────────────┘
+                          ▲            ▲            ▲            ▲
+                          │            │            │            │
+   run.py ────────────────┘            │            │            │  (run_session 批量 tick)
+   chat_interactive.py ────────────────┘            │            │  (单条 process_input→tick)
+   daemon.py ───────────────────────────────────────┘            │  (while True: tick)
+   web/app.py ────────────────────────────────────────────────────┘  (send_message→tick / run_loop→tick)
+
+   lifecycle/TickLoop  ◄── 仅 tests/test_lifecycle.py  (🔴 孤立的第二引擎,核心不连)
+```
+
+**关键事实**：4 个真实入口（run/chat_interactive/daemon/web）**都直连 `LifeLoop`**，构造方式各异但殊途同归——`load_config() → LifeLoop(config, run_dir) → tick()/run_session()`。**没有一层公共的"入口胶水"**，导致配置加载、run_dir 命名、safe_mode 读取、shutdown 处理在 4 处各写一遍（见 P9-3）。
+
+### 9.1 `run.py` (155行) ⭐ 主入口（冒烟测试）
+**职责**：命令行批量运行。`parse_args()` → `load_config(Path(config))` → `LifeLoop(config, run_dir)` → `run_session(max_ticks)` → `shutdown()`。
+
+- **参数**：`--config`(默认 config 目录)/`--ticks`/`--artifacts`/`--seed`/`--mode`(work/friend/sleep/reflect/play)。
+- **run_dir 命名**：`artifacts/run_{UTC时间戳}{_seed?}`——**每次运行新建独立目录**（与 web 的固定 `artifacts/web_run`、daemon 的 `artifacts/daemon_{ts}` 三种命名策略，见 P9-3）。
+- **错误处理**：`KeyboardInterrupt` 优雅退出；其他异常 print + `sys.exit(1)`；`finally` 必 `shutdown()`。
+- **LLM 缺失降级**：检测 `config["llm"]["api_base"]` 为空时只打印警告（不退出），让系统以"模拟模式"跑——但下游 LifeLoop 是否真的"模拟"取决于各模块对 LLM 不可用的处理（器官会 fallback 规则、action_executor CHAT 会返回错误，见第5/8章）。
+
+**🔍问题 P9-1（🟢）**：`run.py` 注释示例写 `--config config/runtime.yaml`（L6），但 `--config` 实际是**目录**（传给 `load_config(Path(config))`，common/config.py 按目录读多个 yaml）。注释误导。
+
+### 9.2 `chat_interactive.py` (607行) ⭐ 终端交互式聊天
+**职责**：`GenesisXChat` 类——带 ANSI 着色、自主调度器、工具调用的终端聊天。**自建一套 LLM 工具调用循环**，但 `process_input` 实际走 `LifeLoop.tick()`。
+
+**初始化链**（`__init__`）：`load_dotenv` → `load_config` → `LLMToolExecutor(safe_mode=runtime.safe_mode)` → `_configure_api` → `_init_llm` → `LifeLoop(config, run_dir=artifacts/chat_{ts})` → `_init_scheduler`(AutonomousScheduler) → `_init_system_message` → `tick(0)` → `_greet`。
+
+**process_input 数据流**（L342，**真正的对话路径**）：
+```
+user_input → self._pending_user_input
+           → life_loop.get_user_input = get_user_input_callback  (注入回调)
+           → life_loop.tick(t=state.tick)                          (走完整 17 阶段)
+           → _update_conversation_history                          (双写: self.messages + episode)
+           → _extract_response(episode)                            (从 outcome.status/params.response 提文本)
+```
+**注意**：和 web/app.py 的 `send_message` 是**同一套机制**（注入 `get_user_input` 回调 → tick → 提取响应），两边各写一遍（见 P9-4）。
+
+**🔍问题 P9-2（🟡 LLM 客户端选型不一致）**：`_init_llm`（L242）在 `multi_model.enabled` 时用 `LLMMOrchestrator`，否则**优先 `llm_api.create_llm_from_env`**（L268），失败才回退 `llm_client.LLMClient`。而第6章确认**活路径是 `llm_client.LLMClient`**（action_executor/器官用它）。这里把 `llm_api.UniversalLLM`（第6章 P6-1 的"第二套客户端"）当首选，与 action_executor 内部用的不是同一个 client 实例——**chat_interactive 的 self.llm 和 life_loop 内部的 llm_client 是两个独立 HTTP 客户端/两套 session**，配置漂移风险（如 timeout/retry 各异）。
+
+**🔍问题 P9-3（🟡）**：`_handle_tool_calls`（L396，自建工具循环：append assistant tool_calls → execute_tool_call → 再调 `self.llm.chat` 生成最终回复）**零调用**——`process_input` 直接走 `life_loop.tick()`（其内部 action_executor 有自己的工具循环）。这是早期"chat 自己管工具"设计的残留死代码。同理 `_autonomous_action`（L473）注释明说"实际由调度器处理"，返回 None，是死桩。
+
+**🔍问题 P9-4（🟢 死导入）**：`from tools.tool_definitions import get_available_tools`（L39）导入后**全文件零引用**——chat_interactive 不把工具 schema 喂 LLM（工具调用完全交给 life_loop 内部处理）。
+
+### 9.3 `daemon.py` (532行) 🟡 长驻守护进程
+**职责**：`DaemonManager`——PID 文件管理 + 健康检查线程 + 巩固线程 + 信号处理 + 自动重启。`run()` 主循环 `while self.running: life_loop.tick(t=state.tick); sleep(0.1)`。
+
+**进程管理**：
+- `PID_FILE=artifacts/genesisx.pid`、`STATE_FILE=artifacts/daemon_state.json`、`LOG_FILE=artifacts/genesisx_daemon.log`。
+- `write_pid`/`remove_pid`/`get_running_pid`（`os.kill(pid,0)` 探活，stale PID 自动清）。
+- `stop_daemon`：Windows 用 `signal.CTRL_BREAK_EVENT`（**要求子进程同进程组，否则无效**），超时 `SHUTDOWN_TIMEOUT=30` 后 `TerminateProcess`/`SIGKILL` 强杀。
+
+**两个后台线程**（`start_consolidation_thread`/`start_health_check_thread`）：
+- **consolidation**：`CONSOLIDATION_INTERVAL=3600`s 触发——**但 worker 体只有 `# This would call the consolidator` 注释**（L182-183），**什么都不做**。是空壳线程。
+- **health_check**：`CHECK_INTERVAL=60`s → `_health_check`（life_loop 非空 + stress<0.95）→ 失败调 `_attempt_recovery`（仅 `save_state`，注释"Could trigger consolidation here"——也是空壳）。
+
+**🔍问题 P9-5（🔴 巩固/恢复线程是空壳）**：daemon 的两大卖点（定时巩固、健康恢复）**实现为空**——consolidation_worker 和 _attempt_recovery 都只有注释 TODO。daemon 实际只做"while tick + sleep"，与 run.py 的 `run_session` 无本质区别，多了 PID 文件和两个空转线程。
+
+**🔍问题 P9-6（🟡 Windows 停止信号不可靠）**：`stop_daemon` 对 Windows 用 `CTRL_BREAK_EVENT`——该信号**只对与调用方共享控制台进程组的进程有效**，而 `api_daemon_start`（web/app.py:2529）用 `subprocess.Popen([..,'daemon.py'], creationflags=CREATE_NEW_CONSOLE)` 启动，新控制台进程组**收不到 CTRL_BREAK_EVENT**。web 停 daemon 在 Windows 上很可能无效，只能靠超时强杀。
+
+### 9.4 `web/app.py` (2894行) ⭐⭐ Flask Web UI（最大入口）
+
+> 全项目最大的单文件。Flask app + 60+ 路由 + `GenesisXManager`（封装 LifeLoop 的线程不安全单例）+ 主动消息机制 + SSE/WebSocket。
+
+#### 9.4.1 启动与全局状态
+- **`__main__`**（L2861）：`load_config('config')` → `manager.initialize(config)` → `run_server(debug=True)`（`threaded=True`）。
+- **`ensure_initialized` before_request 钩子**（L1156）：每个请求前检查 `manager.life_loop is None` 则重新 `initialize`——**为 debug 热重载兜底**，但 `initialize` 重复调用会创建多个 LifeLoop（旧的未 shutdown，见 P9-7）。
+- **全局单例**：`manager = GenesisXManager()`（L1149）、`genesis_instance`(L110，**声明后零引用**，死变量)、`message_queue`(L111，**声明后零引用**，死变量)、`state_lock`/`progress_lock`/`progress_queues`。
+
+**🔍问题 P9-7（🔴 🔥 并发——全项目最隐蔽高危区）**：**5 条线程并发操作同一个 `manager.life_loop` 且无任何互斥锁**：
+1. **auto-run 线程**（`/api/run/start` L2590 `run_loop`：`while: life_loop.tick()`，L2608）
+2. **同步聊天线程**（`/api/chat` L1372 `ThreadPoolExecutor.submit(send_message)` → L590 `life_loop.tick()`）
+3. **异步聊天守护线程**（`/api/chat async` L1357 线程 → `send_message` → tick）
+4. **initiative tick**（`generate_initiative_message` L970 `life_loop.tick(tick+1)`）
+5. **ensure_initialized/reinit/restart**（主线程重建/替换 `manager.life_loop`）
+
+任一时刻 auto-run 在 tick 的同时，用户发消息触发另一条 tick——**两条线程同时读写 `state`/`fields`/`organs`/`episodic`/`tool_executor`**。`LifeLoop` 内部无锁（第8章 stores 四件套只做有界标量 clamp，非线程安全）。后果：状态撕裂、episode 乱序、tool_calls.jsonl 交叉写入、器官 propose 拿到半更新 state。`_initiative_lock`/`state_lock` 只保护消息队列和 is_running 标志，**不保护 life_loop**。这是 P9 系列最严重的问题。
+
+#### 9.4.2 `GenesisXManager`（L196-1146）—— LifeLoop 的线程不安全门面
+**核心字段**：`life_loop`/`is_running`/`messages`(对话历史)/`tool_executor`/`llm`/`llm_available`/`_initiative_queue`/`_activity_log`。
+
+**initialize**（L273）：`LifeLoop(config, run_dir=artifacts/web_run)`（**固定目录**，非时间戳）→ 建 `LLMToolExecutor` → `life_loop.tool_executor = tool_executor`（**注入**，覆盖 LifeLoop 自建的 executor）→ `_init_llm`。
+
+**🔍问题 P9-8（🟡 run_dir 固定→重启覆盖）**：web 用固定 `artifacts/web_run`（run.py/daemon 用时间戳目录）。每次 `ensure_initialized`/`api_reinit`/`api_restart_system` 重建 LifeLoop **复用同一目录**——但 `EpisodicMemory` 的恢复逻辑读 `episodes.jsonl`（session_id=genesisx_persistent 跨重启累积），而 schema/skill 不持久化（第3章 P3-5）。run_dir 固定 + episodic 跨会话累积是**有意设计**（保持记忆连续），但 schema/skill 清零意味着 web 重启后"知识"丢失——与 run.py 的隔离目录策略语义相反，两套策略并存易混。
+
+**send_message → _process_with_llm**（L487/L556）：注入 `get_user_input` 回调 → `tick(t=state.tick+1)` → `_extract_response`。**关键 hack**：显式 `next_tick = current_tick + 1`（L578-579）强制递增，注释"确保每次对话都是新的时间步，episodes 不被覆盖"。这是 web 路径的 tick 计数约定，与 life_loop 内部自增可能冲突（见 P9-9）。
+
+**🔍问题 P9-9（🟡 tick 计数双源）**：web/chat_interactive 显式传 `t=state.tick+1` 给 `tick()`，而 daemon/run.py/auto-run 不传或传 `state.tick`。`LifeLoop.tick` 的 `t` 参数语义不统一——web 路径依赖"传入的 t 会被设为新 tick"，若 LifeLoop 内部也自增（第8章需核对），会出现 tick 跳号或倒退。
+
+#### 9.4.3 主动消息机制（initiative messaging）⭐ 特色功能
+**论文意图**：数字生命在无用户输入时**主动**发起对话（好奇心/依恋/无聊/胜任驱动）。
+
+**触发评估 `_evaluate_initiative`（L727）**：
+- **时间门**：距上次主动消息 >`MIN_INITIATIVE_INTERVAL=60`s。
+- **4 触发器**（任一达标）：`curiosity gap>0.60` / `loneliness>0.50`（=距交互时间/300 + attachment gap）/ `boredom>0.50` / `competence gap>0.60 且 mood>0.70`。
+- **生成**：`_generate_initiative_with_llm`（从 `organ_llm.yaml:initiative_messaging` 读 use_default_llm/temperature/max_tokens，构造中文 prompt 调 LLM），失败 fallback 到 `_get_fallback_messages`（按 trigger_type 选硬编码中文模板）。
+
+**两条触发路径**：
+- **轮询式**（`/api/initiative` GET → `check_and_generate_initiative`）：前端定时轮询，实时评估生成。**这是活路径**。
+- **预生成式**（`try_generate_initiative_async`）：**注释明说"已改为实时模式，此方法不再预生成"，函数体是 `pass`**——`send_message`（L538）和 `run_loop`（L2623 每3tick）都调它，**全是空调用**。是迁移残留。
+
+**🔍问题 P9-10（🟡 initiative 双路径残留）**：`try_generate_initiative_async`（L1041）是空 `pass`，但 `send_message`/`run_loop` 仍调它；真正的逻辑全在 `check_and_generate_initiative`（轮询触发）。预生成路径（`_initiative_queue`/`add_initiative`/`get_pending_initiative`/`generate_initiative_message`）整套队列机制**因改实时模式而变成死代码**。注释自承但代码未清。
+
+**🔍问题 P9-11（🟡 initiative 触发与 P9-7 并发叠加）**：`generate_initiative_message`（L944）在持 `_initiative_lock` 时调 `life_loop.tick(tick+1)`（L970）——即"主动说话"会跑一个完整 tick。若此时 auto-run 也在 tick，P9-7 的并发冲突在 initiative 路径上重演。`_initiative_lock` 只保护 initiative 队列，不保护 tick。
+
+#### 9.4.4 路由分类（60+ 路由，按职责归 8 类）
+
+| 类别 | 路由 | 说明 |
+|---|---|---|
+| **页面** | `GET /`、`/chat`、`/monitor`、`/dashboard`、`/settings` | render_template |
+| **状态/指标** | `GET /api/status`、`/api/metrics`、`/api/memory`、`/api/messages`、`/api/values`、`/api/organs`、`/api/system-info`、`/api/episodes` | 读 manager 状态 |
+| **聊天（核心）** | `POST /api/chat`（同步/async）、`GET /api/progress/<id>`（SSE）、`GET /api/stream`（状态 SSE）、`GET /api/initiative`、`/api/initiative/debug` | 对话 + 主动消息 |
+| **配置** | `POST /api/configure`、`GET /api/config`、`POST /api/config/memory`、`/api/config/runtime`、`GET/PATCH /api/organ-llm/config`、`POST /api/organ-llm/config`、`POST /api/reinit`、`/api/restart-system`、`/api/reset` | 热改配置 + 重启 |
+| **LLM/器官控制** | `GET /api/llm/statistics`、`/api/llm/mode`、`GET,POST /api/organs/parallel-mode`、`POST /api/organs/toggle`、`POST /api/set-mode`、`/api/set-safe-mode` | 运行时调控 |
+| **记忆** | `GET /api/memory/search`、`POST /api/memory/consolidate`、`/api/clear-memory` | 记忆操作 |
+| **守护进程/run** | `GET /api/daemon/status`、`POST /api/daemon/start`、`/api/daemon/stop`、`POST /api/run/start`、`/api/run/stop` | 子进程/后台 tick |
+| **活动日志/日志** | `GET /api/logs`、`/api/activity/logs`、`/api/activity/stream`、`POST /api/activity/clear` | 日志流 |
+
+**🔍问题 P9-12（🟡 配置热改→重启链路脆弱）**：`/api/configure`（L1627）改 yaml/env 后**不自动重启** manager，需前端再调 `/api/reinit` 或 `/api/restart-system`。而 `_update_env_mode_only`/`_reset_yaml_to_global`/`_update_yaml_experts`（L1478-1624）三套 yaml 编辑函数各自只改部分文件，调用方需知道改哪个——无统一"提交配置"入口。`api_reinit` 调 `load_config()`（L1204 **无参**，与 `__main__` 的 `load_config(Path('config'))` 不一致——一个走默认路径一个显式传，行为可能不同）。
+
+**🔍问题 P9-13（🟡 SSE 队列无超时清理）**：`/api/progress/<id>`（L1224）的 `progress_queues[session_id]` 在客户端断开（GeneratorExit）时清，但若 async chat 线程异常退出前没 put None（L1350 的 finally 只在异常路径 put），SSE 连接会**每30s 心跳直到客户端超时**，队列残留。`progress_queues` 无 TTL/无定期扫除。
+
+#### 9.4.5 多模型 LLM 适配（`MultiModelAdapter` L123）
+当 `LLM_MODE≠single` 时，`_init_multi_model_llm` 建一个 `MultiModelAdapter` 包装 `LLMOrchestrator`，对外伪装成单模型 `chat()/generate()` 接口。配置来源：先找 `config/multi_model.yaml`/`mind_field.yaml`，找不到则 `_build_multi_model_config_from_env`（按 `M_COORD_API_BASE` 等环境变量逐专家构建）。
+
+**🔍问题 P9-14（🟡 与第6章 P6-18 同源）**：`MultiModelAdapter.chat`（L164）转调 `orchestrator.chat(messages, tools=tools)`——但第6章 P6-18 记录 orchestrator 多模型分支**丢 tools**（blackboard.process 不接收 tools）。web 多模型模式下，工具调用经适配器→orchestrator→blackboard 链路静默丢失工具定义。这是 web 层暴露的、根在第6章的缺陷。
+
+#### 9.4.6 安全配置（`_validate_production_security` L52）
+启动时检测生产环境（`FLASK_ENV=production` 或 docker/render/heroku 标志），生产环境**强制要求** `SECRET_KEY` 和 `CORS_ORIGINS` 环境变量（缺失 raise），开发环境用固定 dev key + localhost CORS + warning。
+
+**🔍问题 P9-15（🟢）**：这是**全项目唯一真正面向"部署"的安全代码**（第1章 auth.py 是多用户认证，与此不同）。但 GenesisX 核心是单实例桌面数字生命（第1章 P1-9 已记"多用户 Web 模块疑似过度工程"），生产部署检测与项目定位存在张力——若不部署，这套 SECRET_KEY/CORS 校验是"过度安全"；若部署，则又不够（无 HTTPS 强制、无 rate limit、`/api/*` 全无认证）。定位模糊。
+
+### 9.5 `web/websocket_server.py` (274行) 🔴 完整但被硬禁用
+**职责**：`WebSocketServer`（websockets 库）——实时双向通信，支持 ping/chat/stream_chat/get_state/broadcast。`start_in_thread` 在独立线程跑 asyncio 事件循环。`broadcast_state_sync` 从 Flask 同步线程跨线程调度广播协程。
+
+**🔍问题 P9-16（🔴 整模块运行时禁用）**：`app.init_websocket`（L2794）**第一行就 `return`**（注释"暂时禁用 WebSocket，专注于修复聊天功能"）。即 WebSocket 代码完整（274行）但**启动即跳过**，`ws_server` 恒 None，`broadcast_state_to_ws` 永远 early return。实时推送实际全走 SSE（`/api/stream`、`/api/progress`）。**这是 web 层最大的死代码**（完整功能被一行 return 关闭）。
+**🔍问题 P9-17（🟡）**：`_handle_stream_chat`（L116）注释"暂时使用非流式方式模拟"——按 10 字符分块 + `sleep(0.02)` 假装流式；`_get_current_state`（L155）恒返回 `{"status":"running"}`（注释"需要从外部注入"但没人注入）。即便启用 WebSocket，这两处也是占位符。
+
+### 9.6 `lifecycle/` (3文件/784行) 🔴 整包孤立——第二条 tick 引擎
+> **核心结论**：`lifecycle/tick_loop.py` 实现了一套与 `core/life_loop.LifeLoop` **平行**的 17 阶段 tick，但每个相位都是空壳。全包仅 `tests/test_lifecycle.py` 引用，**没有任何真实入口连它**。
+
+#### `tick_loop.py` (704行) 🔴
+**`TickLoop`** 类：`PHASES`（17 个，与论文 Algorithm 1 同名）+ `_init_state`（论文 §3.2 状态向量）+ `run_tick`（顺序执行 17 相位）。
+
+**与 LifeLoop 的关键差异**（逐相位对比）：
+| 相位 | tick_loop 实现 | life_loop 实现 |
+|---|---|---|
+| body_update | mood×0.99 衰减（L357） | 昼夜节律能量恢复+无聊更新（第8章 PHASE1） |
+| retrieve | **返回空**（L441 `retrieved=[]`） | 智能检索决策+混合检索（第3章） |
+| axiology | softmax(tau=2.0)（L477，与 P1-3 的 τ 冲突值一致） | 5维 features→gaps→WeightUpdater→utilities |
+| goal_compile | 按 max_gap 选 goal_map 字符串（L504） | GoalCompiler 多目标编译（第4章） |
+| plan_propose | **硬编码 CHAT "Processing..."**（L559） | 器官 propose_actions（第5章） |
+| execute | 只存 `last_action` 不执行（L592） | ActionExecutor 全分派（第8章） |
+| reward_affect_update | **reward=0.0, delta=0.0 恒定**（L604-605） | compute_reward+RPE+mood/stress 闭环 |
+| memory_write | **不写入**（L629 `{"written": False}`） | episodic.append |
+| value_learn/soul_learn | **不更新**（L638/647） | ValueLearner/人格更新 |
+| persist | **不持久化**（L686 `{"persisted": False}`） | JSONLWriter+final_state.json |
+
+**🔍问题 P9-18（🔴 整包孤立 + 第三套参数源）**：tick_loop 是 GenesisX 的**第二份完整 tick 实现**（704行），但：①无任何入口连它；②所有相位是占位空壳；③它自带第三套硬编码参数（VALUE_SETPOINTS 与 core/state.py 不同：homeostasis 0.85 vs 0.7、safety 0.70 vs 0.8；tau=2.0 呼应 P1-3；middle_vars 公式与 axiology/personality.py 的 OCEAN→ET/CT/ES 是**第三套定义**）。这是第1章 P1-3"参数三重定义"的又一爆发点，且因为是死代码，参数不一致不致运行时错误，但**误导性极强**（读代码者可能以为这是活引擎）。
+
+#### `genesis_lifecycle.py` (75行) 🔴
+`GenesisLifecycle`：薄包装 TickLoop，加 `offline_interval=50` 触发 `_run_offline_consolidation`（**只 `self.offline_runs += 1` 计数，不真巩固**）。`shutdown` 是 `pass`。整类孤立。
+
+#### `__init__.py` (5行)
+导出 `TickLoop`/`GenesisLifecycle`——但项目内无 import lifecycle。
+
+### 9.7 其余顶层脚本（工具类）
+- **`compile_code_docs.py` (338行)** 🟡：`DocGenerator`——AST 扫源码生成 API 文档（JSON）。独立工具，不被其他模块 import。可能就是生成本 CODE_MAP 辅助信息的工具之一。
+- **`migrate_session.py` (48行)** 🟢：一次性脚本，把 `artifacts/web_run/episodes.jsonl` 的旧 session_id 批量改为 `genesisx_persistent`。run 后需手动 mv `.jsonl.new`。已完成使命，留作历史。
+- **`run_tests.py` (57行)** 🟢：`subprocess` 调 pytest，生成覆盖率报告。纯包装。
+- **`test_tools.py` (29行)** 🟢：手动冒烟测试，POST 两条消息到 `/api/chat`（要求 web 已起）。非 pytest，是 ad-hoc 脚本。
+- **`setup.py` (76行)** 🟢：pip 安装入口，读 README/requirements。
+- **`__init__.py` (8行)**：项目根当包（罕用）。
+
+### 9.x 入口/Web 速查与调试点
+
+**精读优先级**：`web/app.py:GenesisXManager`（看 life_loop 门面 + 并发隐患）> `chat_interactive.process_input`（对比 web 的 send_message，看重复）> `daemon.run`（看空壳线程）> lifecycle/tick_loop（确认整包孤立）。
+
+**入口接线真相表**：
+| 入口 | 连的核心 | run_dir 策略 | tick 方式 | LLM 客户端 | 状态 |
+|---|---|---|---|---|---|
+| `run.py` | LifeLoop | `run_{UTC_ts}` | run_session(max_ticks) | life_loop 内部 | ✅ 主入口 |
+| `chat_interactive.py` | LifeLoop | `chat_{UTC_ts}` | 单条 process_input→tick | self.llm(llm_api 首选) | ✅ 终端 UI |
+| `daemon.py` | LifeLoop | `daemon_{UTC_ts}` | while True: tick | life_loop 内部 | 🟡 巩固/恢复空壳(P9-5) |
+| `web/app.py` | LifeLoop(via manager) | 固定 `web_run` | send_message→tick / run_loop | manager.llm(single/multi) | ⭐ 唯一 UI（并发高危 P9-7） |
+| `lifecycle/*` | TickLoop(空壳) | — | run_tick | 无 | 🔴 **整包孤立**(P9-18) |
+
+**高危区**：
+1. **Web 并发无锁**（P9-7）：5 线程并发 tick 同一 life_loop，state/fields/episodic 无线程安全——**入口层最严重问题**
+2. **lifecycle 整包孤立**（P9-18）：784 行第二条 tick 引擎，参数第三源，零接入
+3. **WebSocket 硬禁用**（P9-16）：274 行完整代码被一行 return 关闭
+4. **daemon 卖点空壳**（P9-5）：巩固/健康恢复线程体是 TODO 注释
+5. **入口胶水四份重复**（P9-3 的具体）：config 加载/run_dir 命名/safe_mode 读取/shutdown 在 4 入口各写一遍，无公共层
+6. **initiative 死队列**（P9-10）：改实时模式后预生成队列机制整套变死代码
+7. **chat_interactive 工具循环死代码**（P9-3）：_handle_tool_calls/_autonomous_action 零调用
+
+**重复实现清单**（跨章交叉引用）：
+- **tick 引擎**：`core/life_loop.LifeLoop`（活，1883行）vs `lifecycle/tick_loop.TickLoop`（死，704行）
+- **life_loop 门面/回调注入**：`web/app.py:GenesisXManager.send_message` vs `chat_interactive.py:GenesisXChat.process_input`（同机制各写一遍）
+- **LLM 客户端选型**：chat_interactive 首选 llm_api、web 首选 llm_api、action_executor/器官 用 llm_client——第6章 P6-1 三客户端问题在入口层的具体暴露
+- **run_dir 策略**：run/chat_interactive/daemon 时间戳目录 vs web 固定目录
+- **tick 计数**：web/chat 显式 `t=state.tick+1` vs daemon/run/auto-run 不传或传 state.tick（P9-9）
+- **守护进程停止信号**：daemon.stop_daemon vs web/api_daemon_stop 各写一遍（且 Windows 均不可靠 P9-6）
+
+**与论文的对应**：入口层无直接论文对应（论文是算法层，入口是工程层）。主动消息（initiative）对应论文 §3.5.2 数字生命的"自主性"（价值缺口驱动自发行为），是入口层对论文"主动性"的唯一工程化实现。
 
 ---
 
 ## A. 全局问题清单（按优先级）
 
-> 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) + Phase 6(tools) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。
+> 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) + Phase 6(tools) + Phase 4(cognition/perception/metabolism) + Phase 7(safety/persistence) + Phase 9(入口+Web) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。部分行合并多个同源 ID（如 P7-22/24/25）。
 
 ### 🔴 高优先级（影响正确性/可维护性）
 
@@ -1348,6 +2321,17 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P5-15 | **LLM 思考被中文关键词降级**：6 器官的 `_parse_llm_thought_to_actions` 用硬编码关键词把 LLM 输出转 Action，LLM 沦为叙事生成器 | organs/internal/*_organ.py | 器官决策权在关键词表而非 LLM；同义词/英文漏匹配→退化默认动作 |
 | P5-20 | **immune 否决权/风险评估未接入**：veto_risky_action/assess_action_risk/update_action_trust life_loop 全不调，安全执行被 safety/ 取代 | organs/internal/immune_organ.py | immune 只提 REFLECT 动作，信任校准恒为默认 0.5 |
 | P5-21 | **器官学习/项目状态全不持久化**：builder 的 active_projects/task_queue、archivist 的索引、scout/mind 的学习历史重启清零，且 record_* API life_loop 不调 | organs/internal/{builder,archivist,scout,mind}_organ.py | 器官"从经验学习"功能形同虚设 |
+| P7-14 | **代码执行走最弱沙箱**：生产路径是 `tool_executor._execute_code_sandboxed`（裸子串黑名单 + exec），safe_executor.py 的 AST 审计沙箱完全闲置；config 的 sandbox_code_exec flag 无处读取 | tools/{tool_executor,safe_executor}.py + safety/sandbox.py + dynamic_tool_registry.py:442 | 论文§3.11.3 安全沙箱形同虚设，LLM 拥有完全本地执行权（FULL_ACCESS）——**整个项目最高危的安全问题** |
+| P7-16 | **persistence/ 整包是孤岛**：life_loop 完全不导入 `persistence.*`，replay_mode 参数只存为属性+打印一行 log(L137)，不驱动任何回放逻辑 | persistence/ + core/life_loop.py:103,137 | 论文§3.11.3 可复现性/§3.4 严格回放在生产环境不工作；3 模式回放引擎只在 tests 引用 |
+| P4-1 | **`priority_level` 全域未设置**：GoalCompiler 只写 deprecated 的 `Goal.priority`(float)，从不写论文§3.8.1 的 1-6 级 `priority_level` 枚举 | cognition/goal_compiler.py:212,292 + 全项目 | 论文 6 级优先级系统运行时不生效，所有 Goal 恒为 MEDIUM(3) |
+| P4-61 | **resource_pressure.py 与 state.py 公式语义相反**：metabolism 用 `RP = max(0, 1 − (α·C+β·M))`（论文版，死），state.py 用 `RP = α·C+β·M`（反转版，活） | metabolism/resource_pressure.py:92 + core/state.py:302-305 | 同一(compute,memory)给出相反的紧急判断；两套"有效无聊度"触发条件相反；生产路径偏离论文 |
+| P4-64 | **METABOLISM 常量整段失效**：MetabolismConstants 在生产代码仅被 re-export，无任何读取点；所有 metabolism 计算各用各的硬编码（state/boredom/recovery/circadian 4 套数值并存） | common/constants.py:167-188 + metabolism/ | 调参改一处无效，参数三重定义问题(P1-3)在 metabolism 的具体爆发 |
+| P4-31 | **self_perception 工具断链**：tool_registry 注册了 read_own_logs/system_stats，但 tool_executor 分发链只有 5 个分支无这两个→LLM 选了也找不到 handler | perception/self_perception.py + tools/{tool_registry,tool_executor}.py | 自我感知能力实质死代码化；pressure_score 无法回流到 HOMEOSTASIS |
+| P7-8 | **三套契约系统互不连通**：tool_registry.ToolSpec.preconditions（字符串，永不求值）/ tool_protocol preconditions（Callable，整体死代码）/ contract_guard（独立类，死代码） | tools/{tool_registry,tool_protocol}.py + safety/contract_guard.py | 论文§3.11 契约前置/后置条件机制完全不工作 |
+| P4-22 | **goal_progress.py 整模块死代码**：ProgressCalculator/GoalTracker/Milestone 零运行时引用；且其 GoalType 枚举(8)与 goal_compiler 模板(5)/planner 字符串(8+) 三套分类法互不匹配 | cognition/goal_progress.py | 562 行死代码；目标进度跟踪体系整体失效，goal.progress 停在 0.0 |
+| P4-20 | **Q^insight 三重实现**：cognition/insight_quality.py（死）/ memory/consolidation.py InsightQualityEvaluator（活）/ eval/gxbs.py（评测）三套公式不一致 | cognition/insight_quality.py + memory/consolidation.py + eval/gxbs.py | 改一处忘另两处；活路径用 consolidation 版的 log(n+1)/log(10) 压缩 |
+| P9-7 | **🔥 Web 并发无锁——5 线程并发 tick 同一 life_loop**：auto-run 线程 + 同步聊天线程池 + 异步聊天守护线程 + initiative tick + reinit/restart 主线程，5 条路径并发调 `manager.life_loop.tick()`/`send_message()`，而 LifeLoop 内部状态(state/fields/organs/episodic)无一加锁；`_initiative_lock`/`state_lock` 只保护消息队列和 is_running | web/app.py（api_chat/api_run_start/GenesisXManager）+ core/life_loop.py | 状态撕裂、episode 乱序、tool_calls.jsonl 交叉写入、器官 propose 拿半更新 state；入口层最严重问题，且极隐蔽（单线程测试无法暴露） |
+| P9-18 | **lifecycle/ 整包孤立——第二条 tick 引擎(784行)**：tick_loop.py 实现完整 17 阶段但每个相位是空壳(retrieve 返回空/execute 不执行/memory_write 不写/persist 不持久化/reward 恒 0)；仅 tests/test_lifecycle.py 引用，4 个真实入口全用 core/life_loop.LifeLoop；且自带第三套参数(VALUE_SETPOINTS 与 state.py 不同、tau=2.0、OCEAN→ET/CT/ES 第三套公式) | lifecycle/（tick_loop.py/genesis_lifecycle.py/__init__.py）| 784 行死代码+第三套参数源(P1-3 的又一爆发点)；读代码者易误以为是活引擎 |
 
 ### 🟡 中优先级（技术债）
 
@@ -1387,6 +2371,16 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P5-19 | scout/mind 的 _extract_topic_from_thought 用 split() 按空格分词，中文无空格→主题变整段句子 | organs/internal/{scout,mind}_organ.py |
 | P5-22 | archivist 器官与 memory/consolidation+pruning 职责三重重叠，只提 REFLECT 动作，本地计数器与真实 EpisodicMemory 不同步 | organs/internal/archivist_organ.py |
 | P5-17 | _should_respond_to_user 检查 obs.type=="user_chat"，需对齐 Observation.type 实际值，否则用户消息永不触发 CHAT | organs/internal/mind_organ.py |
+| P9-5 | **daemon 巩固/健康恢复线程是空壳**：consolidation_worker 体只有 `# This would call the consolidator` 注释，_attempt_recovery 只 save_state（注释"Could trigger consolidation here"）——daemon 两大卖点实现为空，实际只做 while tick+sleep | daemon.py（start_consolidation_thread/start_health_check_thread/_attempt_recovery） | 定时巩固/自动恢复不工作；daemon 与 run.py 无本质区别 |
+| P9-16 | **WebSocket 整模块运行时硬禁用**：app.init_websocket 第一行 return（注释"暂时禁用"），ws_server 恒 None，broadcast_state_to_ws 永远 early return；274 行完整代码被一行 return 关闭，实时推送全走 SSE | web/app.py:2794 + web/websocket_server.py | web 层最大死代码（完整功能被关闭） |
+| P9-3 | **入口胶水四份重复 + chat_interactive 工具循环死代码**：config 加载/run_dir 命名/safe_mode 读取/shutdown 在 run/chat_interactive/daemon/web 4 入口各写一遍无公共层；chat_interactive._handle_tool_calls/_autonomous_action 零调用(process_input 直接走 life_loop.tick) | run.py + chat_interactive.py + daemon.py + web/app.py | 维护负担；改一处忘另三处 |
+| P9-2 | **chat_interactive LLM 客户端选型与活路径不一致**：_init_llm 首选 llm_api.create_llm_from_env(第二套客户端)，失败才回退 llm_client.LLMClient；而 action_executor/器官内部用 llm_client——chat_interactive 的 self.llm 与 life_loop 内部是两个独立 HTTP 客户端/两套 session | chat_interactive.py:268 + 第6章 P6-1 | 配置漂移(timeout/retry 各异)；第6章三客户端问题在入口层的具体暴露 |
+| P9-9 | **tick 计数双源**：web/chat_interactive 显式传 t=state.tick+1(强制递增，注释"确保 episodes 不被覆盖")，daemon/run/auto-run 不传或传 state.tick；LifeLoop.tick 的 t 参数语义不统一 | web/app.py:590 + chat_interactive.py:360 + daemon.py:309 | tick 跳号或倒退；不同入口行为不一致 |
+| P9-10 | **initiative 预生成路径整套死代码**：改实时模式后 try_generate_initiative_async 是空 pass，但 send_message/run_loop 仍调它；_initiative_queue/add_initiative/get_pending_initiative/generate_initiative_message 整套队列机制变死代码 | web/app.py（GenesisXManager） | 迁移残留未清；预生成队列永不消费 |
+| P9-11 | **initiative tick 与 P9-7 并发叠加**：generate_initiative_message 持 _initiative_lock 时调 life_loop.tick(tick+1)，"主动说话"跑完整 tick；若 auto-run 也在 tick，P9-7 并发冲突在 initiative 路径重演；_initiative_lock 只保护队列不保护 tick | web/app.py:970 | 主动消息触发时并发冲突概率升高 |
+| P9-12 | **配置热改→重启链路脆弱**：/api/configure 改 yaml/env 后不自动重启 manager，需前端再调 /api/reinit 或 /api/restart-system；_update_env_mode_only/_reset_yaml_to_global/_update_yaml_experts 三套 yaml 编辑函数各改部分文件无统一"提交"入口；api_reinit 调 load_config()无参与 __main__ 的 load_config(Path('config'))不一致 | web/app.py（api_configure/api_reinit/_update_*） | 配置改了不生效；调用方需知道改哪个文件 |
+| P9-14 | **web 多模型模式丢 tools**：MultiModelAdapter.chat→orchestrator.chat→blackboard.process 链路丢工具定义(根在 P6-18)；web 多模型模式下工具调用经适配器静默失效 | web/app.py:164 + tools/llm_orchestrator.py + tools/blackboard.py | web 开 LLM_MODE=core5/full7 时函数调用失效 |
+| P9-6 | **Windows 停 daemon 信号不可靠**：daemon.stop_daemon 和 web/api_daemon_stop 都用 CTRL_BREAK_EVENT，但 api_daemon_start 用 CREATE_NEW_CONSOLE 启动子进程（新控制台进程组收不到 CTRL_BREAK_EVENT）；web 停 daemon 在 Windows 上很可能无效只能超时强杀 | daemon.py:407 + web/app.py:2568 | Windows 下守护进程停止功能失效 |
 
 ### 🟢 低优先级（清理项）
 
@@ -1430,6 +2424,20 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P5-11 | OrganManager.record_exploration 直接访问私有 _explored_topics，与 ScoutOrgan 同名字段完全独立，探索记录分散两处 | organs/organ_manager.py |
 | P5-18 | mind 的 record_plan_outcome/successful_patterns 学习机制 life_loop 不调，_adapt_from_history 永不触发 | organs/internal/mind_organ.py |
 | P5-23 | caretaker sleep 时间窗靠 tick×tick_duration/3600 估算，context 是否传 tick_duration 不确定；与 metabolism/circadian 真实节律可能不一致 | organs/internal/caretaker_organ.py |
+| P4-2 | **目标进度永不更新**：goal_compiler.compute_progress(77行/8类型) 和 goal_progress.ProgressCalculator 两套进度计算 life_loop 都不调，goal.progress 停在编译时初值 0.0 | cognition/{goal_compiler,goal_progress}.py | 目标反馈循环断裂，PHASE 6 后无进度跟踪 |
+| P4-7 | **Planner LLM 路径死代码 + life_loop 绕过**：propose_with_llm 零运行时调用；life_loop PHASE 8 内联自建 plans 不走 Planner；唯一调用者 blackboard 用规则版 propose_plans | cognition/planner.py + core/life_loop.py:1189 + tools/blackboard.py | docstring 宣传的"LLM-based planner"是死的 |
+| P4-12/13 | **PlanEvaluator 风险/预算惩罚形同虚设**：life_loop 内联 plan 不含 risk_level(恒0)，预算被 ×100000 放大→λ_risk·Risk 和 budget_penalty 退化为死分支 | cognition/plan_evaluator.py + core/life_loop.py:1190,1199 | J(p|S_t) 评分退化为 weighted_value − 0.001·cost |
+| P4-28 | **context_builder 硬编码假数据**：budget_tokens=10000/recent_errors=0 写死占位符（注释明说 Default/Simplified） | perception/context_builder.py:106-107 | 下游若读这两个键永远收到固定值 |
+| P4-50 | **boredom.update_boredom 丢 4/7 参数**：life_loop 只传 boredom+dt×0.5，novelty/compute/memory/socially_engaged/apply_resource_override 全用默认→η_soc/η_nov/资源覆盖三条论文机制失效 | metabolism/boredom.py + core/life_loop.py:1663 | 无聊单调上升（η_idle 每 tick 都加），资源门控永不触发 |
+| P4-53 | **circadian 时间源与模拟脱节**：time_mode 默认 realtime 且全仓库无配置，get_energy_level/get_fatigue_recovery_rate 用 datetime.now(utc) 墙钟，与 tick/sim_start_hour/caretaker 推算三者互不相干 | metabolism/circadian.py + core/life_loop.py:1644 | simulation 模式从未启用；昼夜节律与 tick 演化不同步 |
+| P4-54 | **circadian 与 caretaker 睡眠窗口冲突**：circadian 用 UTC 墙钟+offline 01-04/14-15，caretaker 用 tick 推算+sleep 22-07，两者互不引用且窗口不一致 | metabolism/circadian.py + organs/internal/caretaker_organ.py | 同一时刻两个模块报不同时段；sleep window 22-7 在 metabolism 找不到 |
+| P4-58 | **recovery.py 整模块死代码**：life_loop._update_body 用内联恢复公式(L1651-1659)绕过；sleep/friend/work 模式系统完全未采用 | metabolism/recovery.py + core/life_loop.py:1651 | 173 行死代码；论文§3.8.2 恢复机制按内联简化版实现 |
+| P7-5 | **预算校验漏 3 维**：CostVector 含 6 维(cpu_tokens/io_ops/net_bytes/latency_ms/risk_score/money)，check_budget 只查 cpu_tokens 和 money | safety/budget_control.py | io_ops/net_bytes/latency_ms/risk_score 形同虚设 |
+| P7-3 | **风险评估双实现**：safety/risk_assessment（活，简单）vs immune_organ.assess_action_risk（仅测试，更完善含安全模式倍率） | safety/risk_assessment.py + organs/internal/immune_organ.py:794 | 安全模式倍率/行动信任分等机制白写 |
+| P7-7/10/13 | **safety 包 988 行死代码**：contract_guard(288 整模块死) + hallucination_check(300 整模块死) + sandbox(400 整模块死) | safety/{contract_guard,hallucination_check,sandbox}.py | 论文§3.13 安全管道覆盖度远超实际接线（只有 9a/9c/9d 三闸门活） |
+| P7-17 | **回放 schema 不匹配**：replay._load_episodes 期望 EventLogger 扁平 schema，生产写 EpisodeRecord；_load_tool_calls 期望 tick 字段，tool_system_v2 版无 tick | persistence/replay.py:339,352 + memory/episodic.py + tools/tool_system_v2.py | 即便接入回放也会因字段缺失崩溃或调用聚到 tick 0 |
+| P7-21/23 | **episodes/tool_calls 三重写入器 schema 不兼容**：persistence.EventLogger/ToolCallLogger(无人调) vs memory/episodic+ActionExecutor(生产) vs tools/tool_system_v2(独立)，三套 schema 互不兼容 | persistence/{event_log,tool_call_log}.py + memory/episodic.py + tools/tool_system_v2.py + core/handlers/action_executor.py | 第3章 P3-2"持久化绕开 JSONLWriter"的延伸 |
+| P7-26/27 | **snapshot 体系双重失效**：snapshot.py 与 replay.StateSnapshotManager 功能重叠互不兼容，且均未被 life_loop 调用；实际用 life_loop._persist_final_state 手写 final_state.json | persistence/{snapshot,replay}.py + core/life_loop.py:1841 | 无统一序列化层，重启只读 final_state.json，回放/快照形同虚设 |
 | P6-1 | **三 LLM 客户端并存**：llm_client(活路径)/llm_api(黑板用)/llm_orchestrator(门面) 接口签名/返回 dict 不一致，provider 检测逻辑重复；LLMMOrchestrator 类名拼写错误(双M)靠别名掩盖 | tools/{llm_client,llm_api,llm_orchestrator}.py | 改一处漏两处，维护高危 |
 | P6-9 | **execute_code 默认 FULL_ACCESS**：dynamic_tool_registry 用 `LLMToolExecutor(safe_mode=False)`，exec 含完整 builtins+os/sys+self；runtime.yaml `sandbox_code_exec:false` 与 config_manager 默认 True 冲突，且两处 flag 都没被读取 | tools/tool_executor.py:445 + dynamic_tool_registry.py:442 | LLM 拥有完全本地执行权，沙箱配置形同虚设 |
 | P6-11 | **工具目录四重定义**：ToolRegistry(11 ToolSpec)/DynamicToolRegistry(5+技能)/AVAILABLE_TOOLS(5 schema)/skills 四处，工具名(read_file vs file_read)/风险/schema 不统一，action_executor 同时查两套注册表 | tools/{tool_registry,dynamic_tool_registry,tool_definitions}.py + memory/skills/ | "有哪些工具"无单一真相源 |
@@ -1439,6 +2447,26 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P6-23 | **嵌入四处且三处伪**：tools/embeddings 默认 mock(hash-seed)，与 memory/retrieval(MD5)/familiarity(md5-seed) 同为伪嵌入，仅 semantic_novelty 真嵌入；默认配置下语义检索/联想/洞察新颖度都是噪声 | tools/embeddings.py + memory/{retrieval,familiarity,semantic_novelty}.py | 第3章 P3-7 的扩展(现4处) |
 | P6-24 | **edge-tts 递归崩溃**：voice.py L336 async _speak_edge 被 L382 同名同步方法覆盖，同步包装调自己→无限递归；Windows mp3 播放用 SoundPlayer(只支持wav)必抛 | tools/voice.py:336,382,364 | TTS 功能第一调用即崩(但无运行时消费者) |
 | P6-29 | **file_ops fail-open**：allow-list 为空时跳过目录检查，仅剩 forbidden_patterns(Path.match 对绝对路径在 Windows 不可靠)；空配置=任意目录可读写；_write_file 无大小上限 | tools/file_ops.py:121 | 空配置下文件工具无沙箱 |
+| P4-5/14/17/51/56 等 | **cognition/perception/metabolism 魔法数遍地**：goal_compiler(0.15/5/0.01/0.1)、plan_evaluator(λ_cost=0.001/λ_risk=0.5/budget_penalty=2.0)、verifier(0.1/0.2/0.5/0.7)、boredom(ETA 0.03/0.20/0.05 与 constants 0.005/0.10 失配)、circadian(0.65/0.35/phase 边界/recovery dict) 全硬编码无 config | cognition/ + perception/ + metabolism/ | 与第1章 P1-3 参数三重定义叠加；METABOLISM 常量整段失效(P4-64) |
+| P4-26/30/34/35/38/39 等 | **perception 包设计单薄 + 小问题**：observer 实质只是状态镜像(P4-26)、context_builder str(payload) 脆弱(P4-30)、self_perception.get_health_status 与 caretaker 撞名(P4-34)、磁盘路径假设(P4-35)、time_perception 死字段/北半球硬编码(P4-38/39) | perception/ | 维护负担 |
+| P4-36/43/45 | **perception 三大功能被后续子系统取代**：time_perception 被 circadian/caretaker 取代、novelty 被 memory/semantic_novelty 取代、signal_filter 完全未接入（论文半衰期衰减未实现） | perception/{time_perception,novelty,signal_filter}.py | 6/8 文件死代码（1518 行），清理候选 |
+| P4-40/41 | **command_parser 被绕过 + 中文盲区**：用户输入真实路径是 get_user_input→observer→build_context，CommandParser 不在路径上；正则全英文对中文无效 | perception/command_parser.py + core/handlers/chat_handler.py | 276 行死代码，与 chat_handler 职责重叠 |
+| P4-19/21 | **insight_quality 死代码 + transferability 英文关键词**：整模块零运行时引用；transferability 关键词表(when/if/then/...)纯英文对中文 LLM 输出无效 | cognition/insight_quality.py | 206 行死代码 |
+| P4-23 | **三套目标类型分类法互不匹配**：goal_progress.GoalType(8 枚举) vs goal_compiler 模板(5) vs planner 字符串(8+)，ProgressCalculator 检查的字符串永远不匹配 goal_compiler 的 | cognition/{goal_progress,goal_compiler,planner}.py | 即便接入 goal_progress 也走不到正确分支 |
+| P4-47 | **perception __init__ 静默降级**：Time/SelfPerception 用 try/except ImportError 兜底，依赖缺失时置 None 不警告，运行期才暴露 AttributeError | perception/__init__.py | 问题被掩盖 |
+| P7-1/2/4/6 | **safety 阈值魔数散布**：integrity_check(0.9/0.1/0.1)、risk_assessment(0.8/+0.1/+0.15)、budget_control(1000/1.0/100) 硬编码无集中配置；integrity 的 modify_self 黑名单过窄（只查 params 键名） | safety/{integrity_check,risk_assessment,budget_control}.py | 与 constants 风格不一 |
+| P7-9 | **contract_guard 欺骗检测误报率高**：declared_goal 与 tool_id 的关键词交集法，tool_id="file_ops" 几乎不与任何自然语言目标词重叠，会把正常文件操作判 DECEPTION | safety/contract_guard.py:154-167 | 即便被接线也不敢启用 |
+| P7-11/12 | **hallucination_check 正则仅英文 + 死字段**：uncertainty_patterns/citation_patterns 全英文，对中文输出几乎永不触发；hallucination_indicators(L62) 定义后无引用 | safety/hallucination_check.py | 对中文数字生命场景失效 |
+| P7-15 | **sandbox 资源限制无强制力**：check_resource_usage 只比较传入数值，不实际采样进程内存/CPU（无 resource/psutil），max_memory_mb=512 是声明值 | safety/sandbox.py:276 | 即便被接线也是空壳 |
+| P7-18/19 | **replay 存根 + 魔数**：verify_replay_consistency 注释自承 simplified 未真正迭代所有 tick（恒返回 True）；snapshot_interval=10/Jaccard 0.4/coverage 0.5/tolerance 0.01/hash[:16]/[-10:] 全硬编码 | persistence/replay.py:690,198,181,432 | 回放验证不可靠 |
+| P7-22/24/25/28/29/31/32 | **persistence 杂项**：EventLogger _file_handle 死字段(P7-22)、ToolCallLogger get_tool_calls_for_tick 无索引全表扫(P7-24)、_redact_sensitive 仅英文(P7-25)、snapshot incremental 空壳(P7-28)、SnapshotManager 无 import(P7-29)、Storage 后端声明与实现不符 SQLITE/MEMORY 未实现(P7-31)、append O(n²) 反模式(P7-32) | persistence/ | 工程债 |
+| P7-33 | **persistence 孤儿包**：grep `from persistence` 全工程仅 tests/conftest.py 命中，life_loop 完全不导入；__init__ docstring 所称职责与实际运行时持久化重复且未被采纳 | persistence/__init__.py + core/life_loop.py | 整包可考虑删除或重新接入 |
+| P9-8 | **web run_dir 固定→重启覆盖语义混乱**：web 用固定 artifacts/web_run（run.py/daemon 用时间戳目录）；ensure_initialized/api_reinit/api_restart_system 重建 LifeLoop 复用同目录，但 schema/skill 不持久化(P3-5)——重启后"知识"丢失而 episodic 跨会话累积，与 run.py 隔离目录策略语义相反 | web/app.py:284 + core/life_loop.py:190 | 两套 run_dir 策略并存易混；web 重启丢失 schema/skill |
+| P9-13 | **SSE progress 队列无超时清理**：/api/progress/<id> 的 progress_queues[session_id] 在客户端断开(GeneratorExit)时清，但 async chat 线程异常退出前没 put None 时 SSE 连接每30s 心跳直到客户端超时；progress_queues 无 TTL/无定期扫除 | web/app.py:1224,1342 | 队列残留；长会话下内存缓慢泄漏 |
+| P9-17 | **WebSocket 流式/状态是占位符**：_handle_stream_chat 按10字符分块+sleep(0.02) 假装流式（注释"暂时用非流式模拟"）；_get_current_state 恒返回 {"status":"running"}（注释"需外部注入"但无人注入）——即便启用 WebSocket 这两处也是占位 | web/websocket_server.py:116,155 | 启用 WS 后流式/状态推送仍是假数据 |
+| P9-15 | **生产安全配置定位模糊**：_validate_production_security 强制 SECRET_KEY/CORS 是唯一面向"部署"的代码，但项目核心是单实例桌面数字生命(P1-9)——不部署则过度安全，部署又不够(无 HTTPS 强制/rate limit/api 认证)；定位模糊 | web/app.py:52 | 安全投入与项目定位不匹配 |
+| P9-1 | **run.py --config 注释误导**：注释示例写 `--config config/runtime.yaml`（文件），但 --config 实际是目录（传给 load_config(Path) 按目录读多 yaml） | run.py:6 | 注释与实现不符 |
+| P9-4 | **chat_interactive 死导入 get_available_tools**：from tools.tool_definitions import get_available_tools 导入后全文件零引用——chat_interactive 不把工具 schema 喂 LLM(工具调用交给 life_loop 内部) | chat_interactive.py:39 | 死导入 |
 
 ---
 
@@ -1455,9 +2483,10 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 新会话2: "读 CODE_MAP.md，续写第3章 memory/"   ✅ 已完成
 新会话3: "读 CODE_MAP.md，续写第5章 organs/"   ✅ 已完成
 新会话4: "读 CODE_MAP.md，续写第6章 tools/"   ✅ 已完成
-新会话5: "读 CODE_MAP.md，续写第4章(认知感知代谢)+第7章(安全持久化)"   ← 下一个推荐
-新会话6: "读 CODE_MAP.md，续写第9章(入口Web) + 更新A节问题清单"
+新会话5: "读 CODE_MAP.md，续写第4章(认知感知代谢)+第7章(安全持久化)"   ✅ 已完成
+新会话6: "读 CODE_MAP.md，续写第9章(入口Web) + 更新A节问题清单"   ✅ 已完成（全章精读完成）
 ```
+> **全部 9 章精读已完结**。后续会话可聚焦：① A 节问题清单的修复实施（按 🔴→🟡→🟢 排序）；② 若需补充 B 节"新会话上手指南"或新增 C 节"修复路线图/优先级排序"，可基于 A 节 260 项问题展开。
 每章续写后，AI 应：①填充"待续"章节 ②如发现新问题追加到 A 节 ③更新本文件顶部的"最后更新"日期。
 
 ### 快速验证环境（任何会话开始前）
@@ -1478,6 +2507,6 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 
 ---
 
-*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) + Phase 3(memory/, 29文件/8733行) + Phase 5(organs/, 15文件/7956行) + Phase 6(tools/, 23文件/9837行) 已完成精读。Phase 4,7,9 待续。全局问题清单已收录 14 + 20 + 23 + 23 + 32 = 112 项（P1/P2/P3/P5/P6/P8 系列）。*
+*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) + Phase 3(memory/, 29文件/8733行) + Phase 5(organs/, 15文件/7956行) + Phase 6(tools/, 23文件/9837行) + Phase 4(cognition/perception/metabolism, 20文件/5430行) + Phase 7(safety/persistence, 13文件/2604行) + Phase 9(入口+Web, 15文件/约7k行) **全部已完成精读**。全局问题清单已收录 209 + 18 = **227 项**（P1/P2/P3/P4/P5/P6/P7/P8 + P9 系列，含多条合并项，A 节三表实际行数 29+44+81=154 行）。*
 
 
