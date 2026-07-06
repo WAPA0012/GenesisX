@@ -5,7 +5,7 @@
 > **生成方式**：通读源码 + 论文对照，标注 `🔍问题` 为值得后续迭代的点。
 > **版本基准**：v1.3.0，5 维价值系统（已从早期 9 维精简）。
 > **最后更新**：2026-07-06
-> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ⏳ 第4-7,9章待续（76文件/29k行）
+> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ✅ 第5章 organs/ 已完成精读（15文件/7956行） ⏳ 第4,6,7,9章待续（61文件/22k行）
 
 ---
 
@@ -16,7 +16,7 @@
 - [2. 核心理论层 `axiology/` + `affect/`](#2-核心理论层-axiology--affect) ✅
 - [3. 记忆层 `memory/`](#3-记忆层-memory) ✅
 - [4. 认知/感知/代谢 `cognition/` + `perception/` + `metabolism/`](#4-认知感知代谢) ⏳待续
-- [5. 器官层 `organs/`](#5-器官层-organs) ⏳待续
+- [5. 器官层 `organs/`](#5-器官层-organs) ✅
 - [6. 工具层 `tools/`](#6-工具层-tools) ⏳待续
 - [7. 安全 + 持久化 `safety/` + `persistence/`](#7-安全--持久化) ⏳待续
 - [8. 核心引擎 `core/`](#8-核心引擎-core-最重要) ✅
@@ -511,10 +511,240 @@ should_consolidate(cooldown/attempts/quality降级检查)
 
 ---
 
-## 5. 器官层 `organs/` — 待续
+## 5. 器官层 `organs/`
 
-> ⏳ 15 文件/7956 行。6 个内部器官(caretaker/immune/mind/scout/builder/archivist) + 器官管理 + **器官 LLM 会话系统**(核心创新)。
-> **续写提示**：先读 `base_organ.py`(器官基类)→`organ_manager.py`→`unified_organ.py`→`organ_llm_session.py`(LLM会话,核心)→6 个 internal 器官。**器官 LLM 三模式(independent/shared/disabled)是理解这个项目的关键之一。**
+> 15 文件/7956 行。论文 §3.8（动态器官分化）+ §3.9（价值驱动的器官选择）+ §3.4.2（黑板/共享大脑）的落地。器官是**决策主体**（propose_actions），区别于 tools/ 的"执行手段"（详见第6章）。每 tick PHASE 7：价值权重排序器官 → 器官各自 propose → 汇总成 proposed_actions。
+>
+> **核心创新**：每个器官可挂独立 LLM 会话（论文 §3.4.2"器官作为判断器官"）。三种模式（independent/shared/disabled）决定器官是"自己思考"还是"共享大脑"还是"走规则"。
+>
+> **目录结构**：
+> ```
+> organs/
+> ├── organ_llm_session.py (1043) ⭐⭐ 器官LLM会话系统(三模式+选择性记忆,核心)
+> ├── unified_organ.py      (581)  ⭐ 新架构: 统一器官(UnifiedOrgan/BuiltinOrgan/Limb/Plugin)
+> ├── organ_manager.py      (346)  ⚠️ 旧管理器(实际接入,但依赖被禁用的drives)
+> ├── organ_interface.py    (251)  🔍 孤立(仅测试)
+> ├── base_organ.py         (212)  BaseOrgan 基类 + MountedOrgan 占位符
+> ├── organ_selector.py     (232)  🔍 孤立(仅测试,与 core/differentiate 重复)
+> ├── __init__.py           (215)  导出口+废弃别名类+全局单例
+> ├── internal/                    6 个内置器官(全部接入)
+> │   ├── mind_organ.py     (884)  ⭐ 思维器官: 9策略规划+用户响应
+> │   ├── scout_organ.py    (850)  ⭐ 侦察器官: 8模式探索+知识前沿
+> │   ├── immune_organ.py   (930)  ⭐ 免疫器官: 9策略安全+5级safety_mode+5信任级
+> │   ├── builder_organ.py  (900)  ⭐ 构建器官: 9策略项目管理+里程碑
+> │   ├── archivist_organ.py(754)  ⭐ 档案器官: 8策略记忆管理
+> │   ├── caretaker_organ.py(588)  ⭐ 照护器官: 稳态维持+昼夜节律
+> │   └── __init__.py       (21)
+> └── limbs/
+>     └── __init__.py       (149)  🔍 Limb 类(Docker肢体,全是TODO占位符)
+> ```
+
+### 5.1 三类器官（命名与来源）—— ⚠️ 易混
+项目里"器官"一词指代**三组不同的东西**，理解代码前必须分清：
+
+| 概念 | 位置 | 是什么 | 接入状态 |
+|---|---|---|---|
+| **内置器官 (BuiltinOrgan/Internal Organ)** | `organs/internal/*.py` | 6 个代码写死的"内脏"（mind/scout/immune/builder/archivist/caretaker） | ✅ **真正接入**（life_loop PHASE 7 调 propose_actions） |
+| **驱动力器官 (Drive)** | `axiology/drives/*.py`（不在 organs/！） | 5 维驱动力信号生成器（好奇心/胜任力/稳态/依恋/安全） | 🟡 **被禁用**（见 P2-5）；但 `OrganManager`（旧）仍持有它们 |
+| **统一器官 (UnifiedOrgan)** | `organs/unified_organ.py` | 新架构抽象：BuiltinOrgan + Limb + Plugin 三源统一 | 🟡 **半接入**（注册了但从不查询执行） |
+
+`organs/__init__.py` 里还有 4 个 `CuriosityOrgan`/`CompetenceOrgan`/`HomeostasisOrgan`/`AttachmentOrgan` **废弃别名类**（继承自 axiology.drives，构造即发 DeprecationWarning）——是驱动力器官的历史命名残留。**看到这些名字要意识到它们是驱动力不是真器官。**
+
+### 5.2 `organ_llm_session.py` (1043行) ⭐⭐ 核心创新——器官LLM会话三模式
+
+**职责**：论文 §3.4.2"器官作为判断器官"。让每个器官拥有独立（或共享）的 LLM 会话，使器官从"规则脚本"升级为"会思考的判断器官"。这是 GenesisX 区别于"LLM 当全能大脑"架构的关键。
+
+**`create_llm_manager(mode, ...)` 工厂**（life_loop:297 `_init_organ_llm_manager` 调用）按 `organ_llm.yaml` 的 `mode` 字段返回三种管理器之一：
+
+| 模式 | 管理器类 | 每器官会话 | 对话历史 | organ_llm.yaml 配置键 | 特点 |
+|---|---|---|---|---|---|
+| `independent`（默认） | `OrganLLMManager` | ✅ 独立 | 独立 | `organs.<name>.{llm,temperature,...}` | 器官间互不污染；**每器官可单独配 LLM**（如 mind 用 GPT-4，scout 用便宜模型） |
+| `shared` | `SharedBrainManager` → `SharedBrainSession` + `OrganProxy` | ❌ 共享一个 | 统一 | `shared.{llm,use_default_llm,...}` | 所有器官共用一个"大脑"，用 `[器官名]` 标记区分；省 token，但器官人格会被共享上下文稀释 |
+| `disabled` | `None` | — | — | — | 不用 LLM，器官纯走规则（`_propose_actions_impl`） |
+
+**`OrganLLMSession`**（独立模式的核心，L62-340）：
+- `ORGAN_PERSONALITIES`：6 个器官的人格系统提示词（mind=深度思考/scout=探索好奇/...），中文人格描述
+- `session_id = f"{organ}_{uuid8}"`（每次进程重启新建，不持久）
+- `think(prompt, include_history, temperature)`：带历史上下文调 LLM；**历史截断** `max_history*2`（config 默认 20 轮）
+- `respond(prompt)`：无历史快速调用
+- `reflect()`：让器官反思自己的思考历史（**life_loop 不调用，孤立方法**）
+
+**`SharedBrainSession` + `OrganProxy`**（共享模式，L426-689）：
+- `SharedBrainSession.think(organ_name, prompt)`：在 prompt 前加 `[MIND]`/`[SCOUT]` 标记，喂给单一会话
+- `OrganProxy`：包装共享会话，对外伪装成独立会话（同 `think`/`respond`/`get_history` 接口）——**但 `clear_history()` 实际清空整个共享历史**（L681 有 warning）
+- `get_organ_history(organ_name)`：从共享历史里按 `[器官名]` 标记过滤出该器官的对话（O(n) 扫描）
+
+**`OrganMemoryWriter`**（选择性记忆，L706-1007）——论文要求"器官思考选择性写入记忆"：
+- `evaluate_thought(organ, thought, context)` → `MemoryWorthiness{should_save,importance,category,reason,summary}`
+- 两级判断：① `_quick_check_exclude`（关键词"正在/继续/待机/如常/重复"直接跳过，不经 LLM）② `_llm_evaluate`（LLM 判断 insight/decision/learning/observation/routine，返回 JSON）或 `_keyword_evaluate`（LLM 不可用时关键词匹配 fallback）
+- `save_if_worthwhile`：构造一个 `Action(type="THINK")` 的 `EpisodeRecord` 写入 episodic（session_id=`organ_<name>`）
+
+**🔍问题 P5-1（重要，真接入但条件脆弱）**：life_loop:1088-1106 `process_organ` 取 `organ.get_last_thought()`，`save_organ_thought` 调 `_save_organ_thought_to_memory`。**但整个 `save_organ_thought`/`_organ_memory_writer` 路径的前提是 `_init_organ_llm_manager` 成功创建了 `_organ_memory_writer`**（L420）。`_save_organ_thought_to_memory` 只在 `_organ_memory_writer` 非 None 时执行——若 organ_llm.yaml `memory.enabled=false` 或初始化任何一步异常（L428 try/except 吞掉），器官思考就静默不入记忆。需确认 writer 在运行时确实非 None。
+**🔍问题 P5-2**：`SharedBrainSession._history` 是**所有器官共享的单一列表**，截断到 `max_history*2`。当 6 个器官轮流 think，20 轮历史里其实是 ~3 轮"每器官一次"——独立模式每器官有 20 轮自己的历史，共享模式历史稀释 6 倍。共享模式的设计意图（器官互相感知）与"稀释"是 trade-off，但文档未标注。
+**🔍问题 P5-3**：`OrganLLMSession.think` 调 `self.llm_client.chat(...)` 但**不解析 `reasoning_content`**（同 action_executor 的 P8-12 同源问题）。step-3.7-flash 的推理内容被丢弃，器官只看到 `content`。
+**🔍问题 P5-4（重要，LLM 失败无降级信号）**：`think()` 失败返回 `""`（空串）。器官的 `_propose_actions_with_llm` 见空串则 `actions=[]` → 走 `if not actions: actions = self._propose_actions_impl(...)` fallback 到规则。**这个 fallback 静默**——没有任何日志/指标区分"这次器官走 LLM"还是"LLM 失败降级走规则"。无法监控器官实际是否在"思考"。
+**🔍问题 P5-5**：`OrganMemoryWriter._llm_evaluate` 解析 LLM 返回的 JSON 用 `find("{")...rfind("}")` 提取——若 LLM 输出多个 JSON 块或代码块含 `{}`，会提取错误区间。`summary=result.get("summary","")[:200]` 截断但 thought 存了 `[:500]`（L963），两处截断长度不一致。
+
+### 5.3 `unified_organ.py` (581行) ⭐ 新架构统一器官（注册但不执行）
+
+**职责**：v2.0 重构——把三种能力来源（内脏/肢体/插件）统一为 `UnifiedOrgan` 抽象。
+
+**类型体系**：
+- `OrganSource(Enum)`：BUILTIN/LIMB/PLUGIN（+废弃 GROWN/PLUGGED 别名）
+- `OrganType(Enum)`：INTERNAL（纯Python）/EXTERNAL（需API/容器）/HYBRID
+- `OrganInfo`(dataclass)：name/description/source/type/capabilities/version/created_at + growth 专属（generation_prompt/parent_organ）
+
+**三个具体器官类**（L225-431）：
+- `BuiltinOrgan`：内脏基类，source=BUILTIN。**但 `organs/internal/` 的 6 个器官继承的是 `BaseOrgan` 不是 `BuiltinOrgan`**——life_loop:248 用 `isinstance(organ, BuiltinOrgan)` 判断，**全部 False**，走 else 分支用 `WrappedBuiltinOrgan` 动态子类包装（L256-273）。**即 6 个真器官没一个是 BuiltinOrgan 实例，全靠动态包装塞进统一管理器**。
+- `Limb`：肢体，source=LIMB。`_create_instance` 用 `exec(self.code, namespace)` **无沙箱**执行 LLM 生成的代码（与第8章 P8-17 同源安全问题）。`execute_capability` 反射调用实例方法。
+- `Plugin`：插件，source=PLUGIN/HYBRID。与 Limb 几乎逐字节相同（同样 exec 无沙箱）。
+
+**`UnifiedOrganManager`**（L438-581）：
+- `_capability_index: Dict[cap, organ_name]`：能力→器官反查索引
+- `add_builtin_organ/add_limb/add_plugin`（+废弃别名 add_grown_organ/add_plugged_organ）
+- `propose_all_actions`：遍历所有器官收集 propose_actions（返回 `List[(organ_name, Action)]`）
+
+**🔍问题 P5-6（🔴 重要，统一管理器是只写死代码）**：life_loop 只调 `add_builtin_organ` 注册器官，**从不调 `propose_all_actions`/`execute_capability`/`has_capability`/`list_all_capabilities`/`get_organ_by_capability`**。PHASE 7 的器官提案走的是 `self.organs` 字典（L1086 `organ.propose_actions`），不是 `unified_organ_manager`。即 **UnifiedOrganManager 注册了器官却从不被用来查询或执行——整个新架构是只写脚手架**。growth/plugins 系统"注册为器官"（见第8章 8.8/8.9）写到这个管理器，但 life_loop 不从它读。这是 organs 层最大的架构债：新架构（UnifiedOrganManager）与旧架构（`self.organs` 字典 + `OrganManager`）并行，旧的活、新的死。
+**🔍问题 P5-7**：`Limb`/`Plugin` 的 `propose_actions` 恒返回 `[]`（L332/L425）——肢体/插件**不提议动作**，只被动执行能力。但统一管理器的 `propose_all_actions` 会遍历它们，浪费（虽然现在没人调）。
+**🔍问题 P5-8**：6 个真器官用 `WrappedBuiltinOrgan` 动态子类包装（life_loop:256-273），每次 `_init_organs_and_tools` 在循环里定义同一个类——类对象重复创建 6 次。且包装后丢失原器官的 `_llm_session`/`get_last_thought` 等属性（只代理 `propose_actions`），若统一管理器真被调用会拿不到 LLM 思考。
+
+### 5.4 `organ_manager.py` (346行) ⚠️ 旧管理器（接入但依赖被禁用的 drives）
+
+**职责**：`OrganManager`——管理"驱动力器官"（axiology.drives 的 5 个）+ 肢体。life_loop 实际持有它（`self.organ_manager`）。
+
+**实际被调用的方法**（grep 确认 life_loop 用了 3 个）：
+- `get_all_drive_signals(state, context)`（PHASE 4.5, L920）：遍历 5 个 Drive 调 `generate_drive_signal`，返回 `{name: DriveSignal}`。**但这些 Drive 类来自 `axiology.drives`，而 P2-5 指出整个 drives/ 在 life_loop 顶部被注释禁用**——需确认这里是否也受影响（见 P5-9）。
+- `format_drives_for_llm(state, context)`（PHASE 4.5, L922）：把驱动力格式化成 `## 当前驱动力状态` 提示文本，塞进 context["drives_prompt"]。
+- `list_all_capabilities()`（PHASE 4.7/能力缺口, L524/L958）：从挂载的 limbs 列能力。
+
+**未被调用的方法**：`get_dominant_drive`/`has_capability`/`execute_capability`/`mount_limb`/`unmount_limb`/`record_interaction`/`record_exploration`/`record_achievement`——全项目 grep 仅自身定义或 backup 文件引用。
+
+**🔍问题 P5-9（🔴 重要，驱动力器官的矛盾状态）**：`OrganManager.__init__` 硬编码实例化 5 个 Drive（`CuriosityDrive()` 等，L36-40）。但 CODE_MAP 第2章 P2-5 记录 `axiology/drives/` 在 `life_loop.py` **顶部被注释禁用**。这里的矛盾是：**OrganManager 不受 life_loop 顶部注释影响**（它在 organs 包内独立 import），所以 drives 仍在 OrganManager 内被实例化和调用——life_loop:920 仍在每 tick 调 `get_all_drive_signals` 生成 drive_signals。即 **drives 实际是"半禁用"：life_loop 不直接用 Drive 类，但通过 OrganManager 间接用了**。需厘清：drive_signals 到底有没有喂给器官？答案见下条。
+**🔍问题 P5-10**：`drive_signals`/`drives_prompt` 写入 context（L921-922），但**器官的 `propose_actions(state, context)` 是否真的读 context["drives_prompt"]？** 逐个查 6 个器官的 `_propose_actions_impl`/`_build_thinking_prompt`——**没有一个读 context["drives_prompt"] 或 context["drive_signals"]**。器官读的是 `state`（field_snapshot）里的 energy/mood/stress 等。即 **PHASE 4.5 算出的驱动力信号被算出来、塞进 context、然后没有任何器官消费它**——驱动力→器官的传导链路断了。这是 organs 层最隐蔽的正确性问题。
+**🔍问题 P5-11**：`record_exploration`（L339）写 `self.curiosity._explored_topics.add(topic)`——直接访问私有属性 `_explored_topics`，且 `ScoutOrgan` 也有同名字段但两者完全独立（OrganManager 的 curiosity 是 Drive，ScoutOrgan 是真器官）。探索记录分散两处。
+
+### 5.5 `base_organ.py` (212行) — BaseOrgan 基类
+`BaseOrgan(ABC)`：器官最小契约。`propose_actions`(默认空)/`execute_capability`(默认失败)/`has_capability`(默认False)/`get_capabilities`(默认[])/`set_enabled`。`value_dimension` 字段关联价值维度。
+
+文件尾部 `MountedOrgan` 占位符类（L121-212）：limbs 导入失败时的 fallback，Docker mount/unmount 全是模拟（`self._is_mounted=True` 不真启动容器）。
+
+**🔍问题**：`BaseOrgan` 与 `UnifiedOrgan`（unified_organ.py）**两套器官基类并存**——6 个真器官继承 BaseOrgan，而统一架构用 UnifiedOrgan。接口几乎相同（propose_actions/execute_capability/has_capability）但无继承关系。这是 v2.0 重构未完成的痕迹。
+
+### 5.6 `organ_selector.py` (232行) + `organ_interface.py` (251行) — 🔍 孤立双子
+**🔍问题 P5-12（重要）— 两者运行时完全孤立**：全项目 grep 确认 `OrganSelector`/`OrganInterface` **仅在 `tests/test_organs.py` 引用**，life_loop 不 import 它们。
+- `OrganSelector`：按 signal_type→器官映射 + stage/mode 偏好选器官。**但实际器官选择走的是 `core/differentiate.py` 的 `select_organs`**（基因组基因表达，见第8章 8.3）。这是**第三套器官选择逻辑**（OrganSelector 信号映射版 + differentiate 基因组版 + life_loop 的价值权重排序版 PHASE 7）。OrganSelector 是最早期的版本，已被取代。
+- `OrganInterface`：进程信号→器官的统一接口（process_signal/execute_action/assess_risk）。它自己 `__init__` 里实例化 6 个器官（无 LLM session），与 life_loop 的 `self.organs` 字典**完全独立的两套器官实例**。assess_risk 的 `tool_risks` 表（web_search=0.2/file_write=0.7/code_exec=0.9...）与 safety/ 的风险计算重复。
+
+### 5.7 `limbs/__init__.py` (149行) — 🔍 Docker 肢体（全是 TODO 占位）
+**职责**：`Limb` 类——"被吞噬的外部工具"运行在 Docker 容器。`mount()`/`unmount()` 注释 `# TODO: 实现 Docker 容器启动`，实际只 `self._is_mounted=True` 模拟。`execute_capability` 恒返回 `success=False, "已定义但未实现（占位符）"`。
+
+**注意**：这是 `organs/limbs/Limb`（BaseOrgan 子类，Docker 肢体），**与 `unified_organ.py` 的 `Limb`（UnifiedOrgan 子类，LLM 生成代码）同名但完全不同**。两个 `Limb` 类并存——organs/__init__.py 导出的是后者（unified_organ.Limb），limbs/__init__.py 的是前者。**极易混淆**（见 P5-13）。
+
+**🔍问题 P5-13（命名冲突）**：`organs/limbs/Limb`（Docker 肢体，BaseOrgan 子类）与 `organs/unified_organ.Limb`（代码肢体，UnifiedOrgan 子类）**同名**。`organs/__init__.py:31` 导出 unified_organ 的 Limb，`base_organ.py:118` 和 `organ_manager.py:14` 导入 limbs 的 Limb 作 MountedOrgan。两个 Limb 概念不同（Docker 容器 vs exec 代码），文档注释里"肢体"指哪个含糊。
+**🔍问题 P5-14**：`organs/limbs/Limb` 整个 mount/unmount 是 TODO 模拟，`execute_capability` 恒失败——**这个类实际上什么都不能做**。OrganManager 持有它却用不了（mount 成功但 execute 失败）。配合 P5-6（统一管理器只写），limbs/ 这个包是**完全无效的能力来源**。
+
+### 5.8 六个内置器官（`internal/`）—— 共性架构
+
+> 6 个器官（588-930 行/个）结构高度一致，先讲共性，再逐个讲个性。
+
+**共性骨架**（每个器官都有）：
+```
+__init__(llm_session=None)              ← 可选 LLM 会话
+propose_actions(state, context)         ← 入口：有 LLM 走 LLM，无走规则
+ ├─ _propose_actions_with_llm()         ← LLM 模式
+ │   ├─ _build_thinking_prompt()        ← 构建中文思考提示(含状态/目标)
+ │   ├─ llm_session.think(prompt)       ← 调 LLM(organ_llm_session)
+ │   ├─ _parse_llm_thought_to_actions() ← 关键词匹配 thought→Action
+ │   └─ if not actions: fallback 规则   ← LLM 无效输出降级
+ └─ _propose_actions_impl()             ← 规则模式：9个_should_xxx策略门
+get_last_thought()/clear_last_thought() ← 选择性记忆用
+```
+
+**LLM 思考的统一流程**：每个器官 `_build_thinking_prompt` 把 state（精力/压力/心情...）+ 器官专属信息格式化成中文 prompt → LLM 返回一段中文思考 → `_parse_llm_thought_to_actions` 用**中文关键词匹配**把思考转成 Action（如 thought 含"探索/了解/发现"→EXPLORE 动作）。**LLM 的思考只是"生成一段文字"，真正决定 Action 类型的是关键词匹配**——LLM 在这里更像"提供叙事理由"而非"决策"。
+
+**🔍问题 P5-15（🔴 重要，LLM 思考→Action 的解析极脆弱）**：所有 6 个器官的 `_parse_llm_thought_to_actions` 都用 `any(kw in thought_lower for kw in [...])` 中文关键词匹配。问题：① LLM 用英文或同义词（如"研究"vs"调研"、"实施"vs"构建"）会漏匹配 ② 一个 thought 可能同时含多组关键词，生成多个 Action（如既"探索"又"反思"）③ 关键词表硬编码，无配置。**实质上器官决策权在关键词表而非 LLM**——LLM 输出基本被降级为"填进 Action.params['thought'] 的叙事"。若关键词全不匹配，mind 退到 `THINK` 动作、scout/builder/immune 退到默认 EXPLORE/GROW/REFLECT。
+**🔍问题 P5-16**：6 个器官的 `_propose_actions_impl`（规则模式）都实现了一套"9 策略 + `_should_xxx` 门"的复杂逻辑，但**当 LLM 模式启用时（默认），这些规则逻辑几乎永不被执行**（只在 LLM 返回空时 fallback）。即每个器官 ~600-900 行里，规则模式那大半代码是"LLM 挂了才用"的冷路径。而当前 .env 配的是可用的 stepfun LLM，规则模式实际是死代码。
+
+### 5.9 `mind_organ.py` (884行) ⭐ 思维器官（competence）
+**职责**：深度思考/规划/推理。**唯一会生成 CHAT 动作的器官**（用户响应）。
+
+**规则模式 9 策略**：strategic(战略)/tactical(战术)/reactive(反应)/exploratory(探索)/reflective(反思)/creative(创造) 规划 + goal_decomposition(目标分解) + adapt_from_history(历史适应)。每策略有 `_should_use_xxx` 门（energy/stress/cognitive_load 阈值）。
+
+**用户响应**（L849-884）：`_should_respond_to_user` 检查 context["observations"] 有无 `user_chat` 类型观察 → `_generate_user_response` 生成 `CHAT` 动作（message 留空，由 chat.py 填）。**这是对话能力的入口**。
+
+**🔍问题 P5-17**：`_should_respond_to_user` 检查 `obs.type == "user_chat"`——但 Observation 模型（common/models.py）的 type 字段是否真用 "user_chat" 字符串？需对齐（action_executor 的拦截逻辑也依赖此）。若类型字符串不匹配，**用户消息永远不会触发 CHAT 动作**。
+**🔍问题 P5-18**：`record_plan_outcome`/`successful_patterns`/`failed_patterns`/`strategy_success_rates` 学习机制——**life_loop 从不调用 `record_plan_outcome`**（grep 零外部引用）。即 mind 的"从历史学规划"功能写好了但没接入，`_adapt_from_history` 永远因 `len(plan_history)<10` 而不触发。
+
+### 5.10 `scout_organ.py` (850行) ⭐ 侦察器官（curiosity）
+**职责**：探索/学习/好奇心。8 模式探索：breadth_first/depth_first/random_walk/frontier/consolidation/targeted 等。
+
+**探索主题生成**：`_generate_diverse_topics`/`_generate_random_topic` 从硬编码主题表（science/philosophy/... 或 novel_ideas/emerging_patterns/...）随机选。`_extract_topic_from_thought` 用中文分词（split 空格）提关键词——**中文 LLM 输出通常无空格分词，此函数对中文几乎无效**。
+
+**🔍问题 P5-19**：`_extract_topic_from_thought`（L228）`thought.split()` 按空格分词——**中文文本无空格**，split 返回整段作为一个 word，因 `len>=2` 通过但 keywords 只有一个整句。探索主题变成一整段中文句子（如"我现在最想了解的是量子计算的本质"），不是有意义的 topic。mind_organ 的 `_extract_topic_from_thought`（L265）同病。
+**🔍问题**：`record_exploration_outcome` 更新 `topic_interest_scores`/`knowledge_frontier`/`mode_success_rates`——但**life_loop 不调 `record_exploration_outcome`**（同 P5-18，学习机制未接入）。`explored_topics` 只在 record 时更新，EXPLORE 动作执行后无反馈→scout 不知道自己探索过什么。
+
+### 5.11 `immune_organ.py` (930行) ⭐ 免疫器官（safety）
+**职责**：安全/完整性/威胁检测。最大的器官。5 级 safety_mode（permissive→balanced→cautious→strict→lockdown）+ 5 级 trust + 5 类威胁。
+
+**独特方法**（其他器官没有）：
+- `veto_risky_action(action, state)`（L741）：按当前 safety_mode + action.risk_level 判断是否否决动作。lockdown 否决一切>RISK_MINIMAL，strict 否决>MODERATE...
+- `assess_action_risk(action, context)`（L794）：基础风险 + 信任调整 × safety_mode 倍率（lockdown×2.0/permissive×0.8）。
+- `update_action_trust(action_type, success)`（L874）：根据动作结果更新信任分（成功+0.05，失败-0.1）。
+
+**🔍问题 P5-20（🔴 重要，veto/assess 实际未接入）**：`veto_risky_action`/`assess_action_risk`/`update_action_trust` **life_loop 全不调用**（grep 零外部引用）。PHASE 9 的安全检查走的是 `safety/` 模块（见第7章），不是 immune 器官。即 **immune 器官的"否决权"和"风险评估"是摆设**——它只在 PHASE 7 提议 REFLECT（stress_management/anomaly_investigation）动作，真正拦截动作的是 safety/。论文设计里 immune 应是安全执行者，但实现上被 safety/ 取代。`update_action_trust` 不被调→`action_trust_scores` 恒为默认 0.5→信任校准形同虚设。
+**🔍问题**：`_detect_anomalies`（L562）用行为基线（`behavior_baseline` 每 metric 存最近 50 样本）算均值/标准差，`>2σ` 判异常——但 `behavior_baseline` 只在 `_update_behavior_baseline`（每 tick 调）填充，且 std_dev≈0 时跳过（已有 guard，good）。魔法数 2σ/50样本/10样本阈值硬编码。
+
+### 5.12 `builder_organ.py` (900行) ⭐ 构建器官（competence）
+**职责**：项目执行/里程碑管理。9 策略：project_init/milestone_planning/focused_sprint/parallel/incremental/quality_review/unblock/adapt/milestone_completion。
+
+**项目管理状态**：`active_projects`(dict)/`task_queue`/`blocked_tasks`/`task_dependencies`/`milestone_history`/`work_sessions`/`productivity_scores`。`create_project`/`add_task`/`complete_task`/`block_task` 是管理 API。
+
+**🔍问题 P5-21（🔴 重要，项目状态全在器官内存，永不持久化）**：builder 的 `active_projects`/`task_queue`/`completed_tasks` 全是实例属性，**life_loop shutdown 不保存**（同 schema/skill 的 P3-5 模式）。重启后所有"项目/任务/里程碑"清零。且 `record_work_session`/`complete_task`/`block_task` **life_loop 不调用**——即 builder 的项目状态在运行时也几乎不更新（只有 `_should_start_new_project` 在 goal 含 build/create 时初始化空项目）。builder 器官的"项目管理"功能基本是死的。
+**🔍问题**：`_should_start_new_project` 检测 goal 含 "build/create/develop/implement/construct/design"（英文关键词），但 goal 多为中文→几乎不触发项目初始化。
+
+### 5.13 `archivist_organ.py` (754行) ⭐ 档案器官（curiosity）
+**职责**：记忆管理/整理/索引。8 策略：emergency_consolidation/periodic_consolidation/pruning/semantic_integration/indexing/pattern_recognition/compression/adaptive_strategy。
+
+**🔍问题 P5-22（🔴 重要，archivist 与 memory/consolidation 职责完全重叠）**：archivist 器官的 `EPISODIC_CONSOLIDATION_THRESHOLD=50`/`PRUNING_THRESHOLD=100`/`CRITICAL_MEMORY_OVERLOAD=200` + 整套 consolidation/pruning 逻辑——**与 `memory/consolidation.py`(DreamConsolidator) + `memory/pruning.py`(MemoryPruner) + 各记忆类内置淘汰 功能三重重叠**（见第3章 P3-21）。更糟的是 archivist 器官**只提议 REFLECT 动作**（purpose="memory_consolidation" 等），真正执行记忆整理的是 PHASE 15 的 DreamConsolidator。archivist 的 `memory_count`/`episodic_count` 是它自己的本地计数器（`_update_archivist_state` 从 state 读），与真实 EpisodicMemory.count() 不同步。即 **archivist 是"记忆管理的影子系统"，提议了动作但动作执行走另一套**。
+**🔍问题**：`add_memory`/`access_memory`/`categorize_memory`/`mark_consolidation_quality` 这些 API **life_loop 不调用**——archivist 的记忆索引（memory_index/memory_tags/retention_scores）在运行时永远空。
+
+### 5.14 `caretaker_organ.py` (588行) ⭐ 照护器官（homeostasis）
+**职责**：稳态维持/健康。优先级最高（P0），紧急情况可覆盖其他器官。监测 energy/fatigue/stress/boredom/mood，提 SLEEP/REFLECT/EXPLORE 动作。
+
+**多级紧急系统**：CRITICAL(energy<0.15/fatigue>0.85/stress>0.85)→HIGH→MODERATE→LOW，各级有阈值常量。`assess_health_status` 算 health_score（energy×0.3+(1-stress)×0.25+...）。
+
+**昼夜节律**：`preferred_sleep_start=22`/`_end=7`，`_is_sleep_time` 判断是否在睡眠窗口。`_should_suggest_sleep` 综合时间窗+能量+疲劳+距上次睡眠>100tick。
+
+**🔍问题 P5-23**：caretaker 的 sleep 时间窗靠 `tick * tick_duration / 3600 % 24` 估算当前小时——**tick_duration 从 context.get("tick_duration",10) 取**，但 life_loop 传给器官的 context 是否真有 tick_duration？若没有则默认 10 秒/tick，当前小时估算依赖此假设。且这是"模拟时间"不是 wall-clock，与 metabolism/circadian.py（第4章）的真实昼夜节律可能不一致。
+**🔍问题**：caretaker 与 metabolism/（第4章）+ core/handlers/caretaker_mode.py（第8章 CaretakerMode 安全降级）概念重叠——"照护"职责散落三处。器官版提 SLEEP 动作，CaretakerMode 是禁用其他器官只留 caretaker，metabolism 算能量恢复。
+
+### 5.x organs/ 速查与调试点
+
+**精读优先级**：`organ_llm_session.py`(三模式是核心) > `unified_organ.py`(看架构债) > 6 器官的 `_parse_llm_thought_to_actions`(看 LLM 如何降级为关键词)。
+
+**接入真相表**：
+| organs 模块 | life_loop 接入 | 状态 |
+|---|---|---|
+| 6 个 internal 器官 propose_actions | PHASE 7 `self.organs[name].propose_actions` | ✅ 接入（LLM 或规则） |
+| OrganLLMSession/Manager | `_init_organ_llm_manager` + `get_session` | ✅ 接入（三模式） |
+| OrganMemoryWriter | `_save_organ_thought_to_memory` | ⚠️ 条件接入（依赖 writer 初始化成功） |
+| OrganManager（旧） | PHASE 4.5 drive_signals + 能力查询 | 🟡 接入但**驱动力无人消费**(P5-10) |
+| UnifiedOrganManager（新） | 仅 `add_builtin_organ` 注册 | 🔴 **只写死代码**(P5-6) |
+| OrganSelector | — | 🔴 **完全孤立**(仅测试, P5-12) |
+| OrganInterface | — | 🔴 **完全孤立**(仅测试, P5-12) |
+| organs/limbs/Limb | OrganManager 持有 | 🔴 **mount 是模拟, execute 恒失败**(P5-14) |
+| immune.veto_risky_action/assess_action_risk | — | 🔴 **完全孤立**(P5-20, 被 safety/ 取代) |
+| 各器官学习 API（record_plan_outcome 等） | — | 🔴 **完全孤立**(P5-18/P5-19/P5-21) |
+
+**高危区**：
+1. **新架构只写**（P5-6）：UnifiedOrganManager 注册器官从不查询——growth/plugins"注册为器官"写了等于没写
+2. **驱动力传导断裂**（P5-10）：PHASE 4.5 算的 drive_signals 没有任何器官消费
+3. **LLM 思考被关键词降级**（P5-15）：6 器官决策权在硬编码中文关键词表，LLM 沦为叙事生成器
+4. **immune 否决权虚设**（P5-20）：安全执行被 safety/ 取代，immune 只提 REFLECT
+5. **器官状态不持久**（P5-21）：builder/archivist/scout 的学习状态重启清零
+6. **三套器官选择逻辑**（P5-12）：OrganSelector(信号) + differentiate(基因) + life_loop(价值权重) 并存
+
+**与论文的对应**：器官分化 = §3.8；价值驱动器官选择 = §3.9（PHASE 7 的 `organ_priority_by_value`）；器官作为判断器官（LLM 会话）= §3.4.2；共享大脑 = §3.4.2 黑板；6 器官优先级 caretaker>immune>mind>scout>builder>archivist = Genome 默认基因 priority。
 
 ---
 
@@ -878,6 +1108,11 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P3-15 | **联想网络无法持久化**：`import_state` 是 `pass` 空实现，EpisodicMemory 重启不重建联想图 | memory/familiarity.py:869 | 重启丢失全部共现/因果/情绪/语义联想链接 |
 | P3-22 | **limb_guides/ 导入即崩 + 与 skills/ 逐字节重复**：4 个指南文件类名仍是 FileSkill 等，__init__ 导入 FileOpsGuide 必抛 ImportError→静默禁用整个包 | memory/limb_guides/ | ~600 行死代码（含 P3-22 的副本） |
 | P3-6/P3-7 | **嵌入实现散落3处且2处是伪嵌入**：retrieval 用 MD5 伪嵌入、familiarity 用 md5-seed 伪随机，仅 semantic_novelty 有真嵌入 | memory/{retrieval,familiarity,semantic_novelty}.py | 默认后端下语义检索/联想是噪声 |
+| P5-6 | **UnifiedOrganManager 是只写死代码**：life_loop 只 `add_builtin_organ` 注册，从不查询/执行；PHASE 7 走 `self.organs` 字典而非统一管理器 | organs/unified_organ.py + core/life_loop.py | 新架构完全无效，growth/plugins"注册为器官"写了等于没写 |
+| P5-10 | **驱动力→器官传导链路断裂**：PHASE 4.5 算的 drive_signals/drives_prompt 塞进 context，但 6 个器官的 propose_actions 无一读取它 | organs/internal/* + core/life_loop.py:920-922 | 驱动力信号被算出后无人消费，价值→驱动力→行为链断在最后一步 |
+| P5-15 | **LLM 思考被中文关键词降级**：6 器官的 `_parse_llm_thought_to_actions` 用硬编码关键词把 LLM 输出转 Action，LLM 沦为叙事生成器 | organs/internal/*_organ.py | 器官决策权在关键词表而非 LLM；同义词/英文漏匹配→退化默认动作 |
+| P5-20 | **immune 否决权/风险评估未接入**：veto_risky_action/assess_action_risk/update_action_trust life_loop 全不调，安全执行被 safety/ 取代 | organs/internal/immune_organ.py | immune 只提 REFLECT 动作，信任校准恒为默认 0.5 |
+| P5-21 | **器官学习/项目状态全不持久化**：builder 的 active_projects/task_queue、archivist 的索引、scout/mind 的学习历史重启清零，且 record_* API life_loop 不调 | organs/internal/{builder,archivist,scout,mind}_organ.py | 器官"从经验学习"功能形同虚设 |
 
 ### 🟡 中优先级（技术债）
 
@@ -906,6 +1141,17 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P3-18 | **EmbeddingConfig.auto_detect_backend 形同虚设**：实例方法误用 cls 参数名，默认 backend=TFIDF；当前环境无 embedding API | memory/semantic_novelty.py | 默认走浅嵌入(TF-IDF) |
 | P3-14 | compute_novelty 模块函数(关键字参)与 SemanticNoveltyCalculator 方法(参数名不同)两种调用风格+两套参数名，dream.py 走函数版(每次新建calc) | memory/{dream,semantic_novelty}.py | 维护易错 |
 | P3-16 | familiarity 默认嵌入是 md5-seed 的确定性伪随机(randn)，联想网络的"语义联想"是噪声 | memory/familiarity.py | 联想质量退化 |
+| P5-12 | **OrganSelector/OrganInterface 完全孤立(仅测试)**：实际器官选择走 core/differentiate(基因) + life_loop(价值权重)，这是第三套被取代的版本 | organs/{organ_selector,organ_interface}.py |
+| P5-9 | **驱动力器官半禁用矛盾**：drives/ 在 life_loop 顶部注释禁用，但 OrganManager 独立 import 仍实例化 5 个 Drive 并每 tick 调用 | organs/organ_manager.py + axiology/drives/ |
+| P5-1 | OrganMemoryWriter 接入但条件脆弱：依赖 _init_organ_llm_manager 成功，organ_llm.memory.enabled=false 或初始化异常则器官思考静默不入记忆 | organs/organ_llm_session.py + core/life_loop.py |
+| P5-4 | LLM 失败无降级信号：organ think() 失败返回空串→静默 fallback 规则，无日志/指标区分"走LLM"还是"降级规则" | organs/organ_llm_session.py + organs/internal/* |
+| P5-2 | 共享大脑模式历史稀释 6 倍：6 器官共享单一 _history(20轮)，每器官实际只 ~3 轮上下文 | organs/organ_llm_session.py SharedBrainSession |
+| P5-3 | OrganLLMSession.think 不解析 reasoning_content，step-3.7-flash 推理内容被丢弃 | organs/organ_llm_session.py |
+| P5-13/P5-14 | 两个同名 Limb 类(Docker肢体 vs 代码肢体)；organs/limbs/Limb mount 是 TODO 模拟、execute 恒失败 | organs/limbs/__init__.py + organs/unified_organ.py |
+| P5-16 | 6 器官规则模式(_propose_actions_impl)是 LLM 启用时的冷路径死代码，每器官大半代码不执行 | organs/internal/*_organ.py |
+| P5-19 | scout/mind 的 _extract_topic_from_thought 用 split() 按空格分词，中文无空格→主题变整段句子 | organs/internal/{scout,mind}_organ.py |
+| P5-22 | archivist 器官与 memory/consolidation+pruning 职责三重重叠，只提 REFLECT 动作，本地计数器与真实 EpisodicMemory 不同步 | organs/internal/archivist_organ.py |
+| P5-17 | _should_respond_to_user 检查 obs.type=="user_chat"，需对齐 Observation.type 实际值，否则用户消息永不触发 CHAT | organs/internal/mind_organ.py |
 
 ### 🟢 低优先级（清理项）
 
@@ -928,6 +1174,11 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 | P3-17 | 模块级 `compute_novelty` 每次调用 new 一个 calculator，缓存全失效/重复加载模型 | memory/semantic_novelty.py |
 | P3-23 | skills/ 内有两个 SkillRegistry 类(base.py 非线程安全 + skill_registry.py 线程安全)，前者76行死代码 | memory/skills/base.py |
 | P3-19 | compute_salience 仅被 consolidation 用；写入 episode 时不存 salience 字段，query_high_salience 另用 \|delta\|——两套"显著性"定义 | memory/salience.py |
+| P5-5 | OrganMemoryWriter._llm_evaluate 用 find("{")/rfind("}") 提取 JSON，多 JSON 块/代码块含{} 会误提取；summary[:200] 与 thought[:500] 截断不一致 | organs/organ_llm_session.py |
+| P5-7/P5-8 | Limb/Plugin.propose_actions 恒返回[]；6 真器官用 WrappedBuiltinOrgan 动态子类重复创建6次且丢失 _llm_session 等属性 | organs/unified_organ.py + core/life_loop.py |
+| P5-11 | OrganManager.record_exploration 直接访问私有 _explored_topics，与 ScoutOrgan 同名字段完全独立，探索记录分散两处 | organs/organ_manager.py |
+| P5-18 | mind 的 record_plan_outcome/successful_patterns 学习机制 life_loop 不调，_adapt_from_history 永不触发 | organs/internal/mind_organ.py |
+| P5-23 | caretaker sleep 时间窗靠 tick×tick_duration/3600 估算，context 是否传 tick_duration 不确定；与 metabolism/circadian 真实节律可能不一致 | organs/internal/caretaker_organ.py |
 
 ---
 
@@ -942,8 +1193,8 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 ```
 新会话1: "读 CODE_MAP.md，续写第8章 core/"     ✅ 已完成
 新会话2: "读 CODE_MAP.md，续写第3章 memory/"   ✅ 已完成
-新会话3: "读 CODE_MAP.md，续写第5章 organs/"   ← 下一个推荐
-新会话4: "读 CODE_MAP.md，续写第6章 tools/"
+新会话3: "读 CODE_MAP.md，续写第5章 organs/"   ✅ 已完成
+新会话4: "读 CODE_MAP.md，续写第6章 tools/"   ← 下一个推荐
 新会话5: "读 CODE_MAP.md，续写第4章(认知感知代谢)+第7章(安全持久化)"
 新会话6: "读 CODE_MAP.md，续写第9章(入口Web) + 更新A节问题清单"
 ```
@@ -967,6 +1218,6 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 
 ---
 
-*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) + Phase 3(memory/, 29文件/8733行) 已完成精读。Phase 4-7,9 待续。全局问题清单已收录 14 + 20 + 23 = 57 项（P3-1 ~ P3-23）。*
+*文档状态：Phase 1-2(common/axiology/affect, 46文件/14k行) + Phase 8(core/, 43文件/18338行) + Phase 3(memory/, 29文件/8733行) + Phase 5(organs/, 15文件/7956行) 已完成精读。Phase 4,6,7,9 待续。全局问题清单已收录 14 + 20 + 23 + 23 = 80 项（P1/P2/P3/P5/P8 系列）。*
 
 
