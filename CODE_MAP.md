@@ -2536,11 +2536,20 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 
 #### P0-1 残留项（后续优化，非死锁）
 P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 闭环），但实测发现 mood 在长 tick 后仍会回落到 0，根因已转移：
-1. **推理模型格式遵守不稳定**（新问题，非 P0-1）：step-3.7-flash 常忽略【动作:XXX】格式要求，退回关键词 fallback。属 prompt 工程/模型能力问题，非代码 bug。
-2. **curiosity→EXPLORE 传导弱**（P5-10 同源延伸）：curiosity gap 涨到 0.45 但系统不选 EXPLORE，转为 REFLECT 循环拉低 mood。
-3. **关键词 fallback 偏向 REFLECT**：archivist/mind 的反思关键词（思考/分析/理解/记录/整理）命中率高，fallback 时默认 REFLECT。
 
-**建议后续**：① 收紧各器官 REFLECT 关键词（去掉高频泛化词）；② 强化结构化 prompt（格式要求前置 + few-shot）；③ 考虑 curiosity 驱动的 EXPLORE 触发器。这些是调优不是 bug 修复。
+**已做的残留修复（commit d928797 + 5c33d73）**：
+- `BaseOrgan._value_driven_fallback`：结构化+关键词都失败时，按当前最大价值缺口维度选动作（curiosity→EXPLORE/attachment→CHAT/homeostasis→SLEEP 等），让价值系统真正驱动行为。
+- `life_loop` PHASE 4.5：把 gaps/weights 写入 `context['value_gaps']`（P5-10 延伸），器官 fallback 可读。
+- `_format_structured_output_prompt_prefix`：格式要求前置到 prompt 开头（推理模型对开头指令更敏感）。
+- 步骤 2.5：关键词 fallback 只产被动动作（REFLECT/THINK）且有显著缺口时，追加价值驱动动作。
+- 实测：EXPLORE/CHAT 候选能进入 PHASE 8，curiosity 缺口大时触发 EXPLORE。
+
+**仍存在的问题（多参数耦合，属系统调优非 bug）**：
+1. **mood 跌速 vs curiosity 涨速不匹配**：mood 从 0.4 跌到 0 要 ~5 tick，curiosity 从 0 涨到 0.3（触发价值兜底）要 ~6 tick——价值兜底触发时 mood 已死。
+2. **PHASE 8 plan_evaluator 评分等价**：EXPLORE 和 REFLECT 评分近乎相同（estimated_reward 都硬编码 0.5），选哪个取决于器官优先级排序，REFLECT 常排前面。
+3. **推理模型格式遵守**：step-3.7-flash 仍不稳定输出【动作:XXX】标记（~70% tick 退回关键词 fallback）。
+
+**建议后续（系统调优，非本次范围）**：① 降低价值驱动兜底阈值或按 mood 动态调整；② PHASE 8 评分让"匹配当前最大缺口的动作"加分；③ 收紧 REFLECT 关键词；④ 换用非推理模型或强化 few-shot。
 
 #### C 阶段：死代码清理（2026-07-06，共删 5370 行）
 | commit | 删除 | 行数 | 解的问题 |
