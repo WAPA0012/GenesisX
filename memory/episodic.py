@@ -76,7 +76,7 @@ class EpisodicMemory:
                 self._by_tick[episode.tick] = episode
                 self._sorted_ticks.append(episode.tick)
             except Exception as e:
-                print(f"[EpisodicMemory] Failed to load episode: {e}")
+                logger.warning(f"Failed to load episode: {e}")
 
         # Sort ticks for binary search
         self._sorted_ticks.sort()
@@ -112,10 +112,10 @@ class EpisodicMemory:
             episode: Episode to persist
         """
         if not self.episodes_path:
-            print(f"[EpisodicMemory] ERROR: episodes_path is None, cannot persist episode {episode.tick}")
+            logger.error(f"episodes_path is None, cannot persist episode {episode.tick}")
             return  # 没有设置路径，跳过持久化
 
-        print(f"[EpisodicMemory] Persisting episode {episode.tick} to {self.episodes_path}")
+        logger.debug(f"Persisting episode {episode.tick} to {self.episodes_path}")
         try:
             episode_dict = episode.model_dump()
             if HAS_ORJSON:
@@ -129,13 +129,10 @@ class EpisodicMemory:
                 import json
                 with open(self.episodes_path, 'a', encoding='utf-8') as f:
                     f.write(json.dumps(episode_dict, ensure_ascii=False, default=str) + '\n')
-            print(f"[EpisodicMemory] Successfully persisted episode {episode.tick}")
+            logger.debug(f"Successfully persisted episode {episode.tick}")
         except Exception as e:
             # 持久化失败不应该阻塞主循环，但需要记录
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"[EpisodicMemory] Failed to persist episode {episode.tick}: {e}", exc_info=True)
-            print(f"[EpisodicMemory] ERROR: Failed to persist episode {episode.tick}: {e}")
+            logger.error(f"Failed to persist episode {episode.tick}: {e}", exc_info=True)
 
     def _evict_oldest(self):
         """Remove oldest episode from cache to maintain size limit. O(log n)."""
