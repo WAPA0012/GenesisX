@@ -195,7 +195,19 @@ class BaseOrgan(ABC):
                 if _structured_actions_enabled():
                     logger.debug(f"器官 {self.name} 关键词 fallback 得到 {len(actions)} 动作")
 
-        # 步骤 3：仍无动作 → 价值驱动兜底（根据当前最大价值缺口选动作）
+        # 步骤 2.5：关键词 fallback 只产出被动动作（REFLECT/THINK）且有显著缺口时，
+        # 追加价值驱动动作。避免 LLM 叙事习惯（总命中"思考/分析"→REFLECT）劫持行为，
+        # 让真实的价值需求有候选进入 PHASE 8 评估。
+        if actions and _structured_actions_enabled():
+            passive_types = {"REFLECT", "THINK"}
+            only_passive = all(a.type.value in passive_types for a in actions)
+            if only_passive:
+                value_actions = self._value_driven_fallback(state, context)
+                if value_actions:
+                    actions.extend(value_actions)
+                    logger.debug(f"器官 {self.name} 追加价值驱动动作（关键词仅产被动动作）")
+
+        # 步骤 3：结构化和关键词都没命中 → 价值驱动兜底
         if not actions:
             actions = self._value_driven_fallback(state, context)
 
