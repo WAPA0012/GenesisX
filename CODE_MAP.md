@@ -2525,6 +2525,8 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 | **P0-1 核心死锁（器官结构化动作 + 9a 豁免）** | `6b80130` | base_organ 抽模板方法（结构化【动作:XXX】→关键词 fallback→规则）；6 器官迁移；integrity_check 解 mood<0.1 死锁（低风险 EXPLORE 豁免）。**实测：CHAT 从 0→出现，mood 出现回升**。顺带根治 P5-15/P5-10/P5-16 |
 | **P0-1 第二层（CHAT bond 增益）** | `3f5c2b6` | action_executor bond +0.01→+0.05/次，trust 同比例。诊断发现 PHASE 11 的 CHAT +0.2 bonus 实际生效，但 bond 涨太慢填不平 attachment 缺口 |
 | **P0-1 第三层（bond 冷启动）** | `7e70740` | bond 初始值 0→0.4（FieldStore + life_loop）。attachment 缺口从 0.45 降到 0.21，CHAT reward 从 -0.12 改善到 -0.02 |
+| **P4-61/P4-58 RP 公式混淆 + recovery 死代码** | `（D阶段）` | 删 metabolism/resource_pressure.py(256) + recovery.py(173)。resource_pressure 论文版 RP 公式与 state.py 生产版语义相反且零运行时引用；recovery 被 life_loop 内联绕过。boredom 资源覆盖死分支删除，compute_effective_boredom 简化为兼容存根。资源紧急判断统一由 state.py 基于 psutil 实现 |
+| **P4-1 priority_level 全域未设** | `6cb0202` | GoalCompiler._priority_to_level 将 priority float 映射到论文§3.8.1 的 PriorityLevel(1-6)，safety/homeostasis 维度加成。两处 Goal 创建设 priority_level。论文 6 级优先级系统运行时生效 |
 
 #### P0-1 修复的实测对比（2026-07-06）
 | 指标 | 修复前 (run_062952) | 修复后 (run_151237) |
@@ -2571,6 +2573,6 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经 P0-1 修复 + 两轮死代码清理后现 **约 221 文件/77k 行**，累计删除约 6600 行死代码）。全局问题清单收录 **227 项**，其中 **17 项已修复**（见上方"已修复"表）。**P0-1 核心死锁已解**（3 commits）；**C 阶段死代码清理完成**（5 commits/5370 行，解 P9-18/P3-13/P3-20/P4-22/P4-19/P8-18/P8-19/P7-7/P7-10/P7-13 等）。残留 mood 稳定性 + D 阶段参数统一为后续项。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经 P0-1 修复 + 三轮死代码/参数清理后现 **约 215 文件/76k 行**，累计删除约 6900 行死代码）。全局问题清单收录 **227 项**，其中 **19 项已修复**（见上方"已修复"表）。**P0-1 核心死锁已解**；**C 阶段死代码清理完成**（5370 行）；**D 阶段参数统一**（P4-61 RP 公式混淆 + P4-1 priority_level）。残留：mood 稳定性（多参数耦合）+ P8-4 双真相源 + P1-3 参数三重定义为后续项。*
 
 
