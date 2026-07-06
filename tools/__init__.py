@@ -44,13 +44,6 @@ except ImportError:
     CapabilityToken = None
     CapabilityManager = None
 
-# Cost model
-try:
-    from .cost_model import CostModel, ModelType
-except ImportError:
-    CostModel = None
-    ModelType = None
-
 # Import CostVector from common.models for convenience
 try:
     from common.models import CostVector
@@ -187,9 +180,6 @@ __all__ = [
     "ToolSpec",
     "CapabilityToken",
     "CapabilityManager",
-    # Cost model
-    "CostModel",
-    "ModelType",
     "CostVector",
     # Mind Field Architecture (论文 3.4.2)
     "ModelConfig",
