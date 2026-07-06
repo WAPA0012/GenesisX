@@ -2542,6 +2542,19 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 **建议后续**：① 收紧各器官 REFLECT 关键词（去掉高频泛化词）；② 强化结构化 prompt（格式要求前置 + few-shot）；③ 考虑 curiosity 驱动的 EXPLORE 触发器。这些是调优不是 bug 修复。
 
+#### C 阶段：死代码清理（2026-07-06，共删 5370 行）
+| commit | 删除 | 行数 | 解的问题 |
+|---|---|---|---|
+| `d33c532` | lifecycle/ 整包 + test_lifecycle.py | 1029 | P9-18（第二条 tick 引擎，所有相位空壳） |
+| `8d0ed55` | memory/dream.py + personality_encoding.py | 1295 | P3-13（DreamDirector 重复）/ P3-20（人格调制编码孤立） |
+| `bc81361` | cognition/goal_progress.py + insight_quality.py + test_insight_quality.py | 768 | P4-22（整模块死）/ P4-19（Q^insight 三重实现之一） |
+| `66cd7a2` | core/exceptions.py + scheduler.py + capability_router.py | 1290 | P8-18 部分 / P8-19（能力管理三件套碎片化） |
+| `fa815d1` | safety/contract_guard.py + hallucination_check.py + sandbox.py | 988 | P7-7/P7-10/P7-13（safety 包 988 行死代码） |
+
+**保留**：core/emotion_decay.py(615) 暂留——life_loop 不用但 benchmarks/run_gxbs.py 的 emotion_benchmark 依赖（评测基础设施）。
+**验证**：5 批删除后 core/memory/cognition/safety 包导入正常，pytest 关键测试 134 passed（1 个预存失败），1 tick 冒烟测试实跑成功（THINK+CHAT 正常产出）。
+
+
 #### 修复说明
 - **死代码删除原则**：只删"包外零引用 + 删除后包导入正常"的，保留有数据依赖的目录（如 limb_guides/data/）。
 - **P3-18 副作用**：首次启动会加载 sentence-transformer 模型（all-MiniLM-L6-v2，约 1-2 秒）。若环境无此包则自动回退 TF-IDF，行为不变。
@@ -2549,6 +2562,6 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经死代码清理后现 **232 文件/82.7k 行**）。全局问题清单收录 **227 项**，其中 **12 项已修复**（见上方"已修复"表）。**P0-1 核心死锁已解**（3 commits，实测验证 CHAT 出现 + attachment 缺口大幅改善）；残留 mood 稳定性受推理模型格式遵守影响，列为后续 prompt 调优项。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经 P0-1 修复 + 两轮死代码清理后现 **约 221 文件/77k 行**，累计删除约 6600 行死代码）。全局问题清单收录 **227 项**，其中 **17 项已修复**（见上方"已修复"表）。**P0-1 核心死锁已解**（3 commits）；**C 阶段死代码清理完成**（5 commits/5370 行，解 P9-18/P3-13/P3-20/P4-22/P4-19/P8-18/P8-19/P7-7/P7-10/P7-13 等）。残留 mood 稳定性 + D 阶段参数统一为后续项。*
 
 
