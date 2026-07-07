@@ -28,14 +28,21 @@ from axiology.feature_extractors import (
     extract_all_features,
     DEFAULT_SETPOINTS,
 )
-from axiology.value_dimensions import (
-    ValueDimension,
-    compute_drive_gaps,
-    validate_feature_ranges,
-    validate_utility_ranges,
-)
-from common.models import ValueDimension as CommonValueDimension
+# P2-3 修复：value_dimensions.py 已删除（与 feature_extractors+utilities_unified 100% 重复），
+# 导入改为指向活路径等价物：
+from common.models import ValueDimension  # 原 value_dimensions.ValueDimension 是它的副本
+from axiology.gaps import compute_gaps as compute_drive_gaps  # 活路径等价（签名一致）
 from common.constants import VALUE_SYSTEM
+
+
+def validate_feature_ranges(features) -> bool:
+    """内联校验（原 value_dimensions.validate_feature_ranges，简单范围检查）。"""
+    return all(0.0 <= v <= 1.0 for v in features.values())
+
+
+def validate_utility_ranges(utilities) -> bool:
+    """内联校验（原 value_dimensions.validate_utility_ranges）。"""
+    return all(-1.0 <= v <= 1.0 for v in utilities.values())
 
 
 class TestHomeostasisDimension:
@@ -442,11 +449,11 @@ class TestIntegration:
 
         # 检查所有5个维度都存在
         assert len(features) == 5
-        assert CommonValueDimension.HOMEOSTASIS in features
-        assert CommonValueDimension.ATTACHMENT in features
-        assert CommonValueDimension.CURIOSITY in features
-        assert CommonValueDimension.COMPETENCE in features
-        assert CommonValueDimension.SAFETY in features
+        assert ValueDimension.HOMEOSTASIS in features
+        assert ValueDimension.ATTACHMENT in features
+        assert ValueDimension.CURIOSITY in features
+        assert ValueDimension.COMPETENCE in features
+        assert ValueDimension.SAFETY in features
 
     def test_all_features_in_range(self):
         """Test that all features are in [0, 1] range."""
