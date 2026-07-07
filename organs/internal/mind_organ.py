@@ -257,17 +257,26 @@ class MindOrgan(BaseOrgan):
         return actions
 
     def _extract_topic_from_thought(self, thought: str) -> str:
-        """从思考中提取探索主题"""
-        # 简单的关键词提取
-        keywords = []
-        stop_words = {"的", "是", "在", "和", "了", "我", "想", "要", "会", "可以", "这个", "那个"}
+        """从思考中提取探索主题。
 
-        words = thought.split()
-        for word in words:
-            if len(word) >= 2 and word not in stop_words:
-                keywords.append(word)
-                if len(keywords) >= 3:
-                    break
+        P5-19 修复：原 thought.split() 按空格分词，中文 LLM 输出无空格→整段当一个 word。
+        改用正则提取连续中文/英文词组。
+        """
+        import re
+        stop_words = {"的", "是", "在", "和", "了", "我", "想", "要", "会", "可以",
+                      "这个", "那个", "现在", "因为", "所以", "但是", "然后",
+                      "觉得", "可能", "应该", "需要", "一个", "什么", "怎么"}
+
+        raw_words = re.findall(r'[\u4e00-\u9fff]{2,6}|[a-zA-Z_]{3,}', thought)
+        keywords = []
+        seen = set()
+        for word in raw_words:
+            if word in stop_words or word in seen:
+                continue
+            seen.add(word)
+            keywords.append(word)
+            if len(keywords) >= 3:
+                break
 
         return "_".join(keywords) if keywords else "未知主题"
 
