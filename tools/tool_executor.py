@@ -252,6 +252,10 @@ class LLMToolExecutor:
             "search": "web_search",
             "execute_code": "execute_code",
             "code_exec": "execute_code",
+            # P4-31: self_perception 工具映射
+            "read_own_logs": "read_own_logs",
+            "get_recent_errors": "get_recent_errors",
+            "system_stats": "system_stats",
         }
 
         function_name = tool_mapping.get(tool_id, tool_id)
@@ -338,8 +342,46 @@ class LLMToolExecutor:
         elif function_name == "execute_code":
             return self._execute_code(arguments.get("code", ""))
 
+        # P4-31 修复：self_perception 工具接入（原注册未分发，LLM 选了静默失败）
+        elif function_name in ("read_own_logs", "get_recent_errors"):
+            return self._execute_self_perception(function_name, arguments)
+
+        elif function_name == "system_stats":
+            return self._execute_self_perception(function_name, arguments)
+
         else:
             return f"未知工具: {function_name}"
+
+    def _execute_self_perception(self, function_name: str, arguments: Dict[str, Any]) -> str:
+        """执行 self_perception 工具（read_own_logs/system_stats/get_recent_errors）。
+
+        P4-31 修复：这些工具在 tool_registry 注册了但 _execute 无分发分支，
+        导致 LLM 选择后静默失败。此方法桥接到 perception.self_perception.SelfPerception。
+        """
+        import json as _json
+        try:
+            from perception.self_perception import SelfPerception
+            sp = SelfPerception()  # 惰性实例化（默认 log_dir="logs"）
+
+            if function_name == "read_own_logs":
+                result = sp.read_own_logs(
+                    lines=arguments.get("lines", 50),
+                    level=arguments.get("level"),
+                    search=arguments.get("search"),
+                )
+            elif function_name == "get_recent_errors":
+                result = sp.get_recent_errors(
+                    hours=arguments.get("hours", 24),
+                    limit=arguments.get("limit", 20),
+                )
+            elif function_name == "system_stats":
+                result = sp.system_stats()
+            else:
+                return f"未知 self_perception 工具: {function_name}"
+
+            return _json.dumps(result, ensure_ascii=False, default=str, indent=2)
+        except Exception as e:
+            return f"self_perception 工具执行失败: {e}"
 
     def _read_file(self, path: str) -> str:
         """读取文件"""
