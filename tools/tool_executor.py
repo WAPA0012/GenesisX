@@ -454,9 +454,18 @@ class LLMToolExecutor:
         1. 超时保护 (防止无限循环)
 
         注意：此模式仅供高级用户使用，请在 Web 界面中谨慎选择。
+
+        P7-14 修复（2026-07）：默认保持 FULL_ACCESS（单用户本地系统，用户有完全控制权），
+        但提供 env flag GENESISX_ALLOW_FULL_ACCESS 控制开关：
+          - "0"/"false"：强制走沙箱（safe_mode 语义），防止 LLM 幻觉执行危险代码
+          - 未设置/"1"/"true"：保持 FULL_ACCESS（默认，向后兼容）
+        部署到公网或多用户场景时应设 GENESISX_ALLOW_FULL_ACCESS=0。
         """
-        if self.safe_mode:
-            # 安全模式下的受限执行
+        import os as _os
+        allow_full = _os.environ.get("GENESISX_ALLOW_FULL_ACCESS", "1").lower() not in ("0", "false", "no")
+
+        if self.safe_mode or not allow_full:
+            # 安全模式或 env flag 关闭 FULL_ACCESS → 受限执行
             return self._execute_code_sandboxed(code)
 
         # FULL_ACCESS 模式 - 完全访问
