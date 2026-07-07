@@ -2307,7 +2307,7 @@ user_input → self._pending_user_input
 |---|---|---|---|
 | **P0-1** 🆕⭐ ✅已修 | **价值→行为反馈环路断裂（实测验证，最核心运行时问题）**：25 tick 实测（run_20260706_062952），17/17 个有好奇/依恋缺口的 tick **100% 未产生 EXPLORE/CHAT**，全是 REFLECT/THINK。系统陷入"反思死循环"，mood 从 0.5 单调跌到 0 后永久卡死，负 RPE 未能驱动行为改变。根因：①价值系统正确识别需求（curiosity/attachment 缺口 0.45）但器官 `_parse_llm_thought_to_actions` 关键词失配（P5-15），LLM 叙事被 fallback 到 REFLECT ②驱动力信号无人消费（P5-10）③无用户输入时缺乏主动行动驱动。**这是"数字生命不像活的"的直接原因。** | organs/internal/* + life_loop PHASE 7→11 | 系统无法自主行动，mood 锁死归零，违背"自主数字生命"核心目标 |
 | P2-3 ✅已修 | **axiology 严重代码重复**：value_dimensions.py(799行) 与 feature_extractors.py+utilities_unified.py 功能重叠 | axiology/ | 改一处忘另一处，行为不一致 |
-| P2-5 | **drives/ 5维驱动力被禁用**：life_loop.py 顶部注释禁用，但代码存在 | axiology/drives/ | 死代码或半成品，需决策启用/删除 |
+| P2-5 ✅已修 | **drives/ 5维驱动力**：~~顶部注释禁用~~ 实际由 organ_manager 间接调用，drives_prompt 已接入器官（P5-10），过时禁用注释已清理 | axiology/drives/ | 实际是活的 |
 | P1-4 | **两套配置加载体系并存**：config.py(load_config→dict) vs config_manager.py(ConfigManager→对象)，且都有 load_config() 同名函数 | common/ | 极易混淆，维护负担 |
 | P8-4 | **GlobalState 与 FieldStore 双真相源**：7 个情感标量字段同时存于两处，靠 life_loop 手工 `_sync_*` 同步 | core/state.py + core/stores/fields.py + life_loop.py | 两套真值，动 mood/stress 必须两边改，遗漏即不一致 |
 | P8-10 ✅已修 | **多轮 CHAT 响应被覆盖**：`llm_response = round_response`(注释却写"累积")，前几轮正文丢弃 | core/handlers/action_executor.py:342 | 多轮工具调用场景用户只能看到最后一轮文字 |
