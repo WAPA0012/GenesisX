@@ -51,12 +51,11 @@ from perception import observe_environment, build_context
 from axiology.weights import WeightUpdater
 from axiology.value_learning import ValueLearner, FeedbackSignal, FeedbackType
 
-# 暂时禁用新模块（需要调试）
-# from axiology.drives.homeostasis import HomeostasisDrive
-# from axiology.drives.attachment import AttachmentDrive
-# from axiology.drives.competence import CompetenceDrive
-# from axiology.drives.curiosity import CuriosityDrive
-# from axiology.drives.safety import SafetyDrive
+# 注：axiology.drives 5 维驱动力由 organs/organ_manager.py 独立 import 并实例化，
+# life_loop 通过 organ_manager.get_all_drive_signals / format_drives_for_llm 间接调用。
+# drives_prompt（驱动力提示文本）已接入 6 器官的 _build_thinking_prompt（P5-10 修复）。
+# 原此处的"暂时禁用"注释（直接 import Drive）已移除——life_loop 不需要直接 import，
+# 间接调用路径已稳定工作，注释与实际状态不符（P2-5）。
 
 # 进化系统（自我复制迭代）- 默认禁用（尚未成熟）
 from .evolution import EvolutionEngine, EVOLUTION_ENABLED
