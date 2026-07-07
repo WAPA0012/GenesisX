@@ -83,8 +83,10 @@ class ActionExecutor:
         elif action.type == ActionType.OPTIMIZE:
             return self._execute_optimize(action)
         else:
+            # P8-13 修复：未知 ActionType 返回 success=False（原返回 True 会让分派 bug 被静默）
             logger.warning(f"Unknown action type: {action.type}")
-            return {"success": True, "cost": CostVector(cpu_tokens=50)}
+            return {"success": False, "ok": False, "cost": CostVector(cpu_tokens=50),
+                    "error": f"Unknown action type: {action.type}"}
 
     def _execute_sleep(self, action: Action) -> Dict[str, Any]:
         """睡眠: 恢复能量、疲劳、压力，并进行深度记忆整理
@@ -337,9 +339,15 @@ class ActionExecutor:
 
                         logger.info(f"[CHAT] Round {round_num}: response length={len(round_response)}, tool_calls={len(tool_calls)}")
 
-                        # 保存非空响应（累积）
+                        # 保存非空响应（P8-10 修复：累积而非覆盖）
+                        # 原代码 llm_response = round_response 会丢弃前面轮次的正文。
+                        # 多轮工具调用时，每轮的非空回复都保留，用换行拼接。
+                        # 单轮场景（无工具调用）行为不变（只有一轮，直接赋值）。
                         if round_response and round_response.strip():
-                            llm_response = round_response
+                            if llm_response:
+                                llm_response = llm_response + "\n\n" + round_response
+                            else:
+                                llm_response = round_response
 
                         # Claude Code 模式的核心：模型没有工具调用时 = 任务完成
                         if not tool_calls:

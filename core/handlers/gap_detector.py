@@ -240,7 +240,8 @@ class GapDetectorMixin:
 
         if action.type == ActionType.USE_TOOL:
             # 工具使用需要对应工具能力
-            tool_name = action.params.get("tool", "")
+            # P8-11 修复：与 action_executor 统一读 "tool_id"（原读 "tool" 永远拿空值）
+            tool_name = action.params.get("tool_id", "") or action.params.get("tool", "")
             if tool_name:
                 # 检查是否有这个工具
                 tool_caps = ["tool_" + tool_name.lower(), tool_name.lower()]
