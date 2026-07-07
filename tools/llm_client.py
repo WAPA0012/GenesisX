@@ -390,6 +390,10 @@ class LLMClient:
 
         支持真正的 Anthropic API 和智谱的 Anthropic 兼容接口
         """
+        # P6-5 修复：原方法内无 logger 定义，降级路径 L469 的 logger.warning 会 NameError
+        from common.logger import get_logger
+        logger = get_logger(__name__)
+
         # 优先使用 anthropic 库
         try:
             import anthropic

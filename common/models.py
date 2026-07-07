@@ -196,11 +196,10 @@ class Goal(BaseModel):
             return self.compat[other_type] != "conflicting"
         return True
 
-    def is_expired(self, current_tick: int = 0) -> bool:
+    def is_expired(self) -> bool:
         """Check if goal has expired past its deadline.
 
-        Args:
-            current_tick: Current tick number (unused, checks datetime deadline)
+        P1-2 修复：移除误导的 current_tick 参数（原签名有但从不使用，只比较 datetime）。
 
         Returns:
             True if goal is past deadline
