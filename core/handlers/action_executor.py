@@ -513,11 +513,20 @@ class ActionExecutor:
         return {"success": True, "cost": cost}
 
     def _execute_use_tool(self, action: Action, start_time: float) -> Dict[str, Any]:
-        """使用工具: 通过 ToolRegistry 查找工具并执行"""
+        """使用工具: 通过 ToolRegistry 查找工具并执行。
+
+        P5-6 修复（2026-07）：原实现只查内置 tool_registry，growth/plugins 注册到
+        UnifiedOrganManager 的 limb/plugin 能力永远无法执行。现在 tool_registry 找不到时
+        回退查 unified_organ_manager.execute_capability，激活"只写不读"的死代码。
+        """
         tool_id = action.params.get("tool_id", "")
         tool_spec = self.tool_registry.get(tool_id)
 
+        # P5-6 回退：内置 registry 没有此工具时，查 UnifiedOrganManager 的 limb/plugin 能力
         if tool_spec is None:
+            unified_mgr = getattr(self.life_loop, 'unified_organ_manager', None)
+            if unified_mgr and unified_mgr.has_capability(tool_id):
+                return self._execute_via_unified_organ(action, tool_id, start_time, unified_mgr)
             logger.warning(f"Unknown tool: {tool_id}")
             self._log_tool_call(action, {"success": False, "error": "unknown_tool"}, CostVector())
             return {"success": False, "cost": CostVector(), "reason": f"unknown_tool: {tool_id}"}
@@ -574,6 +583,53 @@ class ActionExecutor:
             logger.error(f"Tool {tool_id} execution failed: {e}")
             self._log_tool_call(action, {"success": False, "error": str(e)}, cost)
             return {"success": False, "cost": cost, "error": str(e)}
+
+    def _execute_via_unified_organ(
+        self, action: Action, tool_id: str, start_time: float, unified_mgr
+    ) -> Dict[str, Any]:
+        """通过 UnifiedOrganManager 执行 limb/plugin 能力（P5-6 修复）。
+
+        当 tool_id 不在内置 registry 但在 unified_organ_manager 注册了（growth 生成的
+        limb 或 plugin 提供的能力）时，走此路径执行。激活原本"只写不读"的 UnifiedOrganManager。
+        """
+        try:
+            # 提取执行参数（排除 tool_id 本身，只传业务参数）
+            kwargs = {k: v for k, v in action.params.items() if k != "tool_id"}
+
+            result = unified_mgr.execute_capability(tool_id, **kwargs)
+
+            elapsed_ms = (time.time() - start_time) * 1000
+            # limb/plugin 执行的预估成本（保守估计）
+            cost = CostVector(cpu_tokens=300, latency_ms=elapsed_ms)
+
+            if self.ledger.can_reserve("cpu_tokens", cost.cpu_tokens):
+                self.ledger.spend("cpu_tokens", cost.cpu_tokens)
+
+            # CapabilityResult 统一结构：success/message/data/cost
+            success = getattr(result, 'success', False)
+            message = getattr(result, 'message', '')
+            data = getattr(result, 'data', None)
+
+            self._log_tool_call(
+                action,
+                {"success": success, "tool_id": tool_id, "source": "unified_organ", "result": message},
+                cost,
+            )
+            logger.info(f"[USE_TOOL] UnifiedOrgan 执行 {tool_id}: success={success}, msg={message[:80]}")
+
+            return {
+                "success": success,
+                "ok": success,
+                "cost": cost,
+                "tool_id": tool_id,
+                "tool_result": message,
+                "data": data,
+                "source": "unified_organ",
+            }
+        except Exception as e:
+            logger.error(f"[USE_TOOL] UnifiedOrgan 执行 {tool_id} 失败: {e}")
+            self._log_tool_call(action, {"success": False, "error": str(e)}, CostVector())
+            return {"success": False, "cost": CostVector(), "error": str(e)}
 
     def _execute_optimize(self, action: Action) -> Dict[str, Any]:
         """优化: 消耗能量，改善效率"""
