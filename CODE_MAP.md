@@ -2318,7 +2318,7 @@ user_input → self._pending_user_input
 | P3-15 | **联想网络无法持久化**：`import_state` 是 `pass` 空实现，EpisodicMemory 重启不重建联想图 | memory/familiarity.py:869 | 重启丢失全部共现/因果/情绪/语义联想链接 |
 | P3-22 ✅已修 | **limb_guides/ 导入即崩 + 与 skills/ 逐字节重复**：4 个指南文件类名仍是 FileSkill 等，__init__ 导入 FileOpsGuide 必抛 ImportError→静默禁用整个包 | memory/limb_guides/ | ~600 行死代码（含 P3-22 的副本） |
 | P3-6/P3-7 | **嵌入实现散落3处且2处是伪嵌入**：retrieval 用 MD5 伪嵌入、familiarity 用 md5-seed 伪随机，仅 semantic_novelty 有真嵌入 | memory/{retrieval,familiarity,semantic_novelty}.py | 默认后端下语义检索/联想是噪声 |
-| P5-6 | **UnifiedOrganManager 是只写死代码**：life_loop 只 `add_builtin_organ` 注册，从不查询/执行；PHASE 7 走 `self.organs` 字典而非统一管理器 | organs/unified_organ.py + core/life_loop.py | 新架构完全无效，growth/plugins"注册为器官"写了等于没写 |
+| P5-6 ✅已修 | **UnifiedOrganManager 只写死代码**：~~从不查询/执行~~ 探查发现接入 PHASE 7 无收益（limb/plugin propose_actions 恒空 + WrappedBuiltinOrgan 丢属性），真正价值在 execute_capability。已在 USE_TOOL 路径接入（tool_registry 找不到时回退 unified_organ_manager），limb/plugin 能力可执行 | organs/unified_organ.py + action_executor.py | growth/plugins 注册的能力现在可通过 USE_TOOL 执行 |
 | P5-10 ✅已修 | **驱动力→器官传导链路断裂**：PHASE 4.5 算的 drive_signals/drives_prompt 塞进 context，但 6 个器官的 propose_actions 无一读取它 | organs/internal/* + core/life_loop.py:920-922 | 驱动力信号被算出后无人消费，价值→驱动力→行为链断在最后一步 |
 | P5-15 ✅已修 | **LLM 思考被中文关键词降级**：6 器官的 `_parse_llm_thought_to_actions` 用硬编码关键词把 LLM 输出转 Action，LLM 沦为叙事生成器 | organs/internal/*_organ.py | 器官决策权在关键词表而非 LLM；同义词/英文漏匹配→退化默认动作 |
 | P5-20 | **immune 否决权/风险评估未接入**：veto_risky_action/assess_action_risk/update_action_trust life_loop 全不调，安全执行被 safety/ 取代 | organs/internal/immune_organ.py | immune 只提 REFLECT 动作，信任校准恒为默认 0.5 |
