@@ -1045,10 +1045,13 @@ class LifeLoop(GapDetectorMixin):
         genome_with_state["stage"] = self.state.stage
         genome_with_state["mode"] = self.state.mode
         context["signals"] = self.signals.get_all()
-        expressed_organs = select_organs(
-            genome_with_state,
+        # P8-7 修复：用带 config 的 diff（L1036 创建）而非 legacy select_organs shim
+        # （shim 内部用 _get_differentiator() 空 config 缓存，自定义基因 custom_genes 永不生效）
+        expressed_organs, _ = diff.select_organs(
+            self.state.stage,
+            self.state.mode,
             field_snapshot,
-            context
+            context.get("signals", {})
         )
 
         # 论文 Section 3.9: 器官选择应该基于价值权重
