@@ -1,23 +1,14 @@
 """Persistence layer for Genesis X GA.
 
-Implements:
-- Event logging (episodes.jsonl, tool_calls.jsonl)
-- Deterministic replay (Strict/Semantic/Fork modes)
-- Storage abstraction
-- Snapshot management
+P7-16 修复（2026-07）：
+- replay.py（回放引擎）已接入 life_loop PHASE 10，支持 STRICT 回放
+- event_log/tool_call_log/snapshot/storage 已删除（零引用写入器，生产用
+  common/jsonl + EpisodicMemory + life_loop._persist_final_state）
+- 论文 C8（可复现性）从"实现但零接入"变为"STRICT 回放可用"
 """
-
-from .event_log import EventLogger
-from .tool_call_log import ToolCallLogger
 from .replay import ReplayEngine, ReplayMode
-from .snapshot import SnapshotManager
-from .storage import Storage
 
 __all__ = [
-    "EventLogger",
-    "ToolCallLogger",
     "ReplayEngine",
     "ReplayMode",
-    "SnapshotManager",
-    "Storage",
 ]

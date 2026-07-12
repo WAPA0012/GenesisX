@@ -99,16 +99,17 @@ class LifeLoop(GapDetectorMixin):
     - Production monitoring
     """
 
-    def __init__(self, config: Dict[str, Any], run_dir: Path, replay_mode: str = None):
+    def __init__(self, config: Dict[str, Any], run_dir: Path, replay_mode: str = None, replay_dir: Path = None):
         """Initialize GA life loop.
 
         Args:
             config: Configuration dict
             run_dir: Directory for run artifacts
             replay_mode: Optional replay mode (strict/semantic/fork)
+            replay_dir: Optional directory to replay from (P7-16)
         """
         # === 阶段1: 基础配置 ===
-        self._init_basic_config(config, run_dir, replay_mode)
+        self._init_basic_config(config, run_dir, replay_mode, replay_dir)
 
         # === 阶段2: 存储系统 ===
         self._init_stores()
@@ -161,7 +162,7 @@ class LifeLoop(GapDetectorMixin):
             except Exception as e:
                 logger.warning(f"Progress callback error: {e}")
 
-    def _init_basic_config(self, config: Dict[str, Any], run_dir: Path, replay_mode: str):
+    def _init_basic_config(self, config: Dict[str, Any], run_dir: Path, replay_mode: str, replay_dir: Path = None):
         """初始化基础配置"""
         self.config = config
         self.run_dir = run_dir
@@ -170,6 +171,20 @@ class LifeLoop(GapDetectorMixin):
         self._current_phase = "init"
         self._progress_callback = None  # 进度回调函数
         self.run_dir.mkdir(parents=True, exist_ok=True)
+
+        # P7-16: 初始化回放引擎（仅当指定 replay_mode + replay_dir 时）
+        self.replay_engine = None
+        if replay_mode and replay_dir:
+            try:
+                from pathlib import Path as _P
+                from persistence.replay import ReplayEngine, ReplayMode
+                mode_enum = ReplayMode[replay_mode.upper()]
+                self.replay_engine = ReplayEngine(_P(replay_dir), mode=mode_enum)
+                logger.info(f"ReplayEngine 已初始化: mode={replay_mode}, dir={replay_dir}, "
+                           f"episodes={len(self.replay_engine.episodes)}, tool_calls={len(self.replay_engine.tool_calls)}")
+            except Exception as e:
+                logger.warning(f"ReplayEngine 初始化失败，降级为 live 模式: {e}")
+                self.replay_engine = None
 
     def _init_stores(self):
         """初始化存储系统"""
@@ -1313,7 +1328,20 @@ class LifeLoop(GapDetectorMixin):
         phase_start = _time.time()
 
         try:
-            outcome = self.action_executor.execute(selected_action, context)
+            # P7-16: STRICT 回放模式——用缓存的 outcome，不真执行（不调 LLM/工具）
+            if self.replay_engine and self.replay_mode:
+                cached_episode = self.replay_engine.get_episode(t)
+                if cached_episode and cached_episode.get("outcome"):
+                    outcome = cached_episode["outcome"]
+                    # 确保 outcome 有必要字段（缓存的是 dict，可能缺 success/ok）
+                    if "success" not in outcome:
+                        outcome["success"] = outcome.get("ok", True)
+                    logger.debug(f"[tick] STRICT replay t={t}: 使用缓存 outcome")
+                else:
+                    # 无缓存的 tick，fallback live
+                    outcome = self.action_executor.execute(selected_action, context)
+            else:
+                outcome = self.action_executor.execute(selected_action, context)
         except Exception as e:
             logger.error(f"[tick] action_executor.execute raised exception: {e}")
             import traceback

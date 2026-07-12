@@ -367,18 +367,27 @@ class ReplayEngine:
         return tool_calls_by_tick
 
     def _load_states(self) -> Dict[int, ReplayState]:
-        """Load state history from snapshots."""
+        """Load state history from snapshots.
+
+        P7-16 修复：生产 states.jsonl 的 schema 是 episode 格式（observation/action/outcome），
+        与 ReplayState.from_dict 期望的格式（fields/mode/stage）不同。容错跳过不兼容的行，
+        states 仅用于 verify_state_consistency（非 STRICT 回放核心路径）。
+        """
         states_file = self.replay_dir / "states.jsonl"
         if not states_file.exists():
             return {}
 
         states = {}
-        with open(states_file, "rb") as f:
+        with open(self.replay_dir / "states.jsonl", "rb") as f:
             for line in f:
                 if line.strip():
-                    data = orjson.loads(line)
-                    state = ReplayState.from_dict(data)
-                    states[state.tick] = state
+                    try:
+                        data = orjson.loads(line)
+                        state = ReplayState.from_dict(data)
+                        states[state.tick] = state
+                    except (KeyError, TypeError, ValueError):
+                        # 跳过 schema 不兼容的行（生产 states.jsonl 是 episode 格式）
+                        continue
 
         return states
 

@@ -62,6 +62,21 @@ def parse_args():
         help="Initial mode (default: work)",
     )
 
+    parser.add_argument(
+        "--replay",
+        type=str,
+        default=None,
+        help="Replay a previous run by specifying its artifacts directory (e.g. artifacts/run_20260706_062952)",
+    )
+
+    parser.add_argument(
+        "--replay-mode",
+        type=str,
+        default="strict",
+        choices=["strict", "semantic", "fork"],
+        help="Replay mode (default: strict). strict=cached outcomes only, semantic=allow LLM re-execution, fork=branch from tick",
+    )
+
     return parser.parse_args()
 
 
@@ -120,7 +135,18 @@ def main():
     # Initialize life loop
     life_loop = None
     try:
-        life_loop = LifeLoop(config=config, run_dir=run_dir)
+        # P7-16: replay 支持——指定 --replay 时从历史 run 回放
+        replay_dir = Path(args.replay) if args.replay else None
+        replay_mode = args.replay_mode if args.replay else None
+        if replay_dir:
+            print(f"[Main] Replay mode: {replay_mode}, source: {replay_dir}")
+
+        life_loop = LifeLoop(
+            config=config,
+            run_dir=run_dir,
+            replay_mode=replay_mode,
+            replay_dir=replay_dir,
+        )
 
         # Set initial mode
         life_loop.state.mode = args.mode
