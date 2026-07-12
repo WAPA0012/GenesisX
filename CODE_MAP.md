@@ -2317,7 +2317,7 @@ user_input → self._pending_user_input
 | P3-5 ✅已修 | **Schema/Skill 永不持久化**：life_loop 用 `SchemaMemory()`/`SkillMemory()` 无参构造，shutdown 不调 save_to_disk，巩固产物重启清零 | memory/{schema,skill}.py + core/life_loop.py:190-191 | CLS 第2/3层知识无法跨会话累积，违背论文核心目标 |
 | P3-15 ✅已修 | **联想网络无法持久化**：~~import_state 是 pass~~ _load_from_disk 末尾重建联想图（重放最近 1000 条 episodes 复用 _add_to_associative），重启不再丢失联想链接 | memory/episodic.py + familiarity.py | 验证：29 episodes → 25 节点 + 4 边 |
 | P3-22 ✅已修 | **limb_guides/ 导入即崩 + 与 skills/ 逐字节重复**：4 个指南文件类名仍是 FileSkill 等，__init__ 导入 FileOpsGuide 必抛 ImportError→静默禁用整个包 | memory/limb_guides/ | ~600 行死代码（含 P3-22 的副本） |
-| P3-6/P3-7 | **嵌入实现散落3处且2处是伪嵌入**：retrieval 用 MD5 伪嵌入、familiarity 用 md5-seed 伪随机，仅 semantic_novelty 有真嵌入 | memory/{retrieval,familiarity,semantic_novelty}.py | 默认后端下语义检索/联想是噪声 |
+| P3-6/P3-7 ✅已修 | **嵌入统一到 semantic_novelty 真嵌入**：~~retrieval MD5 / familiarity md5-seed 伪嵌入~~ 两处都委托 get_default_calculator().compute_embedding（sentence-transformers，P3-18 已接入） | memory/{retrieval,familiarity,semantic_novelty}.py | 语义检索/联想从噪声变为真实语义信号 |
 | P5-6 ✅已修 | **UnifiedOrganManager 只写死代码**：~~从不查询/执行~~ 探查发现接入 PHASE 7 无收益（limb/plugin propose_actions 恒空 + WrappedBuiltinOrgan 丢属性），真正价值在 execute_capability。已在 USE_TOOL 路径接入（tool_registry 找不到时回退 unified_organ_manager），limb/plugin 能力可执行 | organs/unified_organ.py + action_executor.py | growth/plugins 注册的能力现在可通过 USE_TOOL 执行 |
 | P5-10 ✅已修 | **驱动力→器官传导链路断裂**：PHASE 4.5 算的 drive_signals/drives_prompt 塞进 context，但 6 个器官的 propose_actions 无一读取它 | organs/internal/* + core/life_loop.py:920-922 | 驱动力信号被算出后无人消费，价值→驱动力→行为链断在最后一步 |
 | P5-15 ✅已修 | **LLM 思考被中文关键词降级**：6 器官的 `_parse_llm_thought_to_actions` 用硬编码关键词把 LLM 输出转 Action，LLM 沦为叙事生成器 | organs/internal/*_organ.py | 器官决策权在关键词表而非 LLM；同义词/英文漏匹配→退化默认动作 |
