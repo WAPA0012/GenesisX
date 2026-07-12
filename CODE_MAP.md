@@ -2315,7 +2315,7 @@ user_input → self._pending_user_input
 | P8-7 | **自定义基因被缓存吞掉**：`_get_differentiator()` 用空 config 缓存，legacy `select_organs` 用它，custom_genes 永不生效 | core/differentiate.py | 器官分化配置失效 |
 | P8-18 ✅部分已修 | **6 模块共 ~2793 行孤立代码**：exceptions/scheduler/capability_router 完全死（C阶段已删）；emotion_decay/exploration/abstract_state 半死 | core/ | core 最大技术债，需决策删除/接入 |
 | P3-5 ✅已修 | **Schema/Skill 永不持久化**：life_loop 用 `SchemaMemory()`/`SkillMemory()` 无参构造，shutdown 不调 save_to_disk，巩固产物重启清零 | memory/{schema,skill}.py + core/life_loop.py:190-191 | CLS 第2/3层知识无法跨会话累积，违背论文核心目标 |
-| P3-15 | **联想网络无法持久化**：`import_state` 是 `pass` 空实现，EpisodicMemory 重启不重建联想图 | memory/familiarity.py:869 | 重启丢失全部共现/因果/情绪/语义联想链接 |
+| P3-15 ✅已修 | **联想网络无法持久化**：~~import_state 是 pass~~ _load_from_disk 末尾重建联想图（重放最近 1000 条 episodes 复用 _add_to_associative），重启不再丢失联想链接 | memory/episodic.py + familiarity.py | 验证：29 episodes → 25 节点 + 4 边 |
 | P3-22 ✅已修 | **limb_guides/ 导入即崩 + 与 skills/ 逐字节重复**：4 个指南文件类名仍是 FileSkill 等，__init__ 导入 FileOpsGuide 必抛 ImportError→静默禁用整个包 | memory/limb_guides/ | ~600 行死代码（含 P3-22 的副本） |
 | P3-6/P3-7 | **嵌入实现散落3处且2处是伪嵌入**：retrieval 用 MD5 伪嵌入、familiarity 用 md5-seed 伪随机，仅 semantic_novelty 有真嵌入 | memory/{retrieval,familiarity,semantic_novelty}.py | 默认后端下语义检索/联想是噪声 |
 | P5-6 ✅已修 | **UnifiedOrganManager 只写死代码**：~~从不查询/执行~~ 探查发现接入 PHASE 7 无收益（limb/plugin propose_actions 恒空 + WrappedBuiltinOrgan 丢属性），真正价值在 execute_capability。已在 USE_TOOL 路径接入（tool_registry 找不到时回退 unified_organ_manager），limb/plugin 能力可执行 | organs/unified_organ.py + action_executor.py | growth/plugins 注册的能力现在可通过 USE_TOOL 执行 |
