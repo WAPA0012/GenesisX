@@ -2535,6 +2535,11 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 | **P4-31 self_perception 工具断链** | `9e1d64e` | tool_registry 注册 read_own_logs/system_stats 但 _execute 无分发分支→LLM 选了静默失败。加 3 个 dispatch 分支 + _execute_self_perception 桥接方法 |
 | **P5-19 中文分词失效** | `c17846b` | scout/mind 的 _extract_topic_from_thought 用 split() 按空格，中文无空格→整段当一个 word。改正则提取连续中文/英文词组 |
 | **P1-2/P6-5 小 bug** | `81e6722` | P1-2 Goal.is_expired 移除误导的 current_tick 死参数；P6-5 _chat_claude 方法内无 logger 定义→降级路径 NameError，加 logger 定义 |
+| **P2-3 value_dimensions 重复** | `f02bd76` | 删 axiology/value_dimensions.py(799行)，与 feature_extractors+utilities_unified 100%重叠，零外部引用 |
+| **P2-5 drives 禁用注释** | `e27195c` | life_loop 顶部"暂时禁用"注释与实际状态不符（drives 由 organ_manager 间接调用已接入），清理注释 |
+| **P5-6 UnifiedOrganManager 只写** | `78e89ba` | 探查发现接入 PHASE 7 无收益（limb/plugin propose_actions 恒空），接入 USE_TOOL 路径（tool_registry 找不到时回退 unified_organ_manager.execute_capability）+ limb prompt 要求方法名=能力名 |
+| **P5-20 immune 否决权** | `1216d03` | 3 个安全方法保留备用，标注已知设计偏差（safety/ 取代，完整接入会两套安全系统重叠） |
+| **P7-16 persistence 整包孤岛** | `e1996e2` | 接入 STRICT 回放（run.py --replay <dir>），PHASE 10 用缓存 outcome。删 4 个零引用写入器(602行)。解 P7-21/23/26/27/30/31/32 |
 
 #### P0-1 修复的实测对比（2026-07-06）
 | 指标 | 修复前 (run_062952) | 修复后 (run_151237) |
@@ -2581,6 +2586,6 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经 P0-1 修复 + 三轮死代码/参数清理 + 安全 flag 后现 **约 214 文件/75k 行**，累计删除约 6900 行死代码）。全局问题清单收录 **227 项**，其中 **25 项已修复**（见上方"已修复"表）。**P0-1 核心死锁已解**；**C 阶段死代码清理完成**（5370 行）；**D 阶段参数统一**（P4-61/P4-1）；**E 阶段安全**（P7-14 flag，P9-7 记录已知）。残留：mood 稳定性（多参数耦合）+ P8-4 双真相源 + P1-3 参数三重定义 + P9-7 Web 并发（架构级）为后续项。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **205 文件/75k 行**，累计删除约 8000 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **30 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。**A 阶段**（P0-1 死锁解开 + 器官结构化动作）；**C 阶段**（死代码清理 5370 行）；**D 阶段**（P4-61 RP 公式 + P4-1 priority_level）；**E 阶段**（P7-14 安全 flag）；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释清理/P5-6 USE_TOOL 接入/P5-20 记录已知/P7-16 replay 接入+写入器清理）。残留高优先级：P3-15 联想持久化 + P3-6/7 嵌入统一 + P1-4 双配置 + P8-4 双真相源 + P8-7 基因缓存 + P4-64 METABOLISM 常量（均属统一/重构类，改动面大需专门设计）。*
 
 
