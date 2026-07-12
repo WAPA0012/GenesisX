@@ -107,16 +107,9 @@ Layer 8 (入口):    lifecycle/ web/ run.py    ← 启动与交互
 - `RuntimeConfig`：`extra="allow"`（修复 H17，允许 runtime.yaml 额外字段不报错）
 - `OrganLLMConfig`：器官 LLM 三模式配置，`get_organ_config(name)`/`get_shared_config()` 返回合并后的配置
 
-**🔍问题 P1-4**：存在**两套配置加载体系**——`config.py:load_config()`(返回 dict) 和 `config_manager.py:ConfigManager`(返回 GenesisXConfig 对象)。两者并行存在，`config_manager` 更完整（含热重载、环境检测、多源合并）但似乎未被主流程采用。**优化时确认哪个是 active 的，废弃另一个。**
+**✅问题 P1-4 已修**：~~存在**两套配置加载体系**~~。经全项目 grep 确认：`config.py:load_config()`(返回 dict) 是唯一 active 路径，被 run.py / web/app.py / chat_interactive.py / daemon.py 全部 4 个入口及 `common/__init__.py` 导出使用；`config_manager.py:ConfigManager`(返回 GenesisXConfig 对象) **零引用**（连 tests 都未引用，对应生产配置文件 default.yaml/production.yaml 也不存在）。已外科手术式删除 `config_manager.py`（509 行死代码），消除同名 `load_config()` 混淆。`config.py` 的 Pydantic 模型定义与 .env 加载逻辑未动。
 
-### 1.4 `common/config_manager.py` (509行)
-**职责**：更完整的配置管理器（环境检测 dev/staging/prod、多源合并 env>yaml>json、热重载、密钥校验、导出）。
-
-`GenesisXConfig` 聚合了 Database/API/LLM/Memory/Axiology/Personality/Affect/Runtime/Security 9 个子配置。`ConfigManager` 单例 via `get_config_manager()`。
-
-**🔍问题 P1-5**：与 `config.py` 功能重叠（见 P1-4）。`load_config()` 这里返回类型与 `config.py` 的同名函数不同，**极易混淆**。
-
-### 1.5 `common/logger.py` (356行)
+### 1.4 `common/logger.py` (356行)
 **职责**：结构化日志，`get_logger(name)` 工厂。全系统统一用 `from common.logger import get_logger`。支持 structlog（若安装）+ 标准 logging 回退。
 
 ### 1.6 `common/jsonl.py` (102行)
@@ -2299,7 +2292,7 @@ user_input → self._pending_user_input
 
 > 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) + Phase 6(tools) + Phase 4(cognition/perception/metabolism) + Phase 7(safety/persistence) + Phase 9(入口+Web) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。部分行合并多个同源 ID（如 P7-22/24/25）。
 >
-> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项中 26 项已处理，**仅剩 3 项**（P1-4/P8-4/P4-64，均属系统性重构需专门规划）。
+> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项中 27 项已处理，**仅剩 2 项**（P8-4/P4-64，均属系统性重构需专门规划）。
 
 ### 🔴 高优先级（影响正确性/可维护性）
 
@@ -2308,7 +2301,7 @@ user_input → self._pending_user_input
 | **P0-1** 🆕⭐ ✅已修 | **价值→行为反馈环路断裂（实测验证，最核心运行时问题）**：25 tick 实测（run_20260706_062952），17/17 个有好奇/依恋缺口的 tick **100% 未产生 EXPLORE/CHAT**，全是 REFLECT/THINK。系统陷入"反思死循环"，mood 从 0.5 单调跌到 0 后永久卡死，负 RPE 未能驱动行为改变。根因：①价值系统正确识别需求（curiosity/attachment 缺口 0.45）但器官 `_parse_llm_thought_to_actions` 关键词失配（P5-15），LLM 叙事被 fallback 到 REFLECT ②驱动力信号无人消费（P5-10）③无用户输入时缺乏主动行动驱动。**这是"数字生命不像活的"的直接原因。** | organs/internal/* + life_loop PHASE 7→11 | 系统无法自主行动，mood 锁死归零，违背"自主数字生命"核心目标 |
 | P2-3 ✅已修 | **axiology 严重代码重复**：value_dimensions.py(799行) 与 feature_extractors.py+utilities_unified.py 功能重叠 | axiology/ | 改一处忘另一处，行为不一致 |
 | P2-5 ✅已修 | **drives/ 5维驱动力**：~~顶部注释禁用~~ 实际由 organ_manager 间接调用，drives_prompt 已接入器官（P5-10），过时禁用注释已清理 | axiology/drives/ | 实际是活的 |
-| P1-4 | **两套配置加载体系并存**：config.py(load_config→dict) vs config_manager.py(ConfigManager→对象)，且都有 load_config() 同名函数 | common/ | 极易混淆，维护负担 |
+| P1-4 ✅已修 | **两套配置加载体系并存**：config.py(load_config→dict) vs config_manager.py(ConfigManager→对象)，且都有 load_config() 同名函数。经 grep 确认 config_manager.py 零引用（4 入口全用 config.py），已删除该死代码文件（509 行） | common/ | ~~极易混淆，维护负担~~ 已消除 |
 | P8-4 | **GlobalState 与 FieldStore 双真相源**：7 个情感标量字段同时存于两处，靠 life_loop 手工 `_sync_*` 同步 | core/state.py + core/stores/fields.py + life_loop.py | 两套真值，动 mood/stress 必须两边改，遗漏即不一致 |
 | P8-10 ✅已修 | **多轮 CHAT 响应被覆盖**：`llm_response = round_response`(注释却写"累积")，前几轮正文丢弃 | core/handlers/action_executor.py:342 | 多轮工具调用场景用户只能看到最后一轮文字 |
 | P8-11 ✅已修 | **tool/tool_id 键不一致**：gap_detector 读 `params["tool"]`，executor 读 `params["tool_id"]` | core/handlers/{gap_detector:243,action_executor:505} | USE_TOOL 的能力缺口检查永远拿空值，成长系统不被 USE_TOOL 驱动 |
@@ -2586,6 +2579,6 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **205 文件/75k 行**，累计删除约 8000 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **38 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项中仅剩 **3 项**未处理（P1-4 双配置体系 / P8-4 GlobalState↔FieldStore 双真相源 / P4-64 METABOLISM 常量统一），均属系统性重构，改动面大需专门规划。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **205 文件/75k 行**，累计删除约 8000 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **38 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项中仅剩 **2 项**未处理（P8-4 GlobalState↔FieldStore 双真相源 / P4-64 METABOLISM 常量统一），均属系统性重构，改动面大需专门规划。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）。*
 
 
