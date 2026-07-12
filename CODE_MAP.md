@@ -2312,7 +2312,7 @@ user_input → self._pending_user_input
 | P8-4 | **GlobalState 与 FieldStore 双真相源**：7 个情感标量字段同时存于两处，靠 life_loop 手工 `_sync_*` 同步 | core/state.py + core/stores/fields.py + life_loop.py | 两套真值，动 mood/stress 必须两边改，遗漏即不一致 |
 | P8-10 ✅已修 | **多轮 CHAT 响应被覆盖**：`llm_response = round_response`(注释却写"累积")，前几轮正文丢弃 | core/handlers/action_executor.py:342 | 多轮工具调用场景用户只能看到最后一轮文字 |
 | P8-11 ✅已修 | **tool/tool_id 键不一致**：gap_detector 读 `params["tool"]`，executor 读 `params["tool_id"]` | core/handlers/{gap_detector:243,action_executor:505} | USE_TOOL 的能力缺口检查永远拿空值，成长系统不被 USE_TOOL 驱动 |
-| P8-7 | **自定义基因被缓存吞掉**：`_get_differentiator()` 用空 config 缓存，legacy `select_organs` 用它，custom_genes 永不生效 | core/differentiate.py | 器官分化配置失效 |
+| P8-7 ✅已修 | **自定义基因被缓存吞掉**：~~_get_differentiator() 空 config~~ PHASE 7 改用带 config 的 diff.select_organs()，custom_genes 生效 | core/life_loop.py + differentiate.py | 器官分化配置生效 |
 | P8-18 ✅部分已修 | **6 模块共 ~2793 行孤立代码**：exceptions/scheduler/capability_router 完全死（C阶段已删）；emotion_decay/exploration/abstract_state 半死 | core/ | core 最大技术债，需决策删除/接入 |
 | P3-5 ✅已修 | **Schema/Skill 永不持久化**：life_loop 用 `SchemaMemory()`/`SkillMemory()` 无参构造，shutdown 不调 save_to_disk，巩固产物重启清零 | memory/{schema,skill}.py + core/life_loop.py:190-191 | CLS 第2/3层知识无法跨会话累积，违背论文核心目标 |
 | P3-15 ✅已修 | **联想网络无法持久化**：~~import_state 是 pass~~ _load_from_disk 末尾重建联想图（重放最近 1000 条 episodes 复用 _add_to_associative），重启不再丢失联想链接 | memory/episodic.py + familiarity.py | 验证：29 episodes → 25 节点 + 4 边 |
