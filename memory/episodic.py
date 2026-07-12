@@ -81,6 +81,23 @@ class EpisodicMemory:
         # Sort ticks for binary search
         self._sorted_ticks.sort()
 
+        # P3-15 修复：重建联想网络（原 import_state 是 pass，重启丢失全部联想链接）。
+        # 路径：重放历史 episodes 重建联想图（复用 _add_to_associative 逻辑）。
+        # 性能保护：只重建最近的 episodes（最多 1000 条），避免 50000 条全重建。
+        if self.enable_associative and len(self._cache) > 0:
+            assoc = self._get_or_create_associative_memory()
+            if assoc is not None:
+                episodes_to_rebuild = list(self._cache)[-1000:]  # 最近 1000 条
+                rebuilt = 0
+                for episode in episodes_to_rebuild:
+                    try:
+                        self._add_to_associative(episode)
+                        rebuilt += 1
+                    except Exception:
+                        pass  # 个别 episode 重建失败不阻断
+                if rebuilt > 0:
+                    logger.info(f"联想网络重建: {rebuilt} episodes → {len(assoc.network._nodes)} nodes")
+
     def append(self, episode: EpisodeRecord):
         """Append new episode to memory and persist to disk (修复 H22).
 
