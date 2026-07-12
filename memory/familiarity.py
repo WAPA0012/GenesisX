@@ -882,9 +882,23 @@ def create_associative_memory(
     max_associations: int = 10,
     embedding_dim: int = 384
 ) -> AssociativeMemory:
-    """创建联想记忆管理器"""
-    return AssociativeMemory(
+    """创建联想记忆管理器。
+
+    P3-6/P3-7 修复（2026-07）：注入 semantic_novelty 的真嵌入（sentence-transformers），
+    替代原默认的 md5-seed 伪随机嵌入。伪嵌入让语义联想权重完全是噪声。
+    无 sentence-transformers 时回退 TF-IDF（仍比 md5-seed 好）。
+    """
+    am = AssociativeMemory(
         association_threshold=association_threshold,
         max_associations=max_associations,
         embedding_dim=embedding_dim,
     )
+    # 注入真嵌入
+    try:
+        from .semantic_novelty import get_default_calculator
+        calc = get_default_calculator()
+        am.set_embedding_function(lambda text: calc.compute_embedding(text))
+        logger.info("联想记忆已接入真嵌入（semantic_novelty backend）")
+    except Exception as e:
+        logger.warning(f"真嵌入注入失败，回退伪嵌入: {e}")
+    return am

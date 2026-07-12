@@ -60,14 +60,24 @@ class SemanticEmbeddingProvider:
             return self._simple_embed(texts)
 
     def _simple_embed(self, texts: List[str]) -> List[List[float]]:
-        """简单的词频嵌入"""
+        """简单的词频嵌入。
+
+        P3-6/P3-7 修复（2026-07）：原用 MD5 伪嵌入（无语义），改为委托
+        semantic_novelty 的真嵌入（sentence-transformers，P3-18 已接入）。
+        无 sentence-transformers 时回退 TF-IDF（仍比 MD5 好）。
+        """
+        try:
+            from .semantic_novelty import get_default_calculator
+            calc = get_default_calculator()
+            return [calc.compute_embedding(text).tolist() for text in texts]
+        except Exception:
+            pass
+        # 最终回退：字符级伪嵌入（仅当 semantic_novelty 也不可用时）
         import hashlib
         embeddings = []
         for text in texts:
-            # 使用hash生成固定长度的伪嵌入
             hash_obj = hashlib.md5(text.encode())
             hash_bytes = hash_obj.digest()
-            # 转换为384维向量（与MiniLM相同）
             vec = []
             for i in range(384):
                 byte_idx = i % len(hash_bytes)
