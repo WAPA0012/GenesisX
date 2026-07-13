@@ -293,7 +293,6 @@ GenesisX/
 ├── 📁 common/                     # ========== Common Modules (14 files) ==========
 │   ├── models.py                  # Core data models (Pydantic)
 │   ├── config.py                  # Configuration loading
-│   ├── config_manager.py          # Configuration manager
 │   ├── constants.py               # System constant definitions
 │   ├── jsonl.py                   # JSONL processing
 │   ├── hashing.py                 # Hashing functions

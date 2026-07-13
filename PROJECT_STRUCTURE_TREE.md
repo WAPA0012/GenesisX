@@ -202,7 +202,6 @@ GenesisX/
 | [__init__.py](common/__init__.py) | 公共模块初始化 |
 | [auth.py](common/auth.py) | **认证** - 用户认证和授权 |
 | [config.py](common/config.py) | **配置** - 配置管理 |
-| [config_manager.py](common/config_manager.py) | **配置管理器** - 配置文件加载和管理 |
 | [constants.py](common/constants.py) | **常量** - 系统常量定义 |
 | [database.py](common/database.py) | **数据库** - 数据库连接管理 |
 | [error_handler.py](common/error_handler.py) | **错误处理** - 统一错误处理机制 |

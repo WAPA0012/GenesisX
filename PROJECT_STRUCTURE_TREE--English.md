@@ -202,7 +202,6 @@ General utilities, configuration, and base components.
 | [__init__.py](common/__init__.py) | Common module initialization |
 | [auth.py](common/auth.py) | **Authentication** - User authentication and authorization |
 | [config.py](common/config.py) | **Configuration** - Configuration management |
-| [config_manager.py](common/config_manager.py) | **Config Manager** - Configuration file loading and management |
 | [constants.py](common/constants.py) | **Constants** - System constant definitions |
 | [database.py](common/database.py) | **Database** - Database connection management |
 | [error_handler.py](common/error_handler.py) | **Error Handling** - Unified error handling mechanism |

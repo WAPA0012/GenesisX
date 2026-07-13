@@ -298,7 +298,6 @@ GenesisX/
 ├── 📁 common/                     # ========== 公共模块 (14文件) ==========
 │   ├── models.py                  # 核心数据模型 (Pydantic)
 │   ├── config.py                  # 配置加载
-│   ├── config_manager.py          # 配置管理器
 │   ├── constants.py               # 系统常量定义
 │   ├── jsonl.py                   # JSONL处理
 │   ├── hashing.py                 # 哈希功能
