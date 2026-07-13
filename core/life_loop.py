@@ -188,8 +188,9 @@ class LifeLoop(GapDetectorMixin):
 
     def _init_stores(self):
         """初始化存储系统"""
-        self.state = GlobalState()
+        # P8-4: FieldStore 先于 GlobalState 创建，作为单一真相源注入 GlobalState
         self.fields = FieldStore()
+        self.state = GlobalState(field_store=self.fields)
         self.slots = SlotStore()
         self.signals = SignalBus()
         self.ledger = MetabolicLedger(
@@ -666,8 +667,8 @@ class LifeLoop(GapDetectorMixin):
         self.fields.set("boredom", initial.get("boredom", 0.0))
         self.fields.set("curiosity", initial.get("curiosity", 0.5))  # 缺失字段
 
-        # 修复: 使用统一的同步方法更新 GlobalState
-        self._sync_state_to_global()
+        # P8-4: 不再需要 _sync_state_to_global()——GlobalState 现在委托 FieldStore，
+        # 上面的 fields.set() 调用会自动反映到 self.state
 
         # Load setpoints
         value_config = self.config.get("value_setpoints", {})
@@ -1417,10 +1418,9 @@ class LifeLoop(GapDetectorMixin):
             delta_per_dim["attachment"] = abs(delta_per_dim.get("attachment", 0.0)) + 0.05
             delta_per_dim["competence"] = abs(delta_per_dim.get("competence", 0.0)) + 0.03
 
-        # Update fields via store - 使用维度级RPE更新情绪
+        # P8-4: 写 FieldStore 即自动反映到 GlobalState（单一真相源）
         new_mood = update_mood_per_dimension(self.fields.get("mood"), delta_per_dim)
         self.fields.set("mood", new_mood)
-        self.state.mood = new_mood  # 同步到 GlobalState
 
         # 更新 Stress：使用 affect/stress_affect.update_stress
         # 该函数已包含 RPE 影响、失败惩罚、自然衰减等所有逻辑
@@ -1428,7 +1428,6 @@ class LifeLoop(GapDetectorMixin):
         current_stress = self.fields.get("stress")
         new_stress = update_stress(current_stress, delta, failed)
         self.fields.set("stress", new_stress)
-        self.state.stress = new_stress  # 同步到 GlobalState
 
         # === AffectModulation: 根据情绪状态调整行为参数 ===
         if self.affect_modulator:
@@ -1609,58 +1608,6 @@ class LifeLoop(GapDetectorMixin):
 
         return episode
 
-    def _sync_state_to_global(self, fields: Dict[str, float] = None):
-        """同步 FieldStore 到 GlobalState (修复代码重复问题).
-
-        Args:
-            fields: 可选的字段字典，如果为 None 则从 FieldStore 读取所有字段
-        """
-        if fields is None:
-            # 从 FieldStore 读取所有字段并同步
-            self.state.energy = self.fields.get("energy")
-            self.state.mood = self.fields.get("mood")
-            self.state.stress = self.fields.get("stress")
-            self.state.fatigue = self.fields.get("fatigue")
-            self.state.bond = self.fields.get("bond")
-            self.state.trust = self.fields.get("trust")
-            self.state.boredom = self.fields.get("boredom")
-        else:
-            # 同步指定的字段
-            for key, value in fields.items():
-                if hasattr(self.state, key):
-                    setattr(self.state, key, value)
-
-    def _sync_fields_to_global(
-        self, energy: float = None, fatigue: float = None, stress: float = None,
-        boredom: float = None, mood: float = None, bond: float = None, trust: float = None
-    ):
-        """同步指定字段到 GlobalState (修复代码重复问题).
-
-        Args:
-            energy, fatigue, stress, boredom, mood, bond, trust: 要同步的字段值
-        """
-        if energy is not None:
-            self.fields.set("energy", energy)
-            self.state.energy = energy
-        if fatigue is not None:
-            self.fields.set("fatigue", fatigue)
-            self.state.fatigue = fatigue
-        if stress is not None:
-            self.fields.set("stress", stress)
-            self.state.stress = stress
-        if boredom is not None:
-            self.fields.set("boredom", boredom)
-            self.state.boredom = boredom
-        if mood is not None:
-            self.fields.set("mood", mood)
-            self.state.mood = mood
-        if bond is not None:
-            self.fields.set("bond", bond)
-            self.state.bond = bond
-        if trust is not None:
-            self.fields.set("trust", trust)
-            self.state.trust = trust
-
     def _update_body(self, dt: float):
         """Update body state with metabolism and circadian rhythm.
 
@@ -1704,13 +1651,12 @@ class LifeLoop(GapDetectorMixin):
             recovery_amount *= recovery_rate
             new_fatigue = fatigue - recovery_amount
 
-        # 同步状态; Stress 将在 Affect Phase 更新
-        self._sync_fields_to_global(
-            energy=new_energy,
-            fatigue=new_fatigue,
-            stress=stress,  # 保持当前值，Affect Phase 会更新
-            boredom=new_boredom
-        )
+        # P8-4: 直接写 FieldStore（GlobalState 自动反映，无需手工同步）
+        # Stress 将在 Affect Phase 更新
+        self.fields.set("energy", new_energy)
+        self.fields.set("fatigue", new_fatigue)
+        self.fields.set("stress", stress)
+        self.fields.set("boredom", new_boredom)
 
     # ===== 以下方法已移至 ActionExecutor =====
     # _execute_action -> ActionExecutor.execute()
@@ -1897,11 +1843,12 @@ class LifeLoop(GapDetectorMixin):
         """
         state_file = self.run_dir / "final_state.json"
         try:
+            # P8-4: state.<scalar> 现在委托 FieldStore，单一真相源——不再写两遍
             state_dict = {
                 "tick": self.state.tick,
                 "mode": self.state.mode,
                 "stage": self.state.stage,
-                # GlobalState values
+                # 情感标量（读 FieldStore via GlobalState 委托）
                 "energy": self.state.energy,
                 "mood": self.state.mood,
                 "stress": self.state.stress,
@@ -1909,16 +1856,6 @@ class LifeLoop(GapDetectorMixin):
                 "bond": self.state.bond,
                 "trust": self.state.trust,
                 "boredom": self.state.boredom,
-                # FieldStore values
-                "fields": {
-                    "energy": self.fields.get("energy"),
-                    "mood": self.fields.get("mood"),
-                    "stress": self.fields.get("stress"),
-                    "fatigue": self.fields.get("fatigue"),
-                    "bond": self.fields.get("bond"),
-                    "trust": self.fields.get("trust"),
-                    "boredom": self.fields.get("boredom"),
-                },
                 # Counts
                 "episodic_count": self.state.episodic_count,
                 "schema_count": self.state.schema_count,
