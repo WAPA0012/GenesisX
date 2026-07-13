@@ -110,11 +110,10 @@ class CaretakerMode:
         safe_stress = min(0.7, self.fields.get("stress"))
         safe_mood = 0.5  # 中性情绪
 
-        self.life_loop._sync_fields_to_global(
-            energy=safe_energy,
-            stress=safe_stress,
-            mood=safe_mood
-        )
+        # P8-4: 直接写 FieldStore（GlobalState 自动委托反映）
+        self.life_loop.fields.set("energy", safe_energy)
+        self.life_loop.fields.set("stress", safe_stress)
+        self.life_loop.fields.set("mood", safe_mood)
 
         # 重置价值权重到均匀分布
         for dim in ValueDimension:

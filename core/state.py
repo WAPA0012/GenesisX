@@ -1,7 +1,10 @@
 """Global State - S_t = ⟨O_t, X_t, M_t, K_t, θ, ω_t⟩"""
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 from common.models import ValueDimension
+
+if TYPE_CHECKING:
+    from core.stores.fields import FieldStore
 
 
 def _get_real_system_resources() -> Dict[str, float]:
@@ -37,6 +40,10 @@ class GlobalState:
     - 每次调用 update_resources() 会刷新真实值
     """
 
+    # P8-4: 7 个情感标量改为 FieldStore 单一真相源委托。
+    # 注入 field_store 时读写 FieldStore；未注入时（tests/独立构造）用 _xxx_local fallback。
+    field_store: Optional["FieldStore"] = field(default=None, repr=False, compare=False)
+
     # Internal state X_t - 论文 Section 3.2 数字原生模型
     # 计算资源占用率: Compute_t ∈ [0,1] - 真实的CPU占用率
     # 内存占用率: Memory_t ∈ [0,1] - 真实的内存占用率
@@ -47,78 +54,108 @@ class GlobalState:
     # 是否使用真实系统资源检测
     use_real_resources: bool = True
 
-    # 活动疲劳度 - 独立于系统资源占用率
+    # 活动疲劳度 - 独立于系统资源占用率（非情感标量，不做 FieldStore 委托）
     # 基于 ticks 和处理的活动累积，用于决定何时做梦/休息
     activity_fatigue: float = 0.0  # 从0开始，随活动增加，休息后减少
 
-    # 情绪状态: Mood_t ∈ [-1,1], Stress_t ∈ [0,1]
-    mood: float = 0.0  # Mood_0=0.0 (论文默认中性)
-    stress: float = 0.15  # Stress_0=0.15
+    # P8-4: mood/stress/boredom 不再是 dataclass 字段，改为 property 委托 FieldStore。
+    # fallback 私有字段（仅 field_store=None 时用）。
+    _mood_local: float = field(default=0.0, repr=False)      # Mood_0=0.0 (论文默认中性)
+    _stress_local: float = field(default=0.15, repr=False)    # Stress_0=0.15
+    _boredom_local: float = field(default=0.30, repr=False)   # Boredom_0=0.30
+    _energy_local: float = field(default=0.80, repr=False)    # Energy_0=0.80 (1 - activity_fatigue 初始)
+    _fatigue_local: float = field(default=0.0, repr=False)    # Fatigue_0=0.0 (= activity_fatigue 初始)
+    _bond_local: float = field(default=0.20, repr=False)      # Bond_0=0.20
+    _trust_local: float = field(default=0.20, repr=False)     # Trust_0=0.20
 
-    # 关系与唤醒: Relationship_t ∈ [0,1], Arousal_t ∈ [0,1], Boredom_t ∈ [0,1]
-    # 论文 Section 3.2: Relationship_t 合并了 Bond 和 Trust
-    relationship: float = 0.20  # Relationship_0=0.20 (合并值)
+    # 关系与唤醒: Relationship_t ∈ [0,1], Arousal_t ∈ [0,1]
+    # 注: P8-4 后 bond/trust 不再折叠到 relationship（各自独立委托 FieldStore）。
+    # relationship 保留为普通字段供遗留 to_dict/from_dict 兼容，但不再被 bond/trust 派生。
+    relationship: float = 0.20  # Relationship_0=0.20 (遗留兼容)
     arousal: float = 0.50  # Arousal_0=0.50
-    boredom: float = 0.30  # Boredom_0=0.30
 
     # 资源压力指数 RP_t (论文 Section 3.2)
-    # RP_t = max(0, 1 - (α·Compute_t + β·Memory_t))
+    # RP_t = α·Compute_t + β·Memory_t
     resource_pressure: float = 0.0  # 初始无压力
 
-    # 兼容字段 (向后兼容，逐步废弃)
-    #
+    # ========================================================================
+    # P8-4: 7 个情感标量 property —— FieldStore 单一真相源委托
+    # ========================================================================
     # 注意三种不同的"疲劳/能量"概念:
     # 1. compute/memory: 真实系统资源占用率（psutil检测）
-    # 2. activity_fatigue: 活动疲劳度（基于ticks累积，用于决定做梦）
-    # 3. energy/fatigue (兼容): 映射到 activity_fatigue
+    # 2. activity_fatigue: 活动疲劳度（基于ticks累积，用于决定做梦）——独立字段，不委托
+    # 3. energy/fatigue: 情感标量，委托 FieldStore（与 activity_fatigue 解耦）
+    def _field_get(self, name: str, local_attr: str) -> float:
+        """委托读取：注入 FieldStore 时读 FieldStore，否则读本地 fallback。"""
+        if self.field_store is not None:
+            return self.field_store.get(name)
+        return getattr(self, local_attr)
+
+    def _field_set(self, name: str, local_attr: str, value: float) -> None:
+        """委托写入：注入 FieldStore 时写 FieldStore（自动 clip），否则写本地 fallback（手动 clip）。"""
+        clamped = max(0.0, min(1.0, value))
+        if self.field_store is not None:
+            self.field_store.set(name, clamped)
+        else:
+            setattr(self, local_attr, clamped)
+
     @property
     def energy(self) -> float:
-        """兼容旧代码: energy → 1 - activity_fatigue（剩余活动能量）.
-
-        旧语义: energy = 0.8 表示"剩余80%能量"
-        新语义: activity_fatigue = 0.2 表示"活动疲劳度20%"
-        映射: energy = 1 - activity_fatigue
-        """
-        return 1.0 - self.activity_fatigue
+        return self._field_get("energy", "_energy_local")
 
     @energy.setter
     def energy(self, value: float):
-        """设置 energy（转换为 activity_fatigue）."""
-        self.activity_fatigue = 1.0 - max(0.0, min(1.0, value))
+        self._field_set("energy", "_energy_local", value)
 
     @property
     def fatigue(self) -> float:
-        """兼容旧代码: fatigue → activity_fatigue（活动疲劳度）.
-
-        旧语义: fatigue = 0.8 表示"疲劳80%"
-        新语义: activity_fatigue = 0.8 表示"活动累积疲劳80%"
-        直接映射: fatigue = activity_fatigue
-        """
-        return self.activity_fatigue
+        return self._field_get("fatigue", "_fatigue_local")
 
     @fatigue.setter
     def fatigue(self, value: float):
-        """设置 fatigue（转换为 activity_fatigue）."""
-        self.activity_fatigue = max(0.0, min(1.0, value))
+        self._field_set("fatigue", "_fatigue_local", value)
+
+    @property
+    def mood(self) -> float:
+        """Mood_t ∈ [0,1] (论文实际实现：affect/mood.py clamp 到 [0,1])."""
+        return self._field_get("mood", "_mood_local")
+
+    @mood.setter
+    def mood(self, value: float):
+        self._field_set("mood", "_mood_local", value)
+
+    @property
+    def stress(self) -> float:
+        return self._field_get("stress", "_stress_local")
+
+    @stress.setter
+    def stress(self, value: float):
+        self._field_set("stress", "_stress_local", value)
 
     @property
     def bond(self) -> float:
-        """兼容旧代码: bond → relationship."""
-        return self.relationship
+        return self._field_get("bond", "_bond_local")
 
     @bond.setter
     def bond(self, value: float):
-        self.relationship = value
+        self._field_set("bond", "_bond_local", value)
 
     @property
     def trust(self) -> float:
-        """兼容旧代码: trust → relationship (简化映射)."""
-        return self.relationship
+        return self._field_get("trust", "_trust_local")
 
     @trust.setter
     def trust(self, value: float):
-        # 简化: trust 赋值时平均到 relationship
-        self.relationship = (self.relationship + value) / 2
+        # P8-4: 不再平均到 relationship，直接委托 FieldStore（与 bond 独立）
+        self._field_set("trust", "_trust_local", value)
+
+    @property
+    def boredom(self) -> float:
+        return self._field_get("boredom", "_boredom_local")
+
+    @boredom.setter
+    def boredom(self, value: float):
+        self._field_set("boredom", "_boredom_local", value)
 
     # Working memory slots
     current_goal: str = ""
@@ -256,6 +293,8 @@ class GlobalState:
         # ✓ 活动疲劳度随时间自然累积（每个tick增加）
         # 做梦/休息后会重置
         self.activity_fatigue = min(1.0, self.activity_fatigue + 0.01 * dt)
+        # P8-4: 同步到 FieldStore 的 fatigue（情感标量），保持两者数值一致
+        self.fatigue = self.activity_fatigue
 
         # ✓ Stress 自然衰减（心理压力会随时间缓解）
         self.stress = max(0.0, self.stress - 0.01 * dt)
@@ -273,6 +312,8 @@ class GlobalState:
             amount: 减少量，默认1.0（完全重置）
         """
         self.activity_fatigue = max(0.0, self.activity_fatigue - amount)
+        # P8-4: 同步重置 FieldStore 的 fatigue
+        self.fatigue = self.activity_fatigue
 
     def update_resources(self):
         """从真实系统更新资源占用率.
@@ -371,11 +412,17 @@ class GlobalState:
             use_real_resources=data.get("use_real_resources", True),
             # 活动疲劳度
             activity_fatigue=data.get("activity_fatigue", 0.0),
-            mood=data.get("mood", 0.5),
-            stress=data.get("stress", 0.2),
+            # P8-4: 情感标量写入本地 fallback（from_dict 不注入 FieldStore；
+            # 生产路径由 life_loop 注入 FieldStore 后这些值自动从 FieldStore 读）
+            _mood_local=data.get("mood", 0.5),
+            _stress_local=data.get("stress", 0.2),
+            _boredom_local=data.get("boredom", 0.0),
+            _energy_local=data.get("energy", 1.0 - data.get("activity_fatigue", 0.0)),
+            _fatigue_local=data.get("fatigue", data.get("activity_fatigue", 0.0)),
+            _bond_local=data.get("bond", data.get("relationship", 0.2)),
+            _trust_local=data.get("trust", data.get("relationship", 0.2)),
             relationship=data.get("relationship", data.get("bond", 0.2)),
             arousal=data.get("arousal", 0.5),
-            boredom=data.get("boredom", 0.0),
             resource_pressure=data.get("resource_pressure", 0.0),
             # Working memory
             current_goal=data.get("current_goal", ""),

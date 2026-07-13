@@ -143,12 +143,11 @@ class ActionExecutor:
         # 深度上下文清理
         context_reset = self._deep_context_clean()
 
-        self.life_loop._sync_fields_to_global(
-            energy=new_energy,
-            fatigue=new_fatigue,
-            stress=new_stress,
-            boredom=new_boredom
-        )
+        # P8-4: 直接写 FieldStore（GlobalState 自动委托反映）
+        self.life_loop.fields.set("energy", new_energy)
+        self.life_loop.fields.set("fatigue", new_fatigue)
+        self.life_loop.fields.set("stress", new_stress)
+        self.life_loop.fields.set("boredom", new_boredom)
 
         consolidation_method = "规则式(回退)" if used_fallback else ("LLM" if llm_result else "无")
         logger.info(f"[SLEEP] 深度恢复 - 能量: {energy:.3f}→{new_energy:.3f}, "
@@ -170,7 +169,8 @@ class ActionExecutor:
         energy = self.fields.get("energy")
         new_boredom = max(0.0, boredom - 0.15)
         new_energy = max(0.0, energy - 0.02)
-        self.life_loop._sync_fields_to_global(boredom=new_boredom, energy=new_energy)
+        self.life_loop.fields.set("boredom", new_boredom)
+        self.life_loop.fields.set("energy", new_energy)
         cost = CostVector(cpu_tokens=200)
         self._log_tool_call(action, {"success": True}, cost)
         return {"success": True, "cost": cost}
@@ -199,7 +199,8 @@ class ActionExecutor:
         # 执行上下文清理
         context_cleaned = self._clean_context_noise()
 
-        self.life_loop._sync_fields_to_global(stress=new_stress, fatigue=new_fatigue)
+        self.life_loop.fields.set("stress", new_stress)
+        self.life_loop.fields.set("fatigue", new_fatigue)
 
         cost = CostVector(cpu_tokens=150)  # 稍微增加成本（整理需要计算）
 
@@ -430,7 +431,10 @@ class ActionExecutor:
                 new_bond = min(1.0, bond + 0.05)
                 new_trust = min(1.0, trust + 0.025)
                 new_boredom = max(0.0, boredom - 0.05)
-                self.life_loop._sync_fields_to_global(bond=new_bond, trust=new_trust, boredom=new_boredom, fatigue=new_fatigue)
+                self.life_loop.fields.set("bond", new_bond)
+                self.life_loop.fields.set("trust", new_trust)
+                self.life_loop.fields.set("boredom", new_boredom)
+                self.life_loop.fields.set("fatigue", new_fatigue)
 
                 # 保存聊天历史
                 self.life_loop._save_chat_message("user", user_message)
@@ -507,7 +511,8 @@ class ActionExecutor:
         fatigue = self.fields.get("fatigue")
         new_energy = max(0.0, energy - 0.03)
         new_fatigue = min(1.0, fatigue + 0.02)
-        self.life_loop._sync_fields_to_global(energy=new_energy, fatigue=new_fatigue)
+        self.life_loop.fields.set("energy", new_energy)
+        self.life_loop.fields.set("fatigue", new_fatigue)
         cost = CostVector(cpu_tokens=150)
         self._log_tool_call(action, {"success": True}, cost)
         return {"success": True, "cost": cost}
@@ -554,7 +559,7 @@ class ActionExecutor:
         try:
             energy = self.fields.get("energy")
             new_energy = max(0.0, energy - 0.02)
-            self.life_loop._sync_fields_to_global(energy=new_energy)
+            self.life_loop.fields.set("energy", new_energy)
 
             if hasattr(self.life_loop, 'tool_executor') and self.life_loop.tool_executor:
                 tool_result = self.life_loop.tool_executor.execute(
@@ -635,7 +640,7 @@ class ActionExecutor:
         """优化: 消耗能量，改善效率"""
         energy = self.fields.get("energy")
         new_energy = max(0.0, energy - 0.01)
-        self.life_loop._sync_fields_to_global(energy=new_energy)
+        self.life_loop.fields.set("energy", new_energy)
         cost = CostVector(cpu_tokens=100)
         self._log_tool_call(action, {"success": True}, cost)
         return {"success": True, "cost": cost}

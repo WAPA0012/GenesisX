@@ -44,7 +44,9 @@ def check_single_external_action(actions: list) -> bool:
 def check_invariants(state: "GlobalState", weights: Dict, ledger: Dict, actions: list) -> Dict[str, bool]:
     """Run all invariant checks.
 
-    修复 v14: Mood 范围应为 [-1, 1] (论文 Section 3.7.2)
+    P8-15: Mood 范围统一为 [0, 1]。affect/mood.py 的 update_mood /
+    update_mood_per_dimension 均 clamp 到 [0,1]，负 mood 从未发生。
+    原 [-1,1] 是论文理想值，实际实现全程 [0,1]。
 
     Returns:
         Dict of check_name -> passed (bool)
@@ -54,7 +56,7 @@ def check_invariants(state: "GlobalState", weights: Dict, ledger: Dict, actions:
         "ledger_non_negative": check_ledger_non_negative(ledger),
         "single_external_action": check_single_external_action(actions),
         "energy_in_range": 0.0 <= state.energy <= 1.0,
-        "mood_in_range": -1.0 <= state.mood <= 1.0,  # 修复: Mood 是双向的 [-1, 1]
+        "mood_in_range": 0.0 <= state.mood <= 1.0,  # P8-15: 实际实现 clamp [0,1]
         "stress_in_range": 0.0 <= state.stress <= 1.0,
         "fatigue_in_range": 0.0 <= state.fatigue <= 1.0,
         "bond_in_range": 0.0 <= state.bond <= 1.0,
