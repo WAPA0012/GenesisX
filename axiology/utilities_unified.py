@@ -648,54 +648,40 @@ def verify_utility_normalization_with_calculator(
     utility_ranges = {}
     violations = []
 
-    for _ in range(num_samples):
-        state_kwargs = {
-            "compute": random.random(),
-            "memory": random.random(),
-            "stress": random.random(),
-            "relationship": random.random(),
-            "neglect_hours": random.random() * 100000,
-            "success": random.choice([True, False]),
-            "quality_score": random.random(),
-            "skill_coverage_delta": random.random() - 0.5,
-            "novelty": random.random(),
-            "insight_formed": random.choice([True, False]),
-            "insight_quality": random.random() if random.random() > 0.5 else 0.0,
-            "risk_score": random.random(),
-        }
+    # P8-4 审计修复：原代码用 type('StateSnapshot', (), kwargs)() 伪造状态对象，
+    # 但字段名与 compute_* 实际读取的不匹配（缺 energy/fatigue/bond/trust 等），
+    # 导致 AttributeError。改为构造真实的 StateSnapshot 实例。
+    from axiology import StateSnapshot
 
-        state_t_kwargs = state_kwargs.copy()
-        state_t1_kwargs = state_kwargs.copy()
-
-        cost = CostVector(
-            cpu_tokens=random.randint(0, 5000),
-            io_ops=random.randint(0, 1000),
-            net_bytes=random.randint(0, 1000000),
-            latency_ms=random.randint(0, 10000),
+    def _random_snapshot() -> "StateSnapshot":
+        return StateSnapshot(
+            energy=random.random(),
+            fatigue=random.random(),
+            stress=random.random(),
+            bond=random.random(),
+            trust=random.random(),
+            boredom=random.random(),
+            dt_since_user=random.random() * 100000,
+            success_rate=random.random(),
+            quality_score=random.random(),
+            skill_coverage=random.random(),
+            novelty=random.random(),
+            personality_drift=random.random(),
+            insight_formed=random.choice([True, False]),
+            insight_quality=random.random() if random.random() > 0.5 else 0.0,
         )
+
+    for _ in range(num_samples):
+        state_t = _random_snapshot()
+        state_t1 = _random_snapshot()
 
         # Test each utility function (5维)
         utilities = {
-            "homeostasis": calculator.compute_homeostasis(
-                type('StateSnapshot', (), state_t_kwargs)(),
-                type('StateSnapshot', (), state_t1_kwargs)()
-            ),
-            "attachment": calculator.compute_attachment(
-                type('StateSnapshot', (), state_t_kwargs)(),
-                type('StateSnapshot', (), state_t1_kwargs)()
-            ),
-            "curiosity": calculator.compute_curiosity(
-                type('StateSnapshot', (), state_t_kwargs)(),
-                type('StateSnapshot', (), state_t1_kwargs)()
-            ),
-            "competence": calculator.compute_competence(
-                type('StateSnapshot', (), state_t_kwargs)(),
-                type('StateSnapshot', (), state_t1_kwargs)()
-            ),
-            "safety": calculator.compute_safety(
-                type('StateSnapshot', (), state_t_kwargs)(),
-                type('StateSnapshot', (), state_t1_kwargs)()
-            ),
+            "homeostasis": calculator.compute_homeostasis(state_t, state_t1),
+            "attachment": calculator.compute_attachment(state_t, state_t1),
+            "curiosity": calculator.compute_curiosity(state_t, state_t1),
+            "competence": calculator.compute_competence(state_t, state_t1),
+            "safety": calculator.compute_safety(state_t, state_t1),
         }
 
         for dim, u in utilities.items():

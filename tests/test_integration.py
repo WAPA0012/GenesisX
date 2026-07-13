@@ -14,12 +14,7 @@ from affect.mood import update_mood, update_stress, update_affect
 from affect.rpe import compute_rpe, compute_per_dimension_rpe, RPEComputer
 from axiology.weights import compute_weights, WeightUpdater
 from axiology.parameters import get_default_parameters
-from core.exceptions import (
-    ErrorHandler,
-    ToolExecutionError,
-    CircuitBreaker,
-    ErrorSeverity,
-)
+# core.exceptions 已于 C 阶段删除 (commit 66cd7a2, P8-18) — TestErrorHandling 类一并移除
 from memory.semantic_novelty import SemanticNoveltyCalculator
 
 
@@ -279,74 +274,8 @@ class TestWeightUpdater:
         assert "homeostasis" in new_updater._override_active
 
 
-class TestErrorHandling:
-    """Test error handling (Paper Section 3.13)."""
-
-    def test_tool_execution_error_retry(self):
-        """Test tool error triggers retry strategy."""
-        handler = ErrorHandler()
-
-        error = ToolExecutionError(
-            "API timeout",
-            tool_id="web_search",
-            attempt=1,
-            max_attempts=3,
-        )
-
-        response = handler.handle(error, context={})
-
-        assert response["action"] == "retry"
-        assert response["tool_id"] == "web_search"
-
-    def test_consecutive_errors_trigger_disable(self):
-        """Test consecutive errors disable tool."""
-        handler = ErrorHandler()
-
-        # Simulate multiple errors
-        for _ in range(5):
-            error = ToolExecutionError(
-                "API timeout",
-                tool_id="web_search",
-                attempt=1,
-                max_attempts=3,
-            )
-            handler.handle(error, context={})
-
-        # Fifth error should trigger disable
-        response = handler.handle(error, context={})
-        assert response["action"] == "disable_tool"
-
-    def test_circuit_breaker(self):
-        """Test circuit breaker opens after threshold."""
-        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=1.0)
-
-        # Should allow requests initially
-        assert cb.allow_request() is True
-
-        # Record failures
-        for _ in range(3):
-            cb.on_failure()
-
-        # Should now be open
-        assert cb.allow_request() is False
-        assert cb.get_state()["state"] == "open"
-
-    def test_circuit_breaker_recovery(self):
-        """Test circuit breaker recovers after timeout."""
-        cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.1)
-
-        # Trigger circuit breaker
-        for _ in range(2):
-            cb.on_failure()
-
-        assert cb.allow_request() is False
-
-        # Wait for recovery timeout
-        import time
-        time.sleep(0.15)
-
-        # Should allow request in half-open state
-        assert cb.allow_request() is True
+# TestErrorHandling 类已删除：core.exceptions 模块于 C 阶段删除 (commit 66cd7a2, P8-18)，
+# 该模块的 ErrorHandler/ToolExecutionError/CircuitBreaker 是完全孤立的死代码。
 
 
 class TestSemanticNovelty:
