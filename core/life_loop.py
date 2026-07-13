@@ -250,6 +250,9 @@ class LifeLoop(GapDetectorMixin):
         else:
             logger.info("OrganLLMManager: Not available, organs will use rule-based fallback")
 
+        # P5-21: 恢复器官学习状态（跨 run 持久化，必须在器官构造后）
+        self._load_organ_state()
+
         self.tool_registry = ToolRegistry()
         self._init_dynamic_tools()
 
@@ -1660,6 +1663,119 @@ class LifeLoop(GapDetectorMixin):
         except Exception as e:
             logger.warning(f"Organ learning feedback failed (tick {t}): {e}")
 
+    # ===== P5-21 Step2: 器官学习状态持久化 =====
+
+    # 每个器官的"可学习属性"白名单——只持久化这些，跳过 config/LLM session/瞬态字段
+    _ORGAN_LEARNING_ATTRS = {
+        "mind": {"plan_history", "goal_decompositions", "strategy_success_rates",
+                 "successful_patterns", "failed_patterns"},
+        "scout": {"explored_topics", "recent_explorations", "topic_interest_scores",
+                  "knowledge_frontier", "mastered_topics", "failed_explorations",
+                  "successful_exploration_count", "total_exploration_count",
+                  "novelty_seeking_level", "mode_success_rates"},
+        "builder": {"active_projects", "completed_projects", "milestone_history",
+                    "task_queue", "completed_tasks", "blocked_tasks", "task_dependencies",
+                    "work_sessions", "productivity_scores", "strategy_effectiveness"},
+        "caretaker": {"energy_history", "stress_history", "_health_state"},
+        "archivist": {"memory_count", "episodic_count", "semantic_count",
+                      "memory_categories", "consolidation_history",
+                      "consolidated_memory_groups", "pruned_count", "retention_scores",
+                      "memory_access_frequency", "recent_accesses", "access_patterns",
+                      "memory_importance", "critical_memories", "memory_index",
+                      "memory_tags", "tag_usage", "strategy_effectiveness",
+                      "consolidation_quality_scores", "retrieval_success_rate"},
+        "immune": {"risk_history", "threat_log", "veto_history", "threat_count",
+                   "recent_incidents", "suspicious_patterns", "safe_patterns",
+                   "behavior_baseline", "action_trust_scores", "capability_trust",
+                   "trust_violations", "incident_count", "false_positive_count",
+                   "false_negative_count"},
+    }
+
+    def _get_organ_state_path(self) -> Path:
+        """器官状态持久化路径：artifacts/organ_state/{session_id}.json
+
+        跨 run 保留（不依赖 run_dir），与 session_id 关联。
+        """
+        state_dir = Path("artifacts") / "organ_state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return state_dir / f"{self.session_id}.json"
+
+    @staticmethod
+    def _serialize_for_json(obj):
+        """处理 sets/deques/defaultdicts/tuples 等 JSON 不支持的类型。"""
+        import collections
+        if isinstance(obj, (set, frozenset)):
+            return {"__type__": "set", "items": list(obj)}
+        if isinstance(obj, collections.deque):
+            return {"__type__": "deque", "items": list(obj)}
+        if isinstance(obj, dict):
+            return {str(k): LifeLoop._serialize_for_json(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [LifeLoop._serialize_for_json(v) for v in obj]
+        if isinstance(obj, tuple):
+            return {"__type__": "tuple", "items": list(obj)}
+        return obj
+
+    @staticmethod
+    def _deserialize_from_json(obj):
+        """逆操作：还原 sets/deques/tuples。"""
+        import collections
+        if isinstance(obj, dict):
+            if obj.get("__type__") == "set":
+                return set(obj["items"])
+            if obj.get("__type__") == "deque":
+                return collections.deque(obj["items"])
+            if obj.get("__type__") == "tuple":
+                return tuple(obj["items"])
+            return {k: LifeLoop._deserialize_from_json(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [LifeLoop._deserialize_from_json(v) for v in obj]
+        return obj
+
+    def _save_organ_state(self):
+        """保存所有器官的学习状态到磁盘 (P5-21)。"""
+        state = {}
+        for organ_name, attr_names in self._ORGAN_LEARNING_ATTRS.items():
+            organ = self.organs.get(organ_name)
+            if organ is None:
+                continue
+            organ_state = {}
+            for attr_name in attr_names:
+                if hasattr(organ, attr_name):
+                    value = getattr(organ, attr_name)
+                    organ_state[attr_name] = self._serialize_for_json(value)
+            state[organ_name] = organ_state
+
+        state_path = self._get_organ_state_path()
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        logger.info(f"Organ learning state saved to {state_path}")
+
+    def _load_organ_state(self):
+        """从磁盘恢复器官学习状态 (P5-21)。在器官构造后调用。"""
+        state_path = self._get_organ_state_path()
+        if not state_path.exists():
+            logger.debug(f"No organ state file at {state_path}, starting fresh")
+            return
+
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                state = json.load(f)
+
+            restored_count = 0
+            for organ_name, organ_state in state.items():
+                organ = self.organs.get(organ_name)
+                if organ is None:
+                    continue
+                for attr_name, value in organ_state.items():
+                    if hasattr(organ, attr_name):
+                        setattr(organ, attr_name, self._deserialize_from_json(value))
+                        restored_count += 1
+
+            logger.info(f"Organ learning state restored from {state_path} ({restored_count} attrs)")
+        except Exception as e:
+            logger.warning(f"Failed to load organ state: {e}, starting fresh")
+
     def _update_body(self, dt: float):
         """Update body state with metabolism and circadian rhythm.
 
@@ -1841,6 +1957,12 @@ class LifeLoop(GapDetectorMixin):
             logger.debug("Final state persisted")
         except Exception as e:
             logger.error(f"Error persisting final state: {e}")
+
+        # P5-21: 持久化器官学习状态（跨 run 保留）
+        try:
+            self._save_organ_state()
+        except Exception as e:
+            logger.error(f"Error persisting organ state: {e}")
 
         # Final state summary
         try:
