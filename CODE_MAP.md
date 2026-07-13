@@ -1134,7 +1134,7 @@ get_last_thought()/clear_last_thought() ← 选择性记忆用
 
 **项目管理状态**：`active_projects`(dict)/`task_queue`/`blocked_tasks`/`task_dependencies`/`milestone_history`/`work_sessions`/`productivity_scores`。`create_project`/`add_task`/`complete_task`/`block_task` 是管理 API。
 
-**🔍问题 P5-21（🔴 重要，项目状态全在器官内存，永不持久化）**：builder 的 `active_projects`/`task_queue`/`completed_tasks` 全是实例属性，**life_loop shutdown 不保存**（同 schema/skill 的 P3-5 模式）。重启后所有"项目/任务/里程碑"清零。且 `record_work_session`/`complete_task`/`block_task` **life_loop 不调用**——即 builder 的项目状态在运行时也几乎不更新（只有 `_should_start_new_project` 在 goal 含 build/create 时初始化空项目）。builder 器官的"项目管理"功能基本是死的。
+**✅问题 P5-21 已修**：~~器官学习状态全在内存，永不持久化~~。Step1: life_loop PHASE 11.5 新增 `_record_organ_learning`——根据动作类型路由到对应器官的 record_*（mind 记计划结果、scout 记探索、builder 记工作session、immune 记信任、caretaker 记健康、archivist 记巩固质量）。Step2: `_save_organ_state`/`_load_organ_state` 持久化到 `artifacts/organ_state/{session_id}.json`，跨 run 保留。15-tick 实测：mind.plan_history 0→15、immune.action_trust_scores 学到 REFLECT 可靠。round-trip 验证：shutdown→新 LifeLoop 状态完全恢复。
 **🔍问题**：`_should_start_new_project` 检测 goal 含 "build/create/develop/implement/construct/design"（英文关键词），但 goal 多为中文→几乎不触发项目初始化。
 
 ### 5.13 `archivist_organ.py` (754行) ⭐ 档案器官（curiosity）
@@ -1169,14 +1169,14 @@ get_last_thought()/clear_last_thought() ← 选择性记忆用
 | OrganInterface | — | 🔴 **完全孤立**(仅测试, P5-12) |
 | organs/limbs/Limb | OrganManager 持有 | 🔴 **mount 是模拟, execute 恒失败**(P5-14) |
 | immune.veto_risky_action/assess_action_risk | — | 🔴 **完全孤立**(P5-20, 被 safety/ 取代) |
-| 各器官学习 API（record_plan_outcome 等） | — | 🔴 **完全孤立**(P5-18/P5-19/P5-21) |
+| 各器官学习 API（record_plan_outcome 等） | PHASE 11.5 `_record_organ_learning` | ✅ 已接入(P5-21) |
 
 **高危区**：
 1. **新架构只写**（P5-6）：UnifiedOrganManager 注册器官从不查询——growth/plugins"注册为器官"写了等于没写
 2. **驱动力传导断裂**（P5-10）：PHASE 4.5 算的 drive_signals 没有任何器官消费
 3. **LLM 思考被关键词降级**（P5-15）：6 器官决策权在硬编码中文关键词表，LLM 沦为叙事生成器
 4. **immune 否决权虚设**（P5-20）：安全执行被 safety/ 取代，immune 只提 REFLECT
-5. **器官状态不持久**（P5-21）：builder/archivist/scout 的学习状态重启清零
+5. ~~**器官状态不持久**（P5-21）~~：✅ 已修（PHASE 11.5 接通 record_* + artifacts/organ_state/ 持久化）
 6. **三套器官选择逻辑**（P5-12）：OrganSelector(信号) + differentiate(基因) + life_loop(价值权重) 并存
 
 **与论文的对应**：器官分化 = §3.8；价值驱动器官选择 = §3.9（PHASE 7 的 `organ_priority_by_value`）；器官作为判断器官（LLM 会话）= §3.4.2；共享大脑 = §3.4.2 黑板；6 器官优先级 caretaker>immune>mind>scout>builder>archivist = Genome 默认基因 priority。
@@ -2291,7 +2291,7 @@ user_input → self._pending_user_input
 
 > 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) + Phase 6(tools) + Phase 4(cognition/perception/metabolism) + Phase 7(safety/persistence) + Phase 9(入口+Web) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。部分行合并多个同源 ID（如 P7-22/24/25）。
 >
-> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项中 28 项已处理，**仅剩 1 项**（P5-21 器官学习状态持久化，需架构设计）。
+> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项 **全部已处理**，无剩余高优先级项。🎉
 
 ### 🔴 高优先级（影响正确性/可维护性）
 
@@ -2314,7 +2314,7 @@ user_input → self._pending_user_input
 | P5-10 ✅已修 | **驱动力→器官传导链路断裂**：PHASE 4.5 算的 drive_signals/drives_prompt 塞进 context，但 6 个器官的 propose_actions 无一读取它 | organs/internal/* + core/life_loop.py:920-922 | 驱动力信号被算出后无人消费，价值→驱动力→行为链断在最后一步 |
 | P5-15 ✅已修 | **LLM 思考被中文关键词降级**：6 器官的 `_parse_llm_thought_to_actions` 用硬编码关键词把 LLM 输出转 Action，LLM 沦为叙事生成器 | organs/internal/*_organ.py | 器官决策权在关键词表而非 LLM；同义词/英文漏匹配→退化默认动作 |
 | P5-20 ✅记录已知 | **immune 否决权/风险评估未接入**：3 个方法保留备用，安全执行由 safety/ 负责。论文§3.4.2 设计 immune 为最高优先级安全执行者，当前偏离为纯提案器官。完整接入会创造两套安全系统重叠，记录为已知设计偏差 | organs/internal/immune_organ.py | immune 只提 REFLECT，信任校准恒为默认 0.5 |
-| P5-21 | **器官学习/项目状态全不持久化**：builder 的 active_projects/task_queue、archivist 的索引、scout/mind 的学习历史重启清零，且 record_* API life_loop 不调 | organs/internal/{builder,archivist,scout,mind}_organ.py | 器官"从经验学习"功能形同虚设 |
+| P5-21 ✅已修 | **器官学习/项目状态全不持久化**：Step1 接通 PHASE 11.5 `_record_organ_learning`（mind/scout/builder/immune/caretaker/archivist 的 record_* 全接入）+ Step2 持久化到 `artifacts/organ_state/{session_id}.json`（跨 run 保留）。round-trip 验证通过 | organs/internal/*_organ.py + core/life_loop.py | ~~器官"从经验学习"形同虚设~~ 已激活 |
 | P7-14 ✅已修 | **代码执行走最弱沙箱**：生产路径是 `tool_executor._execute_code_sandboxed`（裸子串黑名单 + exec），safe_executor.py 的 AST 审计沙箱完全闲置；config 的 sandbox_code_exec flag 无处读取 | tools/{tool_executor,safe_executor}.py + safety/sandbox.py + dynamic_tool_registry.py:442 | 论文§3.11.3 安全沙箱形同虚设，LLM 拥有完全本地执行权（FULL_ACCESS）——**整个项目最高危的安全问题** |
 | P7-16 ✅已修 | **persistence/ 整包孤岛**：~~life_loop 不导入 persistence~~ 已接入 STRICT 回放（run.py --replay <dir>），PHASE 10 用缓存 outcome。4 个零引用写入器已删（event_log/tool_call_log/snapshot/storage）。解 P7-21/23/26/27/30/31/32 | persistence/replay.py + core/life_loop.py | 论文 C8 可复现性：STRICT 回放可用（budget 全 0 验证） |
 | P4-1 ✅已修 | **`priority_level` 全域未设置**：GoalCompiler 只写 deprecated 的 `Goal.priority`(float)，从不写论文§3.8.1 的 1-6 级 `priority_level` 枚举 | cognition/goal_compiler.py:212,292 + 全项目 | 论文 6 级优先级系统运行时不生效，所有 Goal 恒为 MEDIUM(3) |
@@ -2601,6 +2601,6 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **203 文件/75k 行**，累计删除约 11200 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **49 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项中 **28 项已处理**，仅剩 P5-21（器官学习状态持久化）。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)；**G 阶段** P8-4 GlobalState↔FieldStore 双真相源收敛（方案A：FieldStore 单一真相源委托，删 _sync_* -93行）+ P8-15 mood 范围统一 [0,1]；**H 阶段** P8-2 life_loop_backup.py(2565行) + P9-4/P9-3/P8-1 小死代码(~60行) + v15 维度测试修复(4失败→0) + 6 个已删条目标记 ✅。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **203 文件/75k 行**，累计删除约 11200 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **50 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项 **全部已处理** 🎉，无剩余。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)；**G 阶段** P8-4 GlobalState↔FieldStore 双真相源收敛（方案A：FieldStore 单一真相源委托，删 _sync_* -93行）+ P8-15 mood 范围统一 [0,1]；**H 阶段** P8-2 life_loop_backup.py(2565行) + P9-4/P9-3/P8-1 小死代码(~60行) + v15 维度测试修复(4失败→0) + 6 个已删条目标记 ✅；**I 阶段** P5-21 器官学习接通(PHASE 11.5 `_record_organ_learning`) + 持久化(`artifacts/organ_state/`，round-trip 验证通过)——高优先级 29 项至此全部清零。*
 
 
