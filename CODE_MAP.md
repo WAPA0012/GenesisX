@@ -1842,7 +1842,7 @@ PHASE 16  持久化 override 状态                        — 优先级覆盖�
 - **覆盖状态**（论文§3.6.4）：`override_active:set` / `override_trigger_time` / `gaps_at_trigger`
 - **兼容属性**：`energy`↔`1-activity_fatigue`、`fatigue`↔`activity_fatigue`、`bond`/`trust`↔`relationship`
 
-**🔍问题 P8-4（重要）— GlobalState 与 FieldStore 双重真相源**：7 个情感标量字段（energy/mood/stress/fatigue/bond/trust/boredom）**同时存在于 `GlobalState` 和 `FieldStore`**，靠 life_loop 的 `_sync_state_to_global`/`_sync_fields_to_global` **手工同步**。FieldStore 是运行时活态（snapshot 传给器官/特征提取），GlobalState 是可序列化聚合。两套真相源 + 手工同步 = 高危区。
+**✅问题 P8-4 已修 — GlobalState 与 FieldStore 双重真相源消除**：~~7 个情感标量字段同时存于 GlobalState 和 FieldStore，靠手工 `_sync_*` 同步~~。方案 A 实施：GlobalState 的 7 标量改为 **FieldStore 单一真相源委托**（property getter/setter 委托 FieldStore，未注入时用本地 fallback）。删除 `_sync_state_to_global`/`_sync_fields_to_global` 两个手工同步函数（-93 行）。FieldStore 在 `_init_stores` 注入 GlobalState。数据模型以 FieldStore 为准：7 个独立字段，energy/fatigue 不再折叠到 activity_fatigue，bond/trust 不再折叠到 relationship。1-tick 实测验证 7 标量零 drift。
 **🔍问题 P8-5**：`update_body()` 每 tick 调 `psutil.cpu_percent(interval=0.1)` —— **阻塞 100ms**，拖慢主循环。
 **🔍问题 P8-6**：dataclass 默认值与 `from_dict` 回退值不一致（mood: 0.0 vs 0.5；stress: 0.15 vs 0.2；boredom: 0.30 vs 0.0）——默认 GlobalState 经 `to_dict→from_dict` 往返会**静默改变值**，影响持久化正确性。
 **🔍问题**：`trust` setter 是 `relationship=(relationship+value)/2`（有损平均），而 `bond` setter 是直接赋值——不对称，`g.trust=x; g.trust≠x`。
@@ -1943,7 +1943,7 @@ LifeLoop 继承的混入，从用户请求/驱动信号/探索历史三源汇总
 
 **文件**：`fields.py`(BoundedScalar/Valence/Prob)、`slots.py`、`signals.py`(Signal 半衰期衰减)、`ledger.py`(ResourceBudget, 默认 cpu_tokens 无限)、`factory.py`(从 resources.yaml 建 ledger)、`__init__.py`。
 
-**🔍问题 P8-14**：`FieldStore` 与 `GlobalState` 重复存 7 个字段（见 P8-4）。
+**✅问题 P8-14 已修**：~~`FieldStore` 与 `GlobalState` 重复存 7 个字段~~（见 P8-4，已随方案 A 消除——GlobalState 7 标量委托 FieldStore，单一真相源）。
 **🔍问题**：`MetabolicLedger.from_dict` **不恢复 `unlimited` 标志**——重载后无限资源状态丢失；`spend()` 不检查 unlimited（无限资源仍累计 spent，语义怪）；`Valence` 类定义但 FieldStore 全用 Prob（死类）；字段初始值(0.8/0.5/0.2…)硬编码非配置驱动。
 
 ---
@@ -2034,7 +2034,7 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 **精读优先级**：`life_loop.tick()`(17阶段必懂) > `action_executor._execute_chat`(对话落地) > `differentiate.select_organs`(器官分化) > stores 四件套 > handlers 其余。
 
 **高危区**：
-1. **状态同步**（P8-4/P8-6）：GlobalState↔FieldStore 双真相源 + 往返不一致——任何动 mood/stress 的修改都要两边改
+1. ~~**状态同步**（P8-4/P8-6）：GlobalState↔FieldStore 双真相源~~ ✅ P8-4 已修（方案 A：FieldStore 单一真相源委托）
 2. **能力缺口→成长链路**（P8-11）：tool/tool_id 键不一致导致 USE_TOOL 永不驱动成长
 3. **多轮对话**（P8-10）：响应覆盖 bug 让多轮工具调用丢正文
 4. **自定义基因**（P8-7）：缓存吞掉 config，器官分化配置失效
@@ -2292,7 +2292,7 @@ user_input → self._pending_user_input
 
 > 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) + Phase 6(tools) + Phase 4(cognition/perception/metabolism) + Phase 7(safety/persistence) + Phase 9(入口+Web) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。部分行合并多个同源 ID（如 P7-22/24/25）。
 >
-> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项中 28 项已处理，**仅剩 1 项**（P8-4，属系统性重构需专门规划）。
+> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项中 **29 项全部已处理**，无剩余高优先级项。
 
 ### 🔴 高优先级（影响正确性/可维护性）
 
@@ -2302,7 +2302,7 @@ user_input → self._pending_user_input
 | P2-3 ✅已修 | **axiology 严重代码重复**：value_dimensions.py(799行) 与 feature_extractors.py+utilities_unified.py 功能重叠 | axiology/ | 改一处忘另一处，行为不一致 |
 | P2-5 ✅已修 | **drives/ 5维驱动力**：~~顶部注释禁用~~ 实际由 organ_manager 间接调用，drives_prompt 已接入器官（P5-10），过时禁用注释已清理 | axiology/drives/ | 实际是活的 |
 | P1-4 ✅已修 | **两套配置加载体系并存**：config.py(load_config→dict) vs config_manager.py(ConfigManager→对象)，且都有 load_config() 同名函数。经 grep 确认 config_manager.py 零引用（4 入口全用 config.py），已删除该死代码文件（509 行） | common/ | ~~极易混淆，维护负担~~ 已消除 |
-| P8-4 | **GlobalState 与 FieldStore 双真相源**：7 个情感标量字段同时存于两处，靠 life_loop 手工 `_sync_*` 同步 | core/state.py + core/stores/fields.py + life_loop.py | 两套真值，动 mood/stress 必须两边改，遗漏即不一致 |
+| P8-4 ✅已修 | **GlobalState 与 FieldStore 双真相源**：方案 A——GlobalState 7 标量改为 FieldStore 委托（property getter/setter），删 `_sync_*` 手工同步函数（-93行），单一真相源。1-tick 实测零 drift | core/state.py + core/stores/fields.py + life_loop.py | ~~两套真值~~ 已统一为 FieldStore |
 | P8-10 ✅已修 | **多轮 CHAT 响应被覆盖**：`llm_response = round_response`(注释却写"累积")，前几轮正文丢弃 | core/handlers/action_executor.py:342 | 多轮工具调用场景用户只能看到最后一轮文字 |
 | P8-11 ✅已修 | **tool/tool_id 键不一致**：gap_detector 读 `params["tool"]`，executor 读 `params["tool_id"]` | core/handlers/{gap_detector:243,action_executor:505} | USE_TOOL 的能力缺口检查永远拿空值，成长系统不被 USE_TOOL 驱动 |
 | P8-7 ✅已修 | **自定义基因被缓存吞掉**：~~_get_differentiator() 空 config~~ PHASE 7 改用带 config 的 diff.select_organs()，custom_genes 生效 | core/life_loop.py + differentiate.py | 器官分化配置生效 |
@@ -2591,6 +2591,6 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **204 文件/75k 行**，累计删除约 8540 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **40 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项中仅剩 **1 项**未处理（P8-4 GlobalState↔FieldStore 双真相源），属系统性重构，改动面大需专门规划。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **204 文件/75k 行**，累计删除约 8633 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **42 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项 **全部已处理**，无剩余。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)；**G 阶段** P8-4 GlobalState↔FieldStore 双真相源收敛（方案A：FieldStore 单一真相源委托，删 _sync_* -93行）+ P8-15 mood 范围统一 [0,1]。*
 
 
