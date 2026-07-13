@@ -330,8 +330,13 @@ class TestLifeLoopIntegration:
 
     @pytest.fixture
     def temp_run_dir(self):
-        """Create temporary directory for run artifacts."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        """Create temporary directory for run artifacts.
+
+        Windows: LifeLoop 的 JSONLWriter 打开文件句柄后若未 shutdown，
+        TemporaryDirectory 清理时会 PermissionError。用 ignore_cleanup_errors
+        容忍（测试本身已验证完毕，残留 temp 文件由 OS 清理）。
+        """
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture

@@ -51,8 +51,10 @@ class TestSemanticNoveltyCalculator:
     """Test SemanticNoveltyCalculator core functionality."""
 
     def test_initialization(self):
-        """Test calculator initialization with defaults (TF-IDF)."""
-        calc = SemanticNoveltyCalculator()
+        """Test calculator initialization with explicit TF-IDF backend."""
+        # 显式指定 TFIDF，避免环境装了 sentence_transformers 时自动检测导致非确定性
+        config = EmbeddingConfig(backend=EmbeddingBackend.TFIDF)
+        calc = SemanticNoveltyCalculator(config=config)
         assert calc.config is not None
         assert calc.config.backend == EmbeddingBackend.TFIDF
 
@@ -306,11 +308,16 @@ class TestConvenienceFunctions:
     """Test convenience functions."""
 
     def test_get_default_calculator(self):
-        """Test default calculator factory."""
+        """Test default calculator factory returns a working instance."""
         calc = get_default_calculator()
 
         assert isinstance(calc, SemanticNoveltyCalculator)
-        assert calc.config.backend == EmbeddingBackend.TFIDF
+        # 不硬编码 backend——get_default_calculator 会自动检测环境
+        # （装了 sentence_transformers 用之，否则回退 TFIDF），这里只验证可用
+        assert calc.config.backend in (
+            EmbeddingBackend.TFIDF,
+            EmbeddingBackend.SENTENCE_TRANSFORMERS,
+        )
 
     def test_compute_novelty_function(self):
         """Test convenience compute_novelty function."""
