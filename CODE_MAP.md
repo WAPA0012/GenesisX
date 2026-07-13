@@ -885,7 +885,7 @@ state.py 注释自述"修正后语义：占用率越高压力越大"，即 **sta
 - 论文 §3.2 原式与 state.py 不符 → **生产路径用的是偏离论文的版本**。
 **🔍问题 P4-62（🟡 constants 缺失）**：α/β/0.35 三处独立硬编码（resource_pressure.py、state.py），`common/constants.py` **无** resource_pressure 常量。无单一真相源。
 **🔍问题 P4-63（🟡 `__main__` 测试块残留）**：L224-256 应移至 tests/。
-**🔍问题 P4-64（🔴 METABOLISM 常量整段失效）**：`grep` 确认 `MetabolismConstants`（L167-188：ENERGY_BASE_DECAY/FATIGUE_BASE_ACCUMULATION/BOREDOM_ACCUMULATION=0.005/...）在生产代码**仅被 `common/__init__.py` re-export，无任何读取点**。所有 metabolism 计算各用各的硬编码：state.py 用 0.01/0.005、boredom.py 用 0.03/0.20/0.05、recovery.py 用 0.05/0.08/0.03、circadian.py 用余弦/字典。**constants 层与实现层完全脱节，4 套数值并存**。这是第1章 P1-3"参数三重定义"在 metabolism 的具体爆发。
+**✅问题 P4-64 已修**：~~`MetabolismConstants`（L167-188）整段死常量~~。全项目 grep 确认 `METABOLISM`/`MetabolismConstants`/13 个常量名/`get_all_constants()` 在生产代码**零读取点**，仅被 `common/__init__.py` re-export。实际 metabolism 计算各用各的硬编码：`core/emotion_decay.py`（lambda_valence=0.05/lambda_stress=0.08/lambda_boredom=0.03）、`metabolism/boredom.py`（ETA_*=0.03/0.20/0.05）。已删除 `MetabolismConstants` 类 + 全局 `METABOLISM` 实例 + `get_all_constants` 的 metabolism 键 + `__init__` re-export，常量段从 11 减至 10。运行时数值零变化（删的是无人读的声明层）。
 
 ---
 
@@ -917,12 +917,12 @@ state.py 注释自述"修正后语义：占用率越高压力越大"，即 **sta
 | `signal_filter.py` | — | — | 🔴 死代码(P4-45) |
 | `recovery.py` 整模块 | PHASE 1（绕过）| life_loop 内联 L1651 | 🔴 死代码(P4-58) |
 | `resource_pressure.py` | PHASE 1（绕过）| state._update_resource_pressure | 🔴 **公式与 state 相反**(P4-61) |
-| `constants.METABOLISM` | — | — | 🔴 整段死常量(P4-64) |
+| `constants.METABOLISM` | — | — | ✅ 已删(P4-64) |
 
 **高危区**：
 1. **`priority_level` 全域未设置**（P4-1）：论文 §3.8.1 的 6 级优先级系统运行时不生效，所有 Goal 恒为 MEDIUM
 2. **resource_pressure 与 state.py 公式语义相反**（P4-61）：生产路径偏离论文，两套"有效无聊度"触发条件相反
-3. **METABOLISM 常量整段失效**（P4-64）：4 套数值并存，调参改一处无效
+3. ~~**METABOLISM 常量整段失效**（P4-64）~~：✅ 已删除死常量，4 套数值仍并存但已无"虚假单一来源"误导
 4. **self_perception 工具断链**（P4-31）：注册未分发，LLM 选了也找不到 handler
 5. **目标进度永不更新**（P4-2/P4-22）：goal_progress.py + goal_compiler.compute_progress 两套都没接 life_loop，goal.progress 停在 0.0
 6. **Q^insight 三重实现**（P4-20）：cognition/insight_quality(死)、memory/consolidation(活)、eval/gxbs 公式不同
@@ -2292,7 +2292,7 @@ user_input → self._pending_user_input
 
 > 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) + Phase 6(tools) + Phase 4(cognition/perception/metabolism) + Phase 7(safety/persistence) + Phase 9(入口+Web) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。部分行合并多个同源 ID（如 P7-22/24/25）。
 >
-> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项中 27 项已处理，**仅剩 2 项**（P8-4/P4-64，均属系统性重构需专门规划）。
+> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项中 28 项已处理，**仅剩 1 项**（P8-4，属系统性重构需专门规划）。
 
 ### 🔴 高优先级（影响正确性/可维护性）
 
@@ -2320,7 +2320,7 @@ user_input → self._pending_user_input
 | P7-16 ✅已修 | **persistence/ 整包孤岛**：~~life_loop 不导入 persistence~~ 已接入 STRICT 回放（run.py --replay <dir>），PHASE 10 用缓存 outcome。4 个零引用写入器已删（event_log/tool_call_log/snapshot/storage）。解 P7-21/23/26/27/30/31/32 | persistence/replay.py + core/life_loop.py | 论文 C8 可复现性：STRICT 回放可用（budget 全 0 验证） |
 | P4-1 ✅已修 | **`priority_level` 全域未设置**：GoalCompiler 只写 deprecated 的 `Goal.priority`(float)，从不写论文§3.8.1 的 1-6 级 `priority_level` 枚举 | cognition/goal_compiler.py:212,292 + 全项目 | 论文 6 级优先级系统运行时不生效，所有 Goal 恒为 MEDIUM(3) |
 | P4-61 ✅已修 | **resource_pressure.py 与 state.py 公式语义相反**：metabolism 用 `RP = max(0, 1 − (α·C+β·M))`（论文版，死），state.py 用 `RP = α·C+β·M`（反转版，活） | metabolism/resource_pressure.py:92 + core/state.py:302-305 | 同一(compute,memory)给出相反的紧急判断；两套"有效无聊度"触发条件相反；生产路径偏离论文 |
-| P4-64 | **METABOLISM 常量整段失效**：MetabolismConstants 在生产代码仅被 re-export，无任何读取点；所有 metabolism 计算各用各的硬编码（state/boredom/recovery/circadian 4 套数值并存） | common/constants.py:167-188 + metabolism/ | 调参改一处无效，参数三重定义问题(P1-3)在 metabolism 的具体爆发 |
+| P4-64 ✅已修 | **METABOLISM 常量整段失效**：MetabolismConstants 在生产代码仅被 re-export，无任何读取点。已删除该死常量段（类+实例+re-export），运行时零变化。注：4 套 metabolism 硬编码（emotion_decay/boredom 等）仍并存，但"虚假单一来源"已消除 | ~~common/constants.py:167-188~~ + metabolism/ | ~~调参改一处无效~~ 已消除误导 |
 | P4-31 ✅已修 | **self_perception 工具断链**：tool_registry 注册了 read_own_logs/system_stats，但 tool_executor 分发链只有 5 个分支无这两个→LLM 选了也找不到 handler | perception/self_perception.py + tools/{tool_registry,tool_executor}.py | 自我感知能力实质死代码化；pressure_score 无法回流到 HOMEOSTASIS |
 | P7-8 ✅已修 | **三套契约系统互不连通**：tool_registry.ToolSpec.preconditions（字符串，永不求值）/ tool_protocol preconditions（Callable，整体死代码）/ contract_guard（独立类，死代码） | tools/{tool_registry,tool_protocol}.py + safety/contract_guard.py | 论文§3.11 契约前置/后置条件机制完全不工作 |
 | P4-22 ✅已修 | **goal_progress.py 整模块死代码**：ProgressCalculator/GoalTracker/Milestone 零运行时引用；且其 GoalType 枚举(8)与 goal_compiler 模板(5)/planner 字符串(8+) 三套分类法互不匹配 | cognition/goal_progress.py | 562 行死代码；目标进度跟踪体系整体失效，goal.progress 停在 0.0 |
@@ -2579,6 +2579,6 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **205 文件/75k 行**，累计删除约 8000 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **38 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项中仅剩 **2 项**未处理（P8-4 GlobalState↔FieldStore 双真相源 / P4-64 METABOLISM 常量统一），均属系统性重构，改动面大需专门规划。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **205 文件/75k 行**，累计删除约 8000 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **38 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项中仅剩 **1 项**未处理（P8-4 GlobalState↔FieldStore 双真相源），属系统性重构，改动面大需专门规划。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）。*
 
 

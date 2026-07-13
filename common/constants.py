@@ -160,35 +160,6 @@ class AffectConstants:
 
 
 # =============================================================================
-# Metabolism Constants
-# =============================================================================
-
-@dataclass
-class MetabolismConstants:
-    """Constants for metabolic system."""
-
-    # Energy update rates
-    ENERGY_BASE_DECAY: Final[float] = 0.01
-    ENERGY_ACTION_COST: Final[float] = 0.05
-    ENERGY_SLEEP_GAIN: Final[float] = 0.15
-
-    # Fatigue update rates
-    FATIGUE_BASE_ACCUMULATION: Final[float] = 0.01
-    FATIGUE_ACTION_COST: Final[float] = 0.03
-    FATIGUE_SLEEP_REDUCTION: Final[float] = 0.20
-
-    # Stress decay rates (by stress level)
-    STRESS_DECAY_LOW: Final[float] = 0.02   # stress < 0.3
-    STRESS_DECAY_MEDIUM: Final[float] = 0.05  # stress 0.3-0.7
-    STRESS_DECAY_HIGH: Final[float] = 0.10   # stress > 0.7
-
-    # Boredom update rates
-    BOREDOM_ACCUMULATION: Final[float] = 0.005
-    BOREDOM_REDUCTION_NOVELTY: Final[float] = 0.10
-    BOREDOM_REDUCTION_SOCIAL: Final[float] = 0.05
-
-
-# =============================================================================
 # Tool Cost Constants
 # =============================================================================
 
@@ -343,7 +314,6 @@ class ToolConstants:
 MEMORY: Final[MemoryConstants] = MemoryConstants()
 VALUE_SYSTEM: Final[ValueSystemConstants] = ValueSystemConstants()
 AFFECT: Final[AffectConstants] = AffectConstants()
-METABOLISM: Final[MetabolismConstants] = MetabolismConstants()
 TOOL_COST: Final[ToolCostConstants] = ToolCostConstants()
 LEARNING: Final[LearningConstants] = LearningConstants()
 CONSOLIDATION: Final[ConsolidationConstants] = ConsolidationConstants()
@@ -363,7 +333,6 @@ def get_all_constants() -> Dict[str, Any]:
         "memory": MEMORY,
         "value_system": VALUE_SYSTEM,
         "affect": AFFECT,
-        "metabolism": METABOLISM,
         "tool_cost": TOOL_COST,
         "learning": LEARNING,
         "consolidation": CONSOLIDATION,
