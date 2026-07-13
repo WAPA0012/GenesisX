@@ -251,7 +251,6 @@ The system's core engine, responsible for life loop, organ differentiation, stat
 | [exploration.py](core/exploration.py) | **Exploration System** - Exploration behavior management |
 | [invariants.py](core/invariants.py) | **Invariant Checking** - Maintains system invariants |
 | [life_loop.py](core/life_loop.py) | **Life Loop** - Main loop engine, coordinates all systems |
-| [life_loop_backup.py](core/life_loop_backup.py) | **Life Loop Backup** - Backup version |
 | [resource_config.py](core/resource_config.py) | **Resource Configuration** - Resource management configuration |
 | [scheduler.py](core/scheduler.py) | **Scheduler** - Task and organ scheduling management |
 | [state.py](core/state.py) | **State Management** - System state definition and updates |

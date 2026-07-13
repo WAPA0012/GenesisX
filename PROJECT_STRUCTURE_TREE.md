@@ -251,7 +251,6 @@ GenesisX/
 | [exploration.py](core/exploration.py) | **探索系统** - 探索行为管理 |
 | [invariants.py](core/invariants.py) | **不变量检查** - 维护系统不变式 |
 | [life_loop.py](core/life_loop.py) | **生命循环** - 主循环引擎，协调所有系统 |
-| [life_loop_backup.py](core/life_loop_backup.py) | **生命循环备份** - 备用版本 |
 | [resource_config.py](core/resource_config.py) | **资源配置** - 资源管理配置 |
 | [scheduler.py](core/scheduler.py) | **调度器** - 任务和器官的调度管理 |
 | [state.py](core/state.py) | **状态管理** - 系统状态的定义和更新 |

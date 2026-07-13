@@ -1302,7 +1302,7 @@ get_last_thought()/clear_last_thought() ← 选择性记忆用
 
 **`tool_protocol.py::ToolExecutor`（L179）完全死代码**：定义了带风险门控（`max_risk_online=0.75`/`max_risk_offline=0.3`）、前后置条件校验、动态成本计算的"正经"执行器，但**全项目零实例化**——运行时用的是 tool_executor.py 的 LLMToolExecutor（无风险门控）。抽象基类 `Tool` 被 4 个具体工具（code_exec/embeddings/file_ops/web_search）继承，但它们的 `Tool` 实例**从不注册进 ToolExecutor**。**🔍问题 P6-12**：tool_protocol.py 的整套风险/契约/成本框架（292 行）是"论文实现了但没接"的典型。
 
-**`capability.py::CapabilityManager` 被 P8-1 遮蔽**（见第8章）：life_loop.py:48 导入它，但 :71 导入 core/capability_manager.py 同名类覆盖了它。确认 tools/capability.py 的 `CapabilityManager` 在主循环中**从未使用**（仅 life_loop_backup.py 用）。其 `CapabilityToken` 的 `budget_cpu_tokens`/`budget_money`/`revocable`/`audit_scope` 字段全部**存储但不读取**——token 只是能力名清单，无预算扣减。
+**`capability.py::CapabilityManager` 被 P8-1 遮蔽**（见第8章）：life_loop.py:48 导入它，但 :71 导入 core/capability_manager.py 同名类覆盖了它。确认 tools/capability.py 的 `CapabilityManager` 在主循环中**从未使用**（原 life_loop_backup.py 引用，该文件已于 P8-2 删除）。其 `CapabilityToken` 的 `budget_cpu_tokens`/`budget_money`/`revocable`/`audit_scope` 字段全部**存储但不读取**——token 只是能力名清单，无预算扣减。
 
 ### 6.6 `blackboard.py` (1369行) ⭐ Mind Field 多专家黑板（论文 §3.4.2，默认休眠）
 
@@ -1733,7 +1733,6 @@ code_exec 探测（L31-37）：`tool_id=="code_exec"` 或 params 代码串命中
 > ```
 > core/
 > ├── life_loop.py        (1883)  ⭐主循环，LifeLoop 类
-> ├── life_loop_backup.py (2565)  🔍备份(可删)
 > ├── differentiate.py    (633)   器官分化/基因表达
 > ├── tick.py             (62)    TickContext 数据载体
 > ├── state.py            (409)   GlobalState 全局状态聚合
@@ -1819,7 +1818,7 @@ PHASE 16  持久化 override 状态                        — 优先级覆盖�
 
 **🔍问题 P8-1（重要）**：`life_loop.py:48` `from tools.capability import CapabilityManager` 与 `:71` `from .capability_manager import CapabilityManager, create_capability_manager` **重名导入**——后者覆盖前者。`tools.capability.CapabilityManager`（基于 CapabilityToken 的轻量类）从未被使用，是**死导入**。
 
-**🔍问题 P8-2**：`life_loop_backup.py`(2565行) 比 `life_loop.py`(1883行) 还大。备份文件长期堆积，疑似可删。需 git 确认是否已被新版取代后删除。
+**✅问题 P8-2 已修**：~~`life_loop_backup.py`(2565行) 备份文件长期堆积~~。全项目 grep 确认 0 Python 引用，已删除整文件（2565 行）。
 
 ---
 
@@ -2384,7 +2383,7 @@ user_input → self._pending_user_input
 | P1-2 | Goal.is_expired 参数 current_tick 未使用 | common/models.py |
 | P1-6 | error_handler 与 utils.retry_on_failure 重试逻辑重复 | common/ |
 | P8-1 | life_loop.py:48 与 :71 重名导入 CapabilityManager，前者死导入 | core/life_loop.py |
-| P8-2 | life_loop_backup.py(2565行) 比正本还大，疑似可删 | core/life_loop_backup.py |
+| P8-2 ✅已修 | life_loop_backup.py(2565行) 0 Python 引用，已删除 | ~~core/life_loop_backup.py~~ |
 | P8-3 | TickContext 无器官分化结果字段，与"贯穿所有阶段"设计意图不符 | core/tick.py |
 | P8-5 | update_body 每 tick 调 psutil.cpu_percent(interval=0.1) 阻塞 100ms | core/state.py |
 | P8-8 | life_loop 每 tick 新建 Differentiator(仅用 advance_stage)，默认基因重复注册 | core/life_loop.py:1015 |
@@ -2598,7 +2597,7 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 **验证**：1-tick 实测 7 标量 state==fields 零 drift；代表性测试集零回归。
 **数据模型决定**：以 FieldStore 为准（7 独立字段）；UI 7 标量只读展示，无手动改值，方案 A 无障碍。
-**未动**：life_loop_backup.py（死代码，单独处理）；FieldStore 结构；GlobalState 非情感字段。
+**未动**：FieldStore 结构；GlobalState 非情感字段。（原 life_loop_backup.py 死代码已随 P8-2 删除）
 
 ---
 
