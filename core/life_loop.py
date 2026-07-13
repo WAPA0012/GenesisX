@@ -1469,6 +1469,10 @@ class LifeLoop(GapDetectorMixin):
         # Decay signals
         self.signals.tick(dt)
 
+        # === PHASE 11.5: Organ Learning Feedback (P5-21) ===
+        # 将动作结果反馈给器官，触发 record_* 学习
+        self._record_organ_learning(t, goal, selected_action, outcome, reward)
+
         # === PHASE 12: Memory Write ===
         ctx.advance_phase("memory_write")
         self._update_phase("memory_write", "存储记忆", 0.85)
@@ -1580,6 +1584,14 @@ class LifeLoop(GapDetectorMixin):
             self.state.reset_activity_fatigue(amount=1.0)
             if stats.get("schemas_created", 0) > 0 or stats.get("skills_created", 0) > 0:
                 logger.info(f"Consolidation: Schemas={stats['schemas_created']}, Skills={stats['skills_created']}")
+            # P5-21: 将巩固质量反馈给 archivist 触发学习
+            try:
+                quality = 0.5
+                if stats.get("schemas_created", 0) > 0 or stats.get("skills_created", 0) > 0:
+                    quality = 0.7  # 有产出视为高质量
+                self.organs["archivist"].mark_consolidation_quality(quality)
+            except Exception as e:
+                logger.debug(f"Archivist learning feedback skipped: {e}")
 
         # === PHASE 16: Persist Override State (论文 Section 3.6.4) ===
         ctx.advance_phase("persist_override")
@@ -1606,6 +1618,47 @@ class LifeLoop(GapDetectorMixin):
         self._update_phase("complete", "处理完成", 1.0)
 
         return episode
+
+    def _record_organ_learning(self, t: int, goal, action, outcome: Dict[str, Any], reward: float):
+        """PHASE 11.5: 将动作结果反馈给器官，触发 record_* 学习 (P5-21)。
+
+        根据 action.type 路由到对应器官的 record_* 方法。
+        所有调用包在 try/except 里——学习反馈失败不影响 tick 主流程。
+        """
+        success = outcome.get("success", outcome.get("ok", True))
+        action_type = action.type.value if hasattr(action.type, "value") else str(action.type)
+        goal_desc = goal.description if hasattr(goal, "description") else str(goal)
+
+        try:
+            # 1. Immune: 所有动作都更新动作信任分数
+            self.organs["immune"].update_action_trust(action_type, success)
+
+            # 2. Caretaker: 记录健康趋势（每 tick）
+            caretaker = self.organs["caretaker"]
+            caretaker.update_health_state("stress", self.fields.get("stress"))
+            caretaker.update_health_state("energy", self.fields.get("energy"))
+
+            # 3. Mind: 记录计划/认知动作的结果（所有有意识的动作）
+            cognitive_actions = ("THINK", "REFLECT", "CHAT", "EXPLORE",
+                                 "LEARN_SKILL", "GROW", "OPTIMIZE", "USE_TOOL")
+            if action_type in cognitive_actions:
+                self.organs["mind"].record_plan_outcome(t, goal_desc, action_type, success)
+
+            # 4. Scout: 记录探索结果
+            if action_type == "EXPLORE":
+                params = getattr(action, "params", {}) or {}
+                topic = params.get("topic", goal_desc)
+                depth = params.get("depth", "shallow")
+                self.organs["scout"].record_exploration_outcome(t, topic, depth, success)
+
+            # 5. Builder: 记录工作 session（构建/优化/工具类动作）
+            if action_type in ("GROW", "OPTIMIZE", "USE_TOOL"):
+                # reward ∈ [-1, 1] 映射到 productivity ∈ [0, 1]
+                productivity = max(0.0, min(1.0, (reward + 1.0) / 2.0))
+                self.organs["builder"].record_work_session(t, 1, productivity)
+
+        except Exception as e:
+            logger.warning(f"Organ learning feedback failed (tick {t}): {e}")
 
     def _update_body(self, dt: float):
         """Update body state with metabolism and circadian rhythm.
