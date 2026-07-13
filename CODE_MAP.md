@@ -2579,6 +2579,18 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **205 文件/75k 行**，累计删除约 8000 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **38 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项中仅剩 **1 项**未处理（P8-4 GlobalState↔FieldStore 双真相源），属系统性重构，改动面大需专门规划。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）。*
+#### F 阶段：双配置体系 + METABOLISM 死常量清理（2026-07-13，共删 ~540 行）
+| commit | 删除 | 行数 | 解的问题 |
+|---|---|---|---|
+| `f4a9189` | common/config_manager.py 整文件 | 509 | P1-4（ConfigManager/GenesisXConfig 零引用死代码，与 config.py 同名 load_config() 混淆） |
+| `34825ec` | README×3 + PROJECT_STRUCTURE_TREE×2 死链 + P6-9/P6-20 文档订正 | 8 | P1-4 文档清理 |
+| `32287d4` | constants.py 的 MetabolismConstants 类 + METABOLISM 实例 + re-export | 31 | P4-64（13 个 metabolism 常量零读取，实际计算用 emotion_decay/boredom 各自硬编码） |
+
+**验证**：每批删除后跑代表性测试集（test_fixes/life_loop_integration/organs/axiology/memory/chat_interaction），结果零差异；2 个 pre-existing 失败（integrity 维度 KeyError / chat）与本次无关。
+**未动**：config.py 的 Pydantic 模型/.env 逻辑；constants.py 其余 10 个常量类。
+
+---
+
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **204 文件/75k 行**，累计删除约 8540 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **40 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项中仅剩 **1 项**未处理（P8-4 GlobalState↔FieldStore 双真相源），属系统性重构，改动面大需专门规划。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)。*
 
 
