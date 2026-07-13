@@ -36,7 +36,6 @@ from core.life_loop import LifeLoop
 from core.autonomous_scheduler import AutonomousScheduler, NeedType
 from common.config import load_config
 from common.models import Action, Outcome, ActionType
-from tools.tool_definitions import get_available_tools
 from tools.tool_executor import LLMToolExecutor
 
 
@@ -393,60 +392,6 @@ class GenesisXChat:
             return "（无响应）"
         return "（执行了其他动作）"
 
-    def _handle_tool_calls(self, tool_calls: List[Dict]) -> str:
-        """处理工具调用"""
-        # 保存 assistant 的工具调用请求 (单个 assistant 消息包含所有工具调用)
-        self.messages.append({"role": "assistant", "tool_calls": tool_calls})
-
-        # 执行所有工具调用
-        tool_results = []
-        for tc in tool_calls:
-            # 提取工具名称
-            if "function" in tc:
-                tool_name = tc["function"]["name"]
-            elif "name" in tc:
-                tool_name = tc["name"]
-            else:
-                continue
-
-            # 显示工具调用
-            args = tc.get("function", {}).get("arguments", {})
-            if isinstance(args, str):
-                try:
-                    args = json.loads(args)
-                except (json.JSONDecodeError, ValueError):
-                    args = {}
-
-            self.display.print_tool_call(tool_name, args)
-
-            # 执行工具
-            result = self.tool_executor.execute_tool_call(tc)
-            success = not result.get("error", False)
-            self.display.print_tool_result(result.get("content", ""), success)
-
-            # 构造工具响应消息
-            tool_id = tc.get("id", "")
-            self.messages.append({
-                "role": "tool",
-                "tool_call_id": tool_id,
-                "content": result.get("content", "")
-            })
-
-        # 6. 再次调用 LLM，让它生成最终回复
-        final_response = self.llm.chat(self.messages, tools=None)
-
-        if final_response.get("ok"):
-            text = final_response.get("text", "")
-
-            # 清理消息历史：保留系统消息、最近几轮对话，移除工具调用细节
-            # 这样可以节省上下文，同时保留对话连贯性
-            self._cleanup_messages()
-
-            self.messages.append({"role": "assistant", "content": text})
-            return text
-
-        return "工具执行完成，但我无法生成回复。"
-
     def _cleanup_messages(self):
         """清理消息历史，移除工具调用细节但保留对话内容"""
         if len(self.messages) <= 6:
@@ -469,11 +414,6 @@ class GenesisXChat:
             self.messages = [system_msg] + recent_conversations
         else:
             self.messages = recent_conversations
-
-    def _autonomous_action(self) -> Optional[str]:
-        """自主行为（保留用于兼容，但实际由调度器处理）"""
-        # 新的调度器会处理所有自主动作逻辑
-        return None
 
     def run(self):
         """运行主循环"""

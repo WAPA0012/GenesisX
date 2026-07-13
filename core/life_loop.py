@@ -45,7 +45,6 @@ from affect.stress_affect import update_stress
 from metabolism.circadian import CircadianRhythm
 from organs import MindOrgan, CaretakerOrgan, ScoutOrgan, BuilderOrgan, ArchivistOrgan, ImmuneOrgan
 from tools.tool_registry import ToolRegistry
-from tools.capability import CapabilityManager
 from safety import check_integrity, assess_risk, check_budget
 from perception import observe_environment, build_context
 from axiology.weights import WeightUpdater
