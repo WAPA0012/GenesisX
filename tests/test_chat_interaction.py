@@ -36,7 +36,13 @@ def mock_chat():
 
 
 def test_conversation(mock_chat):
-    """测试对话交互 - 验证状态对象存在并可操作"""
+    """测试 GlobalState.update_body 的物理参数动态（被动 tick）。
+
+    P8-4 后 energy/fatigue 独立：update_body 累积 fatigue（活动疲劳）和 boredom，
+    衰减 stress，但不动 energy（energy 只在 EXPLORE/LEARN 动作时消耗，
+    SLEEP/昼夜节律恢复）。这是设计意图：数字生命永远有动力做事（价值缺口驱动），
+    update_body 不应被动扣减 energy。
+    """
 
     chat = mock_chat
 
@@ -46,31 +52,21 @@ def test_conversation(mock_chat):
     assert 0.0 <= chat.state.energy <= 1.0
     assert 0.0 <= chat.state.mood <= 1.0
 
-    # 模拟多次body更新
+    initial_energy = chat.state.energy
+    initial_fatigue = chat.state.fatigue
+
+    # 模拟多次body更新（被动 tick，无认知重活）
     for i in range(5):
         chat.state.update_body(dt=1.0)
 
-    # 验证能量消耗
-    assert chat.state.energy < 0.8  # 应该有所下降
-    assert chat.state.fatigue > 0.1  # 应该有所上升
-
-
-def test_emotional_response(mock_chat):
-    """测试情绪响应 - 验证stress和fatigue动态"""
-
-    chat = mock_chat
-
-    # 记录初始状态
-    initial_stress = chat.state.stress
-    initial_fatigue = chat.state.fatigue
-
-    # 模拟疲劳累积
-    for i in range(5):
-        chat.state.update_body(dt=10)
-        chat.state.fatigue = min(1.0, chat.state.fatigue + 0.15)
-
-    # 验证疲劳增加
+    # energy 不受 update_body 影响（无被动衰减——设计意图）
+    assert chat.state.energy == initial_energy
+    # fatigue 随活动累积（activity_fatigue 同步到 fatigue）
     assert chat.state.fatigue > initial_fatigue
+    # boredom 随时间增加
+    assert chat.state.boredom > 0.0
+    # stress 自然衰减
+    assert chat.state.stress <= 0.15  # 初始 0.15，5 tick 后衰减
 
 
 def test_goal_switching(mock_chat):
