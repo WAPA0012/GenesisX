@@ -112,8 +112,11 @@ message_queue: queue.Queue = queue.Queue()
 state_lock = Lock()
 
 # Progress tracking for SSE
-progress_queues: Dict[str, queue.Queue] = {}
+# P9-13: 值为 (queue, created_timestamp) 元组，定期清理超时 session 防内存泄漏
+progress_queues: Dict[str, tuple] = {}
 progress_lock = Lock()
+import time as _time
+_PROGRESS_TTL = 600  # 10 分钟无活动自动清理
 
 
 # ============================================================================
@@ -1228,10 +1231,15 @@ def api_progress(session_id):
     前端通过 EventSource 连接此端点，实时接收处理进度。
     """
     def generate():
-        # 创建此 session 的进度队列
+        # 创建此 session 的进度队列（P9-13: 带 timestamp 用于 TTL 清理）
         progress_queue = queue.Queue()
         with progress_lock:
-            progress_queues[session_id] = progress_queue
+            # 顺便清理超时的废弃队列
+            now = _time.time()
+            stale = [k for k, (q, ts) in progress_queues.items() if now - ts > _PROGRESS_TTL]
+            for k in stale:
+                del progress_queues[k]
+            progress_queues[session_id] = (progress_queue, now)
 
         try:
             while True:
@@ -1252,8 +1260,7 @@ def api_progress(session_id):
         finally:
             # 清理队列
             with progress_lock:
-                if session_id in progress_queues:
-                    del progress_queues[session_id]
+                progress_queues.pop(session_id, None)
 
     return Response(
         stream_with_context(generate()),
@@ -1268,9 +1275,11 @@ def api_progress(session_id):
 def _send_progress(session_id: str, phase: str, message: str, progress: float):
     """发送进度更新到 SSE 队列"""
     with progress_lock:
-        if session_id in progress_queues:
+        entry = progress_queues.get(session_id)
+        if entry:
             try:
-                progress_queues[session_id].put({
+                pq = entry[0]  # (queue, timestamp) 元组
+                pq.put({
                     'event': 'progress',
                     'phase': phase,
                     'message': message,

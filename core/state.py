@@ -414,9 +414,12 @@ class GlobalState:
             activity_fatigue=data.get("activity_fatigue", 0.0),
             # P8-4: 情感标量写入本地 fallback（from_dict 不注入 FieldStore；
             # 生产路径由 life_loop 注入 FieldStore 后这些值自动从 FieldStore 读）
-            _mood_local=data.get("mood", 0.5),
-            _stress_local=data.get("stress", 0.2),
-            _boredom_local=data.get("boredom", 0.0),
+            # P8-6: from_dict fallback 默认值与 dataclass 默认值对齐
+            # （原 mood=0.5/stress=0.2/boredom=0.0 与 dataclass 的 0.0/0.15/0.30 不一致，
+            # 导致部分序列化的 dict round-trip 后状态被静默改写）
+            _mood_local=data.get("mood", 0.0),
+            _stress_local=data.get("stress", 0.15),
+            _boredom_local=data.get("boredom", 0.30),
             _energy_local=data.get("energy", 1.0 - data.get("activity_fatigue", 0.0)),
             _fatigue_local=data.get("fatigue", data.get("activity_fatigue", 0.0)),
             _bond_local=data.get("bond", data.get("relationship", 0.2)),

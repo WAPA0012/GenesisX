@@ -216,6 +216,9 @@ class LifeLoop(GapDetectorMixin):
         self.planner = Planner()
         self.evaluator = PlanEvaluator()
         self.verifier = Verifier()
+        # P8-8: 缓存 Differentiator（genome config 不变，无需每 tick 重建）
+        from core.differentiate import Differentiator
+        self._differentiator = Differentiator(self.config.get("genome", {}))
 
     def _init_organs_and_tools(self):
         """初始化器官和工具系统"""
@@ -1035,8 +1038,8 @@ class LifeLoop(GapDetectorMixin):
         self._update_phase("organ_proposals", "器官处理中", 0.35)
 
         # 修复 M10: 检查是否需要推进发育阶段
-        from core.differentiate import Differentiator
-        diff = Differentiator(self.config.get("genome", {}))
+        # P8-8: 用缓存的 _differentiator（__init__ 时创建，genome 不变无需重建）
+        diff = self._differentiator
         new_stage = diff.advance_stage(self.state.stage, t)
         if new_stage is not None:
             old_stage = self.state.stage
