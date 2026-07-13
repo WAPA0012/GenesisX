@@ -199,15 +199,15 @@ class TestMoodUpdatePerDimension:
     def test_mood_per_dimension_coefficients(self):
         """Test that different dimensions have different coefficients."""
         rpe_per_dim = {
-            "curiosity": 0.5,   # High k_plus (0.15)
-            "integrity": 0.5,    # Lower k_plus (0.05)
+            "curiosity": 0.5,   # High k_plus (0.18)
+            "safety": 0.5,      # Lower k_plus (0.05)
         }
 
         delta_curiosity = DEFAULT_MOOD_COEFFICIENTS["curiosity"]["k_plus"] * 0.5
-        delta_integrity = DEFAULT_MOOD_COEFFICIENTS["integrity"]["k_plus"] * 0.5
+        delta_safety = DEFAULT_MOOD_COEFFICIENTS["safety"]["k_plus"] * 0.5
 
         # Curiosity should have larger mood impact
-        assert delta_curiosity > delta_integrity
+        assert delta_curiosity > delta_safety
 
     def test_mood_per_dimension_bounds(self):
         """Test per-dimension mood updates respect bounds."""
@@ -311,15 +311,15 @@ class TestStressUpdatePerDimension:
     def test_stress_per_dimension_coefficients(self):
         """Test that different dimensions have different stress impact."""
         rpe_per_dim = {
-            "integrity": -0.5,   # High s_gain (0.20)
-            "meaning": -0.5,     # Lower s_gain (0.02)
+            "safety": -0.5,      # High s_gain (0.20)
+            "curiosity": -0.5,   # Lower s_gain (0.03)
         }
 
-        delta_integrity = DEFAULT_STRESS_COEFFICIENTS["integrity"]["s_gain"] * 0.5
-        delta_meaning = DEFAULT_STRESS_COEFFICIENTS["meaning"]["s_gain"] * 0.5
+        delta_safety = DEFAULT_STRESS_COEFFICIENTS["safety"]["s_gain"] * 0.5
+        delta_curiosity = DEFAULT_STRESS_COEFFICIENTS["curiosity"]["s_gain"] * 0.5
 
-        # Integrity should have larger stress impact
-        assert delta_integrity > delta_meaning
+        # Safety should have larger stress impact
+        assert delta_safety > delta_curiosity
 
 
 class TestAffectUpdate:

@@ -191,7 +191,7 @@ class TestValueLearner:
         """Test basic initialization"""
         learner = ValueLearner()
         assert learner.params is not None
-        assert len(learner.params.setpoints) == 8
+        assert len(learner.params.setpoints) == 5  # v15: 5维核心价值 (原8维)
         assert learner.config.epsilon < 0.1  # ε << 1
 
     def test_add_rpe_signal_positive(self):

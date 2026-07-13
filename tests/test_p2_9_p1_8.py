@@ -88,7 +88,7 @@ def test_evidence_config_defaults():
     assert config.min_tool_calls == 1
     assert config.high_quality_threshold == 0.8
     assert "safety" in config.high_impact_tags
-    assert "integrity" in config.high_impact_tags
+    assert "attachment" in config.high_impact_tags  # v15: integrity 已移除，实际默认是 attachment
     assert config.require_evidence_for_high_quality is True
 
 
