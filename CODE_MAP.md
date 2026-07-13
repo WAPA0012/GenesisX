@@ -2589,6 +2589,17 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 **验证**：每批删除后跑代表性测试集（test_fixes/life_loop_integration/organs/axiology/memory/chat_interaction），结果零差异；2 个 pre-existing 失败（integrity 维度 KeyError / chat）与本次无关。
 **未动**：config.py 的 Pydantic 模型/.env 逻辑；constants.py 其余 10 个常量类。
 
+#### G 阶段：GlobalState↔FieldStore 双真相源收敛（2026-07-13，方案 A）
+| commit | 改动 | 行数 | 解的问题 |
+|---|---|---|---|
+| `792fb6f` | GlobalState 7 情感标量改为 property 委托 FieldStore + 注入参数 + 本地 fallback | +90/-43 | P8-4 Step1（单一真相源委托，energy/fatigue/bond/trust 不再折叠到 activity_fatigue/relationship） |
+| `b95af3d` | 删 `_sync_state_to_global`/`_sync_fields_to_global` + 8 handler 调用点改 fields.set + _persist 不再写两遍 | +34/-93 | P8-4 Step2（消灭手工同步，FieldStore 注入 GlobalState） |
+| `b5ea311` | invariants.py mood 范围 [-1,1]→[0,1] + CODE_MAP 文档 | +10/-8 | P8-15（mood 范围统一，affect/mood.py 实际 clamp [0,1]） |
+
+**验证**：1-tick 实测 7 标量 state==fields 零 drift；代表性测试集零回归。
+**数据模型决定**：以 FieldStore 为准（7 独立字段）；UI 7 标量只读展示，无手动改值，方案 A 无障碍。
+**未动**：life_loop_backup.py（死代码，单独处理）；FieldStore 结构；GlobalState 非情感字段。
+
 ---
 
 *文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **204 文件/75k 行**，累计删除约 8633 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **42 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项 **全部已处理**，无剩余。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)；**G 阶段** P8-4 GlobalState↔FieldStore 双真相源收敛（方案A：FieldStore 单一真相源委托，删 _sync_* -93行）+ P8-15 mood 范围统一 [0,1]。*
