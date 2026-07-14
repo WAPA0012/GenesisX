@@ -2403,7 +2403,7 @@ user_input → self._pending_user_input
 | P6-12 ✅已修 | tool_protocol.ToolExecutor(~193行) 零实例化死代码已删除。Tool/ToolMetadata/ToolRiskLevel 基类保留（code_exec/embeddings 在用） | tools/tool_protocol.py |
 | P6-15 | 黑板成本翻倍：M_REASON/M_COORD 先调 planner.propose_plans(内部可能再调LLM)，然后 L858 又无条件 client.chat→一次"推理"两次 LLM 调用 | tools/blackboard.py:486,858 |
 | P6-17 | create_core5_experts 硬编码 gpt-4/gpt-3.5-turbo + openai.com 端点，与当前 stepfun 环境完全不匹配 | tools/blackboard.py:1298 |
-| P6-18 | 多模型模式丢 tools：llm_orchestrator multi 分支调 process(user_message,context,tick) 不传 tools，blackboard.process 签名也不接收→多专家模式下函数调用静默失效 | tools/llm_orchestrator.py:206 |
+| P6-18 ✅已修 | 多模型模式丢 tools：已穿透 4 层 (orchestrator→process→expert→client)，仅 M_COORD 传 tools，ExpertResult 加 tool_calls 字段 | tools/llm_orchestrator.py + blackboard.py |
 | P6-21 | safe_executor 隐患：allowed_nodes 定义但不校验(实为黑名单)、max_memory_mb 不强制、线程超时不杀 worker、ExecutionTimeout 从不抛、reduce 非builtin 静默跳过 | tools/safe_executor.py |
 | P6-22 | code_exec 子进程模式拥有完整 stdlib+网络+文件系统，仅靠可绕过的正则前置过滤；Windows 直跑模式无 SIGALRM→无超时；docstring 要求的回放模式未实现 | tools/code_exec.py:167 |
 | P6-25 | voice：_queue/_worker_thread 异步脚手架声明不用；gender/emotion 存储不应用；讯飞 init 报成功但 speak 恒失败 | tools/voice.py |
@@ -2435,8 +2435,8 @@ user_input → self._pending_user_input
 | P6-1 | **三 LLM 客户端并存**：llm_client(活路径)/llm_api(黑板用)/llm_orchestrator(门面) 接口签名/返回 dict 不一致，provider 检测逻辑重复；LLMMOrchestrator 类名拼写错误(双M)靠别名掩盖 | tools/{llm_client,llm_api,llm_orchestrator}.py | 改一处漏两处，维护高危 |
 | P6-9 | **execute_code 默认 FULL_ACCESS**：dynamic_tool_registry 用 `LLMToolExecutor(safe_mode=False)`，exec 含完整 builtins+os/sys+self；runtime.yaml `sandbox_code_exec:false` 的 flag 没被 tool_executor 读取（原 config_manager 默认 True 冲突源已随 P1-4 删除） | tools/tool_executor.py:445 + dynamic_tool_registry.py:442 | LLM 拥有完全本地执行权，沙箱配置形同虚设 |
 | P6-11 | **工具目录四重定义**：ToolRegistry(11 ToolSpec)/DynamicToolRegistry(5+技能)/AVAILABLE_TOOLS(5 schema)/skills 四处，工具名(read_file vs file_read)/风险/schema 不统一，action_executor 同时查两套注册表 | tools/{tool_registry,dynamic_tool_registry,tool_definitions}.py + memory/skills/ | "有哪些工具"无单一真相源 |
-| P6-13 | **黑板情绪路径死**：M_AFFECT/M_COORD 调 `update_mood(..., dimension="attachment")`，但该函数无 dimension 参数(应为 update_mood_per_dimension)，TypeError 被吞→多模型模式情绪更新整条静默失效 | tools/blackboard.py:557,817 | 论文§3.4.2 黑板驱动情绪的功能不工作 |
-| P6-14 | **黑板幽灵槽位丢失**：M_VIS/M_AUD/expert_*_output 写的槽位不在 BlackboardState schema，update_slot 的 hasattr 守卫静默丢弃→专家输出数据全部丢失 | tools/blackboard.py:645,695,1194,159 | 视觉/音频/专家结果无法跨专家共享 |
+| P6-13 ✅已修 | **黑板情绪路径死**：update_mood(dimension=) TypeError 被吞。已移除 dimension= 参数 | tools/blackboard.py | ~~情绪更新静默失效~~ 已修复 |
+| P6-14 ✅已修 | **黑板幽灵槽位丢失**：已加 vision_perception/audio_perception/expert_outputs 槽位 + to_dict + 重构写入 | tools/blackboard.py | ~~专家输出丢失~~ 已修复 |
 | P6-20 | **代码执行四套，最完善的没接**：tool_executor FULL_ACCESS(活)/tool_executor 黑名单/safe_executor AST(孤立)/code_exec 正则(孤立)；原 config_manager 的 sandbox_code_exec flag 已随 P1-4 删除，但活路径仍是无过滤全开 | tools/{tool_executor,safe_executor,code_exec}.py | 论文§3.11.3 的安全沙箱形同虚设，活路径是无过滤全开 |
 | P6-23 | **嵌入四处且三处伪**：tools/embeddings 默认 mock(hash-seed)，与 memory/retrieval(MD5)/familiarity(md5-seed) 同为伪嵌入，仅 semantic_novelty 真嵌入；默认配置下语义检索/联想/洞察新颖度都是噪声 | tools/embeddings.py + memory/{retrieval,familiarity,semantic_novelty}.py | 第3章 P3-7 的扩展(现4处) |
 | P6-24 | **edge-tts 递归崩溃**：voice.py L336 async _speak_edge 被 L382 同名同步方法覆盖，同步包装调自己→无限递归；Windows mp3 播放用 SoundPlayer(只支持wav)必抛 | tools/voice.py:336,382,364 | TTS 功能第一调用即崩(但无运行时消费者) |
