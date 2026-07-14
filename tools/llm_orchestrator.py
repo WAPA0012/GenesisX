@@ -202,11 +202,12 @@ class LLMMOrchestrator:
             user_message = str(messages)
 
         if self._mind_field_orchestrator:
-            # 多模型模式
+            # 多模型模式 (P6-18: 透传 tools 参数)
             result = self._mind_field_orchestrator.process(
                 user_message,
                 context,
-                tick
+                tick,
+                tools=tools
             )
             # 转换为统一格式
             return {
