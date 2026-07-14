@@ -133,6 +133,14 @@ class BlackboardState:
     # 12. 抽象状态层 (保证模型切换连续性)
     abstract_state: Dict[str, Any] = field(default_factory=dict)
 
+    # === P6-14 修复: 感知扩展槽位 + 专家输出 (原 ghost slots 被 hasattr 守卫静默丢弃) ===
+    # 13. 视觉感知 (M_vis 输出)
+    vision_perception: Dict[str, Any] = field(default_factory=dict)
+    # 14. 听觉感知 (M_aud 输出)
+    audio_perception: Dict[str, Any] = field(default_factory=dict)
+    # 15. 专家原始输出 (expert_{role}_output，多模型模式)
+    expert_outputs: Dict[str, Any] = field(default_factory=dict)
+
     # 元数据
     tick: int = 0
     last_update: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -152,6 +160,9 @@ class BlackboardState:
             "relationship_state": self.relationship_state,
             "communication_frequency": self.communication_frequency,
             "abstract_state": self.abstract_state,
+            "vision_perception": self.vision_perception,
+            "audio_perception": self.audio_perception,
+            "expert_outputs": self.expert_outputs,
             "tick": self.tick,
             "last_update": self.last_update.isoformat()
         }
@@ -309,6 +320,7 @@ class ExpertResult:
     tokens_used: int = 0               # 使用的 token 数
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     error: Optional[str] = None         # 错误信息
+    tool_calls: Optional[List[Dict[str, Any]]] = None  # P6-18: M_COORD 的工具调用
 
     # 额外输出
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -426,7 +438,8 @@ class ExpertModel:
     def process(
         self,
         user_message: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> ExpertResult:
         """处理请求（同步）
 
@@ -553,11 +566,10 @@ class ExpertModel:
                     elif "不" in user_message or "错" in user_message or "问题" in user_message:
                         sentiment_boost = -0.05
 
-                    # 更新情绪
+                    # 更新情绪 (P6-13 修复: 移除不存在的 dimension= 参数, 原 TypeError 被吞导致情绪静默失效)
                     new_mood = update_mood(
                         mood=current_mood,
                         delta=sentiment_boost,
-                        dimension="attachment"  # 假设来自关系维度
                     )
 
                     # 更新压力
@@ -814,7 +826,7 @@ class ExpertModel:
                             elif "不" in user_message or "错" in user_message or "问题" in user_message:
                                 sentiment_boost = -0.05
 
-                            new_mood = update_mood(mood=current_mood, delta=sentiment_boost, dimension="attachment")
+                            new_mood = update_mood(mood=current_mood, delta=sentiment_boost)  # P6-13: 移除不存在的 dimension=
                             new_stress = update_stress(stress=current_stress, delta=sentiment_boost, failed=False)
 
                             self._blackboard.write("emotional_state", {
@@ -852,10 +864,14 @@ class ExpertModel:
                 user_message = user_message + coord_context
 
             # 所有专家最后都调用 LLM 生成最终回复
+            # P6-18: 仅 M_COORD 传递 tools（避免多专家各自发起冲突的 tool_calls）
             client = self._get_llm_client()
             messages = self._build_messages(user_message, context)
 
-            response = client.chat(messages)
+            if tools and self.config.role == ExpertRole.M_COORD:
+                response = client.chat(messages, tools=tools)
+            else:
+                response = client.chat(messages)
             latency = time.time() - start_time
 
             # 更新统计
@@ -871,7 +887,8 @@ class ExpertModel:
                     content=response.get("text", ""),
                     confidence=0.8,
                     latency=latency,
-                    tokens_used=response.get("usage", {}).get("total_tokens", 0)
+                    tokens_used=response.get("usage", {}).get("total_tokens", 0),
+                    tool_calls=response.get("tool_calls")  # P6-18: 透传 tool_calls
                 )
             else:
                 return ExpertResult(
@@ -1111,7 +1128,8 @@ class MindFieldOrchestrator:
         self,
         user_message: str,
         context: Optional[Dict[str, Any]] = None,
-        tick: int = 0
+        tick: int = 0,
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """处理请求
 
@@ -1143,10 +1161,11 @@ class MindFieldOrchestrator:
         if len(active_roles) == 1 and ExpertRole.M_COORD in active_roles:
             expert = self._experts_by_role.get(ExpertRole.M_COORD)
             if expert:
-                result = expert.process(user_message, context)
+                result = expert.process(user_message, context, tools=tools)
                 return {
                     "ok": result.is_success,
                     "text": result.content,
+                    "tool_calls": result.tool_calls,  # P6-18
                     "expert_used": expert.name,
                     "config_mode": self._config_mode.value,
                     "latency": result.latency,
@@ -1163,13 +1182,14 @@ class MindFieldOrchestrator:
                 }
 
         # 多模型模式：并行调用所有活跃专家
-        return self._process_multi_expert(user_message, context, active_roles)
+        return self._process_multi_expert(user_message, context, active_roles, tools=tools)
 
     def _process_multi_expert(
         self,
         user_message: str,
         context: Dict[str, Any],
-        active_roles: Set[ExpertRole]
+        active_roles: Set[ExpertRole],
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """多专家并行处理"""
         start_time = time.time()
@@ -1181,7 +1201,7 @@ class MindFieldOrchestrator:
             for role in active_roles:
                 expert = self._experts_by_role.get(role)
                 if expert:
-                    future = executor.submit(expert.process, user_message, context)
+                    future = executor.submit(expert.process, user_message, context, tools)
                     futures[future] = (role, expert)
 
             for future in as_completed(futures, timeout=60):
@@ -1190,11 +1210,13 @@ class MindFieldOrchestrator:
                     result = future.result()
                     results[role] = result
 
-                    # 将成功的结果写入黑板
+                    # 将成功的结果写入黑板 (P6-14: 写入 expert_outputs dict 而非 ghost slot)
                     if result.is_success and role != ExpertRole.M_COORD:
+                        current_outputs = self._blackboard.get_slot("expert_outputs") or {}
+                        current_outputs[role.value] = result.content
                         self._blackboard.write(
-                            f"expert_{role.value}_output",
-                            result.content,
+                            "expert_outputs",
+                            current_outputs,
                             writer=expert.name
                         )
 
@@ -1215,6 +1237,7 @@ class MindFieldOrchestrator:
         return {
             "ok": final_result.is_success,
             "text": final_result.content,
+            "tool_calls": final_result.tool_calls,  # P6-18: 从最终选中的专家透传
             "expert_used": final_result.role.value,
             "config_mode": self._config_mode.value,
             "latency": time.time() - start_time,
