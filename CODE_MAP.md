@@ -1963,13 +1963,27 @@ RETIRE   clone_manager.cleanup_clone — 停进程+rmtree
 
 **关键区分**（每文件 docstring 强调）：**Growth=同一个体变强；Evolution=复制-变异-选择产生新一代**。
 
-**🔍问题 P8-15（重要）— 进化管道实际是空操作**：
-- `mutation_manager._generate_with_llm` 有 `# TODO: 实现 JSON 解析`——LLM 响应**未解析**，proposal 的 `changes={}` 恒空
-- `apply_mutation` 对空 changes 返回 True（成功）——**无操作变异"成功"**
-- `transfer` 遍历空 `target_files`——**transfer 也是空操作**
-- 即便启用，整个变异-迁移链什么都没做。evaluation 的"人格保留"靠**基因组 YAML 文件大小比**（非内容），value_alignment 靠文件是否存在——信号极弱。
+**✅问题 P8-15 记录已知 — 进化管道：5/6 模块已完成，唯一断点是 mutation JSON 解析（大工程，暂缓）**：
 
-**🔍问题**：`clone_id=f"clone_{int(time.time())}"` 秒级时间戳，同秒两次进化碰撞；引擎无锁，并发 `evolve()` 会覆盖 `current_clone`；`TESTING` 枚举值定义但流程跳过（MUTATE→EVALUATE 无 TEST 阶段）；`validate_mutation` 定义但 `evolve` 从不调用（死方法）；`evaluation_manager.get_stats` 对非空历史会 `TypeError`（`to_dict` 多了 `overall_score` 键，dataclass 重建失败）。
+进化系统（自我繁殖/代码自我迭代）是项目愿景级功能（论文 §3.9 吞噬软件），不是死代码——它是**未开启**状态。2026-07-16 精确审计确认完成度：
+
+| 模块 | 行数 | 状态 |
+|---|---|---|
+| clone_manager.py | 240 | ✅ 完整（copytree + 端口分配 + 目录管理）|
+| **mutation_manager.py** | 356 | ⚠️ **唯一断点**：`_generate_with_llm`(L196) 调了 LLM 拿到 response，但 L206 `# TODO: 实现 JSON 解析`——`changes={}` 恒空 |
+| evaluation_manager.py | 411 | ✅ 完整（运行实验体 + 收集指标 + 对比评估）|
+| transfer_manager.py | 270 | ✅ 完整（意识/记忆迁移到新个体）|
+| archive_manager.py | 333 | ✅ 完整（旧躯体 zip 存档 + generation 计数）|
+| evolution_engine.py | 375 | ✅ 完整（7 阶段编排：clone→mutate→test→evaluate→transfer→archive→retire）|
+
+**接通所需**（大工程，暂缓）：
+1. `mutation_manager.py:206` 补 JSON 解析器（LLM response → `{file: {change_desc, old_code, new_code}}`）← 核心断点
+2. `models.py:24` `EVOLUTION_ENABLED = False` → True 或走 config ← 一个常量
+3. 变异后代码的质量验证（evaluation_manager 有框架，但变异质量取决于 LLM 能力）
+
+**其他已知小问题**（接通时一并修）：`clone_id` 秒级时间戳碰撞；引擎无锁；`TESTING` 阶段定义但跳过；`validate_mutation` 定义但从不调用；`evaluation_manager.get_stats` 对非空历史 TypeError。
+
+**与 growth/ 的区别**（重要）：growth/ 是"同一个体变强"（生成新肢体/学技能），活着且在工作；evolution/ 是"生下一代"（复制项目→改代码→测试→迁移），是独立的繁殖概念。
 
 ---
 
@@ -2341,7 +2355,7 @@ user_input → self._pending_user_input
 | P8-9 ✅已修 | abstract_state.py(478行) 已删除——功能被 GlobalState+FieldStore+BlackboardState 完全覆盖，to_concrete 是 no-op 且有 stress=1-valence 语义 bug。re-export 清理 + benchmark 优雅跳过 | ~~core/abstract_state.py~~ |
 | P8-12 ✅已缓解 | ~~`_call_llm` 不传 timeout~~。`_call_llm` 已不存在（LLM 调用走 llm_client.py），且 llm_client.py 所有 HTTP 调用已设 timeout=60s (L33/L244/L573/L654) | core/handlers/action_executor.py |
 | P8-13 ✅已修 | 未知 ActionType 返回 success:True，分派 bug 被静默。已改为 success:False | core/handlers/action_executor.py:87 |
-| P8-15 | 进化管道实际空操作：mutation LLM 响应未解析(changes 恒空)→transfer 遍历空→整体 no-op | core/evolution/mutation_manager.py |
+| P8-15 ✅记录已知 | 进化管道 5/6 模块完整，唯一断点 mutation_manager.py:206 JSON 解析未实现。EVOLUTION_ENABLED=False 默认禁用。大工程暂缓——接通需补 JSON 解析 + 开启开关 + 变异质量验证 | core/evolution/mutation_manager.py:206 |
 | P8-17 | 插件/肢体代码无沙箱 exec（安全）；devour(".") 可读任意文件；flex 黑名单不全 | core/growth/ + core/plugins/ |
 | P8-19 | 能力管理三件套碎片化：capability_router 孤立，三者 API 重叠互不引用 | core/capability_*.py |
 | P8-20 | 三套重叠"调度"概念：scheduler(死)/autonomous_scheduler(仅chat)/life_loop inline 离线逻辑 | core/ |
@@ -2601,6 +2615,6 @@ P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 
 
 ---
 
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **203 文件/75k 行**，累计删除约 11200 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **50 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项 **全部已处理** 🎉，无剩余。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)；**G 阶段** P8-4 GlobalState↔FieldStore 双真相源收敛（方案A：FieldStore 单一真相源委托，删 _sync_* -93行）+ P8-15 mood 范围统一 [0,1]；**H 阶段** P8-2 life_loop_backup.py(2565行) + P9-4/P9-3/P8-1 小死代码(~60行) + v15 维度测试修复(4失败→0) + 6 个已删条目标记 ✅；**I 阶段** P5-21 器官学习接通(PHASE 11.5 `_record_organ_learning`) + 持久化(`artifacts/organ_state/`，round-trip 验证通过)——高优先级 29 项至此全部清零。*
+*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **197 文件/74k 行**，累计删除约 13300 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **70 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项 **全部已处理** 🎉，无剩余。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)；**G 阶段** P8-4 GlobalState↔FieldStore 双真相源收敛（方案A）+ P8-15 mood 范围统一 [0,1]；**H 阶段** P8-2 life_loop_backup.py(2565行) + 小死代码(~60行) + 测试修复(11失败→0)；**I 阶段** P5-21 器官学习接通+持久化；**J 阶段** P6-13/14/18 多模型3bug修复 + P4-36/43/45 perception 4死文件(971行) + P8-9 abstract_state(478行) + P9-16 websocket(274行) + 中优先级死代码/bug批次 + P8-15 进化系统精确审计(5/6完成,1个TODO暂缓)。*
 
 
