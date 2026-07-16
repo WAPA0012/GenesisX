@@ -713,7 +713,7 @@ best_score, best_plan = scored[0]; selected_action = best_plan["actions"][0]
 
 **注**：`context["observations"]`（PHASE 4 后追加 L903）、`context["drive_signals"]`/`context["drives_prompt"]`（PHASE 4.5 追加 L921-922）是 life_loop 在 build_context 之外**追加**的，不在本函数内。
 
-**🔍问题 P4-28（🔴 硬编码假数据）**：L106-107 `budget_tokens=10000` / `recent_errors=0` 是写死的占位符（注释明说"Default"/"Simplified"）。若下游有真正的 budget 计算或错误恢复读这两个键，将永远收到固定值——不是"默认值"，是"假数据"。
+**✅问题 P4-28 已修**：~~budget_tokens=10000/recent_errors=0 硬编码~~。build_context 加 budget_remaining 参数，life_loop 传真实 ledger 值；recent_errors 从最近 episode 失败 action 推导。
 **🔍问题 P4-29（🟡 切片魔数）**：`episodes[:5]`/`schemas[:3]`/`skills[:3]`/`recent[-10:]`/`observation[:100]` 全内联魔数。
 **🔍问题 P4-30（🟢 脆弱序列化）**：L65 `str(ep.observation.payload)` 假设 payload 可 str 化，含 datetime/numpy 时会带 `__repr__` 噪音。
 
@@ -2303,7 +2303,7 @@ user_input → self._pending_user_input
 
 ## A. 全局问题清单
 
-> 截至 2026-07-16：高优先级 29/29 ✅ 全部处理。70/227 项已处理。本节仅保留**未处理**项的详情；已处理项见文末归档表。
+> 截至 2026-07-16：高优先级 29/29 ✅ 全部处理。74/227 项已处理。本节仅保留**未处理**项的详情；已处理项见文末归档表。
 
 ### 待处理（按影响排序）
 
@@ -2315,7 +2315,7 @@ user_input → self._pending_user_input
 | P4-53/54 ✅已修 | circadian 传 tick 参数 + 默认 simulation 模式 + seconds_per_tick 对齐 tick_dt | metabolism/circadian.py + core/life_loop.py | ~~三套时间源不一致~~ 已统一为 tick-based |
 | P3-10 ✅已修 | 证据门改检查 EpisodeRecord 实际字段（reward>0/delta>0.05/evidence_refs） | memory/consolidation.py | ~~证据门虚设~~ 已修复 |
 | P7-5 ✅已修 | check_budget 检查全部 5 维（cpu_tokens/io_ops/net_bytes/risk_score/money）；latency_ms 不检查（非累积预算） | safety/budget_control.py | ~~4 维预算形同虚设~~ 已修复 |
-| **P6-24** | voice.py _speak_edge async 被 sync 同名方法遮蔽→无限递归（无运行时消费者） | tools/voice.py | TTS 第一调用即崩 |
+| ~~P6-24~~ ✅已修 | voice _speak_edge 递归——async 版重命名 _speak_edge_async | tools/voice.py | 已修复 |
 | **P9-7** ✅记录已知 | Web 5 线程并发 tick 无锁（auto-run+chat+async chat+initiative+reinit）| web/app.py | 状态撕裂（单线程测试无法暴露）|
 
 #### 🟡 架构/重复实现（需要选方向）
@@ -2339,8 +2339,8 @@ user_input → self._pending_user_input
 | P1-1 | Goal.priority(deprecated) 与 priority_level 并存 | common/models.py |
 | P2-1/2/4 | axiology 重复实现（fallback 类/权重计算重复/setpoint 散落3处） | axiology/ |
 | P1-7/8/9 | auth.py(699行)+database.py(12行) 过度工程 | common/ |
-| P8-5 | update_body 每 tick psutil.cpu_percent(0.1) 阻塞 100ms | core/state.py |
-| P8-14/16 | MetabolicLedger/limb_builder 小 bug | core/stores/ + core/growth/ |
+| ~~P8-5~~ ✅已修 | psutil.cpu_percent interval=None 非阻塞（每 tick 省 100ms） | core/state.py |
+| ~~P8-16~~ ✅已修 / P8-14 待处理 | limb_builder label 修复 / MetabolicLedger from_dict 待修 | core/stores/ + core/growth/ |
 | P3-1/2 | 持久化逻辑绕开 JSONLWriter 重写3套 | memory/ |
 | P3-4/8/11/12/14/16/19/21 | memory 各模块重复实现/参数不一致 | memory/ |
 | P3-9 | smart_retrieval LLM 决策死代码 | memory/smart_retrieval.py |
@@ -2475,6 +2475,6 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 
 ---
 
-*文档状态：全 9 章精读完成。现 **197 文件/74k 行**（原 242 文件/84k 行），累计删除约 13300 行死代码/重复代码。全局问题清单 227 项中 **70 项已处理**。高优先级 29/29 ✅。测试 271 passed / 0 failed。修复分 A-J 阶段，详见 git log。*
+*文档状态：全 9 章精读完成。现 **197 文件/74k 行**（原 242 文件/84k 行），累计删除约 13300 行死代码/重复代码。全局问题清单 227 项中 **74 项已处理**。高优先级 29/29 ✅。测试 271 passed / 0 failed。修复分 A-J 阶段，详见 git log。*
 
 
