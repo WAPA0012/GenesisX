@@ -10,6 +10,10 @@ if TYPE_CHECKING:
 def _get_real_system_resources() -> Dict[str, float]:
     """获取真实的系统资源占用率.
 
+    P8-5 修复：原 psutil.cpu_percent(interval=0.1) 每 tick 阻塞 100ms。
+    改用 interval=None（非阻塞），返回自上次调用以来的 CPU 使用率。
+    首次调用返回 0.0（无历史），后续调用即时且准确。
+
     Returns:
         Dict with:
         - compute: CPU占用率 [0, 1]
@@ -17,9 +21,9 @@ def _get_real_system_resources() -> Dict[str, float]:
     """
     try:
         import psutil
-        # CPU占用率（百分比转0-1）
-        cpu_percent = psutil.cpu_percent(interval=0.1) / 100.0
-        # 内存占用率
+        # interval=None: 非阻塞，返回自上次调用以来的百分比（首次返回 0.0）
+        cpu_percent = psutil.cpu_percent(interval=None) / 100.0
+        # 内存占用率（virtual_memory 本身不阻塞）
         memory_percent = psutil.virtual_memory().percent / 100.0
         return {
             "compute": cpu_percent,

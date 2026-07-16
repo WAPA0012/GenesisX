@@ -7,6 +7,7 @@ def build_context(
     state: Dict[str, Any],
     recent_episodes: List[EpisodeRecord],
     retrieved_memories: Dict[str, Any],
+    budget_remaining: Dict[str, float] = None,
 ) -> Dict[str, Any]:
     """Build execution context for decision making.
 
@@ -102,8 +103,20 @@ def build_context(
     context["schema_count"] = state.get("schema_count", 0)
     context["skill_count"] = state.get("skill_count", 0)
 
-    # Budget info
-    context["budget_tokens"] = 10000  # Default
-    context["recent_errors"] = 0  # Simplified
+    # Budget info (P4-28 修复：原硬编码 10000/0，改为从 ledger 传入的真实值)
+    if budget_remaining:
+        context["budget_tokens"] = budget_remaining.get("cpu_tokens", 0)
+        context["budget_money"] = budget_remaining.get("money", 0)
+    else:
+        context["budget_tokens"] = 0
+        context["budget_money"] = 0
+    # recent_errors: 从最近 episode 推导（失败的 action 数）
+    if recent_episodes:
+        context["recent_errors"] = sum(
+            1 for ep in recent_episodes[-10:]
+            if ep.outcome and not ep.outcome.ok
+        )
+    else:
+        context["recent_errors"] = 0
 
     return context

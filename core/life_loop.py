@@ -927,7 +927,9 @@ class LifeLoop(GapDetectorMixin):
         }
 
         # === PHASE 4: Build Context ===
-        context = build_context(field_snapshot, recent_episodes, retrieved)
+        # P4-28: 传 budget_remaining 让 context 有真实预算数据（原硬编码 10000/0）
+        budget_remaining = {name: res.remaining() for name, res in self.ledger.resources.items()}
+        context = build_context(field_snapshot, recent_episodes, retrieved, budget_remaining)
         # 添加 observations 到 context，供器官使用
         context["observations"] = ctx.obs_batch
 

@@ -256,6 +256,9 @@ CMD ["python", "-u", "__init__.py"]
             if detach:
                 cmd.append("-d")
 
+            # P8-16 修复：添加 label 使 list_limbs 能找到已部署的肢体
+            cmd.extend(["--label", "genesisx.limb=true"])
+
             # 端口映射
             if port_mapping:
                 for host_port, container_port in port_mapping.items():
