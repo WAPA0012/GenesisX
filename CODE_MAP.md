@@ -2301,176 +2301,124 @@ user_input → self._pending_user_input
 
 ---
 
-## A. 全局问题清单（按优先级）
+## A. 全局问题清单
 
-> 精读 Phase 1-2(common+axiology+affect) + Phase 8(core) + Phase 3(memory) + Phase 6(tools) + Phase 4(cognition/perception/metabolism) + Phase 7(safety/persistence) + Phase 9(入口+Web) 发现的问题。`🔴高危` `🟡中` `🟢低`。新会话优化时按此排序。部分行合并多个同源 ID（如 P7-22/24/25）。
->
-> **状态标记**：`✅已修` = 已修复（详见文末"已修复"表）；`✅部分已修` = 部分修复；`✅记录已知` = 评估后记录为已知问题不修；无标记 = 未修。截至 2026-07-13：高优先级 29 项 **全部已处理**，无剩余高优先级项。🎉
+> 截至 2026-07-16：高优先级 29/29 ✅ 全部处理。70/227 项已处理。本节仅保留**未处理**项的详情；已处理项见文末归档表。
 
-### 🔴 高优先级（影响正确性/可维护性）
+### 待处理（按影响排序）
+
+#### 🔴 运行时 bug（影响实际行为）
 
 | ID | 问题 | 位置 | 影响 |
 |---|---|---|---|
-| **P0-1** 🆕⭐ ✅已修 | **价值→行为反馈环路断裂（实测验证，最核心运行时问题）**：25 tick 实测（run_20260706_062952），17/17 个有好奇/依恋缺口的 tick **100% 未产生 EXPLORE/CHAT**，全是 REFLECT/THINK。系统陷入"反思死循环"，mood 从 0.5 单调跌到 0 后永久卡死，负 RPE 未能驱动行为改变。根因：①价值系统正确识别需求（curiosity/attachment 缺口 0.45）但器官 `_parse_llm_thought_to_actions` 关键词失配（P5-15），LLM 叙事被 fallback 到 REFLECT ②驱动力信号无人消费（P5-10）③无用户输入时缺乏主动行动驱动。**这是"数字生命不像活的"的直接原因。** | organs/internal/* + life_loop PHASE 7→11 | 系统无法自主行动，mood 锁死归零，违背"自主数字生命"核心目标 |
-| P2-3 ✅已修 | **axiology 严重代码重复**：value_dimensions.py(799行) 与 feature_extractors.py+utilities_unified.py 功能重叠 | axiology/ | 改一处忘另一处，行为不一致 |
-| P2-5 ✅已修 | **drives/ 5维驱动力**：~~顶部注释禁用~~ 实际由 organ_manager 间接调用，drives_prompt 已接入器官（P5-10），过时禁用注释已清理 | axiology/drives/ | 实际是活的 |
-| P1-4 ✅已修 | **两套配置加载体系并存**：config.py(load_config→dict) vs config_manager.py(ConfigManager→对象)，且都有 load_config() 同名函数。经 grep 确认 config_manager.py 零引用（4 入口全用 config.py），已删除该死代码文件（509 行） | common/ | ~~极易混淆，维护负担~~ 已消除 |
-| P8-4 ✅已修 | **GlobalState 与 FieldStore 双真相源**：方案 A——GlobalState 7 标量改为 FieldStore 委托（property getter/setter），删 `_sync_*` 手工同步函数（-93行），单一真相源。1-tick 实测零 drift | core/state.py + core/stores/fields.py + life_loop.py | ~~两套真值~~ 已统一为 FieldStore |
-| P8-10 ✅已修 | **多轮 CHAT 响应被覆盖**：`llm_response = round_response`(注释却写"累积")，前几轮正文丢弃 | core/handlers/action_executor.py:342 | 多轮工具调用场景用户只能看到最后一轮文字 |
-| P8-11 ✅已修 | **tool/tool_id 键不一致**：gap_detector 读 `params["tool"]`，executor 读 `params["tool_id"]` | core/handlers/{gap_detector:243,action_executor:505} | USE_TOOL 的能力缺口检查永远拿空值，成长系统不被 USE_TOOL 驱动 |
-| P8-7 ✅已修 | **自定义基因被缓存吞掉**：~~_get_differentiator() 空 config~~ PHASE 7 改用带 config 的 diff.select_organs()，custom_genes 生效 | core/life_loop.py + differentiate.py | 器官分化配置生效 |
-| P8-18 ✅部分已修 | **6 模块共 ~2793 行孤立代码**：exceptions/scheduler/capability_router 完全死（C阶段已删）；emotion_decay/exploration/abstract_state 半死 | core/ | core 最大技术债，需决策删除/接入 |
-| P3-5 ✅已修 | **Schema/Skill 永不持久化**：life_loop 用 `SchemaMemory()`/`SkillMemory()` 无参构造，shutdown 不调 save_to_disk，巩固产物重启清零 | memory/{schema,skill}.py + core/life_loop.py:190-191 | CLS 第2/3层知识无法跨会话累积，违背论文核心目标 |
-| P3-15 ✅已修 | **联想网络无法持久化**：~~import_state 是 pass~~ _load_from_disk 末尾重建联想图（重放最近 1000 条 episodes 复用 _add_to_associative），重启不再丢失联想链接 | memory/episodic.py + familiarity.py | 验证：29 episodes → 25 节点 + 4 边 |
-| P3-22 ✅已修 | **limb_guides/ 导入即崩 + 与 skills/ 逐字节重复**：4 个指南文件类名仍是 FileSkill 等，__init__ 导入 FileOpsGuide 必抛 ImportError→静默禁用整个包 | memory/limb_guides/ | ~600 行死代码（含 P3-22 的副本） |
-| P3-6/P3-7 ✅已修 | **嵌入统一到 semantic_novelty 真嵌入**：~~retrieval MD5 / familiarity md5-seed 伪嵌入~~ 两处都委托 get_default_calculator().compute_embedding（sentence-transformers，P3-18 已接入） | memory/{retrieval,familiarity,semantic_novelty}.py | 语义检索/联想从噪声变为真实语义信号 |
-| P5-6 ✅已修 | **UnifiedOrganManager 只写死代码**：~~从不查询/执行~~ 探查发现接入 PHASE 7 无收益（limb/plugin propose_actions 恒空 + WrappedBuiltinOrgan 丢属性），真正价值在 execute_capability。已在 USE_TOOL 路径接入（tool_registry 找不到时回退 unified_organ_manager），limb/plugin 能力可执行 | organs/unified_organ.py + action_executor.py | growth/plugins 注册的能力现在可通过 USE_TOOL 执行 |
-| P5-10 ✅已修 | **驱动力→器官传导链路断裂**：PHASE 4.5 算的 drive_signals/drives_prompt 塞进 context，但 6 个器官的 propose_actions 无一读取它 | organs/internal/* + core/life_loop.py:920-922 | 驱动力信号被算出后无人消费，价值→驱动力→行为链断在最后一步 |
-| P5-15 ✅已修 | **LLM 思考被中文关键词降级**：6 器官的 `_parse_llm_thought_to_actions` 用硬编码关键词把 LLM 输出转 Action，LLM 沦为叙事生成器 | organs/internal/*_organ.py | 器官决策权在关键词表而非 LLM；同义词/英文漏匹配→退化默认动作 |
-| P5-20 ✅记录已知 | **immune 否决权/风险评估未接入**：3 个方法保留备用，安全执行由 safety/ 负责。论文§3.4.2 设计 immune 为最高优先级安全执行者，当前偏离为纯提案器官。完整接入会创造两套安全系统重叠，记录为已知设计偏差 | organs/internal/immune_organ.py | immune 只提 REFLECT，信任校准恒为默认 0.5 |
-| P5-21 ✅已修 | **器官学习/项目状态全不持久化**：Step1 接通 PHASE 11.5 `_record_organ_learning`（mind/scout/builder/immune/caretaker/archivist 的 record_* 全接入）+ Step2 持久化到 `artifacts/organ_state/{session_id}.json`（跨 run 保留）。round-trip 验证通过 | organs/internal/*_organ.py + core/life_loop.py | ~~器官"从经验学习"形同虚设~~ 已激活 |
-| P7-14 ✅已修 | **代码执行走最弱沙箱**：生产路径是 `tool_executor._execute_code_sandboxed`（裸子串黑名单 + exec），safe_executor.py 的 AST 审计沙箱完全闲置；config 的 sandbox_code_exec flag 无处读取 | tools/{tool_executor,safe_executor}.py + safety/sandbox.py + dynamic_tool_registry.py:442 | 论文§3.11.3 安全沙箱形同虚设，LLM 拥有完全本地执行权（FULL_ACCESS）——**整个项目最高危的安全问题** |
-| P7-16 ✅已修 | **persistence/ 整包孤岛**：~~life_loop 不导入 persistence~~ 已接入 STRICT 回放（run.py --replay <dir>），PHASE 10 用缓存 outcome。4 个零引用写入器已删（event_log/tool_call_log/snapshot/storage）。解 P7-21/23/26/27/30/31/32 | persistence/replay.py + core/life_loop.py | 论文 C8 可复现性：STRICT 回放可用（budget 全 0 验证） |
-| P4-1 ✅已修 | **`priority_level` 全域未设置**：GoalCompiler 只写 deprecated 的 `Goal.priority`(float)，从不写论文§3.8.1 的 1-6 级 `priority_level` 枚举 | cognition/goal_compiler.py:212,292 + 全项目 | 论文 6 级优先级系统运行时不生效，所有 Goal 恒为 MEDIUM(3) |
-| P4-61 ✅已修 | **resource_pressure.py 与 state.py 公式语义相反**：metabolism 用 `RP = max(0, 1 − (α·C+β·M))`（论文版，死），state.py 用 `RP = α·C+β·M`（反转版，活） | metabolism/resource_pressure.py:92 + core/state.py:302-305 | 同一(compute,memory)给出相反的紧急判断；两套"有效无聊度"触发条件相反；生产路径偏离论文 |
-| P4-64 ✅已修 | **METABOLISM 常量整段失效**：MetabolismConstants 在生产代码仅被 re-export，无任何读取点。已删除该死常量段（类+实例+re-export），运行时零变化。注：4 套 metabolism 硬编码（emotion_decay/boredom 等）仍并存，但"虚假单一来源"已消除 | ~~common/constants.py:167-188~~ + metabolism/ | ~~调参改一处无效~~ 已消除误导 |
-| P4-31 ✅已修 | **self_perception 工具断链**：tool_registry 注册了 read_own_logs/system_stats，但 tool_executor 分发链只有 5 个分支无这两个→LLM 选了也找不到 handler | perception/self_perception.py + tools/{tool_registry,tool_executor}.py | 自我感知能力实质死代码化；pressure_score 无法回流到 HOMEOSTASIS |
-| P7-8 ✅已修 | **三套契约系统互不连通**：tool_registry.ToolSpec.preconditions（字符串，永不求值）/ tool_protocol preconditions（Callable，整体死代码）/ contract_guard（独立类，死代码） | tools/{tool_registry,tool_protocol}.py + safety/contract_guard.py | 论文§3.11 契约前置/后置条件机制完全不工作 |
-| P4-22 ✅已修 | **goal_progress.py 整模块死代码**：ProgressCalculator/GoalTracker/Milestone 零运行时引用；且其 GoalType 枚举(8)与 goal_compiler 模板(5)/planner 字符串(8+) 三套分类法互不匹配 | cognition/goal_progress.py | 562 行死代码；目标进度跟踪体系整体失效，goal.progress 停在 0.0 |
-| P4-20 ✅已修 | **Q^insight 三重实现**：cognition/insight_quality.py（死）/ memory/consolidation.py InsightQualityEvaluator（活）/ eval/gxbs.py（评测）三套公式不一致 | cognition/insight_quality.py + memory/consolidation.py + eval/gxbs.py | 改一处忘另两处；活路径用 consolidation 版的 log(n+1)/log(10) 压缩 |
-| P9-7 ✅记录已知 | **🔥 Web 并发无锁——5 线程并发 tick 同一 life_loop**：auto-run 线程 + 同步聊天线程池 + 异步聊天守护线程 + initiative tick + reinit/restart 主线程，5 条路径并发调 `manager.life_loop.tick()`/`send_message()`，而 LifeLoop 内部状态(state/fields/organs/episodic)无一加锁；`_initiative_lock`/`state_lock` 只保护消息队列和 is_running | web/app.py（api_chat/api_run_start/GenesisXManager）+ core/life_loop.py | 状态撕裂、episode 乱序、tool_calls.jsonl 交叉写入、器官 propose 拿半更新 state；入口层最严重问题，且极隐蔽（单线程测试无法暴露） |
-| P9-18 ✅已修 | **lifecycle/ 整包孤立——第二条 tick 引擎(784行)**：tick_loop.py 实现完整 17 阶段但每个相位是空壳(retrieve 返回空/execute 不执行/memory_write 不写/persist 不持久化/reward 恒 0)；仅 tests/test_lifecycle.py 引用，4 个真实入口全用 core/life_loop.LifeLoop；且自带第三套参数(VALUE_SETPOINTS 与 state.py 不同、tau=2.0、OCEAN→ET/CT/ES 第三套公式) | lifecycle/（tick_loop.py/genesis_lifecycle.py/__init__.py）| 784 行死代码+第三套参数源(P1-3 的又一爆发点)；读代码者易误以为是活引擎 |
+| **P4-50** | boredom.update_boredom 丢 4/7 参数：只传 boredom+dt×0.5，novelty/compute/memory/socially_engaged/apply_resource_override 全用默认→η_idle 每 tick 都加，boredom 单调上升无法恢复 | metabolism/boredom.py + life_loop.py | 数字生命越来越无聊且无法恢复 |
+| **P4-53/54** | circadian 用 UTC 壁钟 vs tick/caretaker 用 tick 推算，两者睡眠窗口不一致（circadian 01-04/14-15 vs caretaker 22-07） | metabolism/circadian.py + caretaker_organ.py | 睡眠触发时机不对 |
+| **P3-10** | 巩固证据门虚设：min_user_confirmations=0，检查的 user_confirmed/rating/feedback 字段不在 EpisodeRecord | memory/consolidation.py | 高影响洞察无证据验证 |
+| **P7-5** | check_budget 只验证 cpu_tokens+money，io_ops/net_bytes/latency_ms/risk_score 不强制 | safety/budget_control.py | 4 维预算形同虚设 |
+| **P6-24** | voice.py _speak_edge async 被 sync 同名方法遮蔽→无限递归（无运行时消费者） | tools/voice.py | TTS 第一调用即崩 |
+| **P9-7** ✅记录已知 | Web 5 线程并发 tick 无锁（auto-run+chat+async chat+initiative+reinit）| web/app.py | 状态撕裂（单线程测试无法暴露）|
 
-### 🟡 中优先级（技术债）
+#### 🟡 架构/重复实现（需要选方向）
 
 | ID | 问题 | 位置 |
 |---|---|---|
-| P1-1 | Goal.priority(deprecated float) 与 priority_level(新int) 并存 | common/models.py |
-| P2-1 | axiology/__init__.py 含 210 行 fallback UtilityCalculator 兼容类 | axiology/__init__.py |
-| P2-2 | compute_weights(纯函数) 与 WeightUpdater.update_weights 逻辑重复 | axiology/weights.py |
-| P2-4 | setpoint 管理散落 3 处(setpoints/dynamic_setpoints/axiology_config) | axiology/ |
-| P1-7/P1-9 | auth.py(699行)+models/(786行) 多用户 Web 模块疑似过度工程 | common/+models/ |
-| P1-8 | database.py 仅 12 行形同虚设，SQLAlchemy 依赖可能可移除 | common/ |
-| P8-6 ✅已修 | GlobalState dataclass 默认值与 from_dict 回退值不一致(mood 0.0 vs 0.5 等)。已对齐 | core/state.py |
-| P8-9 ✅已修 | abstract_state.py(478行) 已删除——功能被 GlobalState+FieldStore+BlackboardState 完全覆盖，to_concrete 是 no-op 且有 stress=1-valence 语义 bug。re-export 清理 + benchmark 优雅跳过 | ~~core/abstract_state.py~~ |
-| P8-12 ✅已缓解 | ~~`_call_llm` 不传 timeout~~。`_call_llm` 已不存在（LLM 调用走 llm_client.py），且 llm_client.py 所有 HTTP 调用已设 timeout=60s (L33/L244/L573/L654) | core/handlers/action_executor.py |
-| P8-13 ✅已修 | 未知 ActionType 返回 success:True，分派 bug 被静默。已改为 success:False | core/handlers/action_executor.py:87 |
-| P8-15 ✅记录已知 | 进化管道 5/6 模块完整，唯一断点 mutation_manager.py:206 JSON 解析未实现。EVOLUTION_ENABLED=False 默认禁用。大工程暂缓——接通需补 JSON 解析 + 开启开关 + 变异质量验证 | core/evolution/mutation_manager.py:206 |
-| P8-17 | 插件/肢体代码无沙箱 exec（安全）；devour(".") 可读任意文件；flex 黑名单不全 | core/growth/ + core/plugins/ |
-| P8-19 | 能力管理三件套碎片化：capability_router 孤立，三者 API 重叠互不引用 | core/capability_*.py |
-| P8-20 | 三套重叠"调度"概念：scheduler(死)/autonomous_scheduler(仅chat)/life_loop inline 离线逻辑 | core/ |
-| P3-13 ✅已修 | **dream.py(671行) 完全孤立**：DreamDirector/DreamEngine 是 consolidation.DreamConsolidator 的第二套实现，零运行时引用。已删除（C阶段 commit 8d0ed55） | ~~memory/dream.py~~ | 已删除 |
-| P3-20 ✅已修 | **personality_encoding.py(624行) 完全孤立**：论文§3.4.4人格调制编码写了但没接进 episodic.append 写入路径。已删除（C阶段 commit 8d0ed55） | ~~memory/personality_encoding.py~~ | 已删除 |
-| P3-10 | **巩固证据门虚设**：默认 min_user_confirmations=0，任意非CHAT action 即满足"强证据"；检查的 user_confirmed/rating/feedback 字段在 EpisodeRecord 不存在 | memory/consolidation.py | 高影响洞察的证据验证形同虚设 |
-| P3-1/P3-2 | **持久化逻辑绕开 JSONLWriter 重写3套**：episodic/schema/skill 各自 orjson/json 手写，且 episodic 每 tick 一次 open/append/close | memory/{episodic,schema,skill}.py | IO 开销 + 序列化行为不一致 |
-| P3-21 | **剪枝/索引逻辑三套重叠**：pruning.py 通用版 + 各记忆类内置版 + consolidation._prune_episodes；indices.py 与 EpisodicMemory 内置索引重复 | memory/{pruning,indices}.py + memory/{episodic,schema,skill}.py | 维护负担 |
-| P3-9 | **smart_retrieval 的 LLM 决策(ai_decide_retrieval)是死代码**，永远走规则；SEMANTIC/BASIC 关键词表重叠 | memory/smart_retrieval.py | 检索决策质量受限 |
-| P3-18 ✅已修 | **EmbeddingConfig.auto_detect_backend 形同虚设**：已改为 @classmethod + from_env 调用 | memory/semantic_novelty.py | 已接入，本机有 sentence-transformers 自动升级 |
-| P3-14 | compute_novelty 模块函数(关键字参)与 SemanticNoveltyCalculator 方法(参数名不同)两种调用风格+两套参数名，dream.py 走函数版(每次新建calc) | memory/{dream,semantic_novelty}.py | 维护易错 |
-| P3-16 | familiarity 默认嵌入是 md5-seed 的确定性伪随机(randn)，联想网络的"语义联想"是噪声 | memory/familiarity.py | 联想质量退化 |
-| P5-12 | **OrganSelector/OrganInterface 完全孤立(仅测试)**：实际器官选择走 core/differentiate(基因) + life_loop(价值权重)，这是第三套被取代的版本 | organs/{organ_selector,organ_interface}.py |
-| P5-9 | **驱动力器官半禁用矛盾**：drives/ 在 life_loop 顶部注释禁用，但 OrganManager 独立 import 仍实例化 5 个 Drive 并每 tick 调用 | organs/organ_manager.py + axiology/drives/ |
-| P5-1 | OrganMemoryWriter 接入但条件脆弱：依赖 _init_organ_llm_manager 成功，organ_llm.memory.enabled=false 或初始化异常则器官思考静默不入记忆 | organs/organ_llm_session.py + core/life_loop.py |
-| P5-4 | LLM 失败无降级信号：organ think() 失败返回空串→静默 fallback 规则，无日志/指标区分"走LLM"还是"降级规则" | organs/organ_llm_session.py + organs/internal/* |
-| P5-2 | 共享大脑模式历史稀释 6 倍：6 器官共享单一 _history(20轮)，每器官实际只 ~3 轮上下文 | organs/organ_llm_session.py SharedBrainSession |
-| P5-3 | OrganLLMSession.think 不解析 reasoning_content，step-3.7-flash 推理内容被丢弃 | organs/organ_llm_session.py |
-| P5-13/P5-14 | 两个同名 Limb 类(Docker肢体 vs 代码肢体)；organs/limbs/Limb mount 是 TODO 模拟、execute 恒失败 | organs/limbs/__init__.py + organs/unified_organ.py |
-| P5-16 | 6 器官规则模式(_propose_actions_impl)是 LLM 启用时的冷路径死代码，每器官大半代码不执行 | organs/internal/*_organ.py |
-| P5-19 ✅已修 | scout/mind 的 _extract_topic_from_thought 用 split() 按空格分词，中文无空格→主题变整段句子。已改正则提取 | organs/internal/{scout,mind}_organ.py |
-| P5-22 | archivist 器官与 memory/consolidation+pruning 职责三重重叠，只提 REFLECT 动作，本地计数器与真实 EpisodicMemory 不同步 | organs/internal/archivist_organ.py |
-| P5-17 | _should_respond_to_user 检查 obs.type=="user_chat"，需对齐 Observation.type 实际值，否则用户消息永不触发 CHAT | organs/internal/mind_organ.py |
-| P9-5 | **daemon 巩固/健康恢复线程是空壳**：consolidation_worker 体只有 `# This would call the consolidator` 注释，_attempt_recovery 只 save_state（注释"Could trigger consolidation here"）——daemon 两大卖点实现为空，实际只做 while tick+sleep | daemon.py（start_consolidation_thread/start_health_check_thread/_attempt_recovery） | 定时巩固/自动恢复不工作；daemon 与 run.py 无本质区别 |
-| P9-16 ✅已修 | **WebSocket 已删除**(274行)——功能被 SSE /api/progress 完全覆盖，前端无 WS 客户端（用 setInterval+fetch 轮询）。app.py 死管道(init_websocket/broadcast_state_to_ws/ws_server)已清理 | ~~web/websocket_server.py~~ |
-| P9-3 | **入口胶水四份重复 + chat_interactive 工具循环死代码**：config 加载/run_dir 命名/safe_mode 读取/shutdown 在 run/chat_interactive/daemon/web 4 入口各写一遍无公共层；chat_interactive._handle_tool_calls/_autonomous_action 零调用(process_input 直接走 life_loop.tick) | run.py + chat_interactive.py + daemon.py + web/app.py | 维护负担；改一处忘另三处 |
-| P9-2 | **chat_interactive LLM 客户端选型与活路径不一致**：_init_llm 首选 llm_api.create_llm_from_env(第二套客户端)，失败才回退 llm_client.LLMClient；而 action_executor/器官内部用 llm_client——chat_interactive 的 self.llm 与 life_loop 内部是两个独立 HTTP 客户端/两套 session | chat_interactive.py:268 + 第6章 P6-1 | 配置漂移(timeout/retry 各异)；第6章三客户端问题在入口层的具体暴露 |
-| P9-9 | **tick 计数双源**：web/chat_interactive 显式传 t=state.tick+1(强制递增，注释"确保 episodes 不被覆盖")，daemon/run/auto-run 不传或传 state.tick；LifeLoop.tick 的 t 参数语义不统一 | web/app.py:590 + chat_interactive.py:360 + daemon.py:309 | tick 跳号或倒退；不同入口行为不一致 |
-| P9-10 | **initiative 预生成路径整套死代码**：改实时模式后 try_generate_initiative_async 是空 pass，但 send_message/run_loop 仍调它；_initiative_queue/add_initiative/get_pending_initiative/generate_initiative_message 整套队列机制变死代码 | web/app.py（GenesisXManager） | 迁移残留未清；预生成队列永不消费 |
-| P9-11 | **initiative tick 与 P9-7 并发叠加**：generate_initiative_message 持 _initiative_lock 时调 life_loop.tick(tick+1)，"主动说话"跑完整 tick；若 auto-run 也在 tick，P9-7 并发冲突在 initiative 路径重演；_initiative_lock 只保护队列不保护 tick | web/app.py:970 | 主动消息触发时并发冲突概率升高 |
-| P9-12 | **配置热改→重启链路脆弱**：/api/configure 改 yaml/env 后不自动重启 manager，需前端再调 /api/reinit 或 /api/restart-system；_update_env_mode_only/_reset_yaml_to_global/_update_yaml_experts 三套 yaml 编辑函数各改部分文件无统一"提交"入口；api_reinit 调 load_config()无参与 __main__ 的 load_config(Path('config'))不一致 | web/app.py（api_configure/api_reinit/_update_*） | 配置改了不生效；调用方需知道改哪个文件 |
-| P9-14 | **web 多模型模式丢 tools**：MultiModelAdapter.chat→orchestrator.chat→blackboard.process 链路丢工具定义(根在 P6-18)；web 多模型模式下工具调用经适配器静默失效 | web/app.py:164 + tools/llm_orchestrator.py + tools/blackboard.py | web 开 LLM_MODE=core5/full7 时函数调用失效 |
-| P9-6 | **Windows 停 daemon 信号不可靠**：daemon.stop_daemon 和 web/api_daemon_stop 都用 CTRL_BREAK_EVENT，但 api_daemon_start 用 CREATE_NEW_CONSOLE 启动子进程（新控制台进程组收不到 CTRL_BREAK_EVENT）；web 停 daemon 在 Windows 上很可能无效只能超时强杀 | daemon.py:407 + web/app.py:2568 | Windows 下守护进程停止功能失效 |
+| **P6-1** | 3 LLM 客户端并存（llm_client/llm_api/llm_orchestrator），接口签名/返回不一致，LLMMOrchestrator 类名拼写错误(双M) | tools/{llm_client,llm_api,llm_orchestrator}.py |
+| **P6-11** | 工具目录四重定义（ToolRegistry/DynamicToolRegistry/AVAILABLE_TOOLS/skills），工具名/风险/schema 不统一 | tools/ + memory/skills/ |
+| **P6-9/P6-20** | execute_code 默认 FULL_ACCESS，sandbox flag 无处读取，4 套代码执行最完善的没接 | tools/{tool_executor,safe_executor,code_exec}.py |
+| **P8-17** | 插件/肢体代码无沙箱 exec，devour(".") 可读任意文件 | core/growth/ + core/plugins/ |
+| **P9-2** | chat_interactive 用 llm_api，action_executor 用 llm_client——两个 HTTP session（P6-1 的入口层暴露） | chat_interactive.py |
+| **P9-9** | tick 计数 4 入口不一致（web/chat 传 tick+1，daemon/run 不传） | web/app.py + chat_interactive.py + daemon.py |
+| **P8-19** | 能力管理三件套碎片化（capability_router 孤立） | core/capability_*.py |
+| **P8-20** | 三套重叠"调度"概念 | core/ |
+| **P5-12** | OrganSelector/OrganInterface 第三套器官选择（仅测试用） | organs/{organ_selector,organ_interface}.py |
 
-### 🟢 低优先级（清理项）
+#### 🟢 代码质量/清理
 
 | ID | 问题 | 位置 |
 |---|---|---|
-| P1-2 ✅已修 | Goal.is_expired 参数 current_tick 未使用，已移除 | common/models.py |
-| P1-6 | error_handler 与 utils.retry_on_failure 重试逻辑重复 | common/ |
-| P8-1 | life_loop.py:48 与 :71 重名导入 CapabilityManager，前者死导入 | core/life_loop.py |
-| P8-2 ✅已修 | life_loop_backup.py(2565行) 0 Python 引用，已删除 | ~~core/life_loop_backup.py~~ |
-| P8-3 | TickContext 无器官分化结果字段，与"贯穿所有阶段"设计意图不符 | core/tick.py |
-| P8-5 | update_body 每 tick 调 psutil.cpu_percent(interval=0.1) 阻塞 100ms | core/state.py |
-| P8-8 ✅已修 | life_loop 每 tick 新建 Differentiator。已缓存到 __init__ 的 self._differentiator | core/life_loop.py |
-| P8-14 | MetabolicLedger.from_dict 不恢复 unlimited 标志；FieldStore 初始值硬编码非配置驱动 | core/stores/{ledger,fields}.py |
-| P8-16 | limb_builder.list_limbs 按 label 过滤但 deploy 从不设 label，恒返回空 | core/growth/limb_builder.py |
-| P3-3 ✅已修 | `_persist_episode` 用 print 调试输出而非 logger。已替换为结构化日志 | memory/episodic.py |
-| P3-4 | schema_id 用 claim+scope 哈希，文字微差产生新 id 撑爆容量；模板 claim 的 reward 微变即新建 | memory/schema.py |
-| P3-8 | retrieve_episodes 与 retrieve_by_semantic_similarity 两套语义检索入口重叠 | memory/retrieval.py |
-| P3-11 | `_extract_skills` 只存单条 action 快照(非真序列)，skill 名按 action_type 去重导致同类型只留首条 | memory/consolidation.py |
-| P3-12 | `_prune_episodes`(阈值0.3) 与 `_sample_episodes`(质量阈值) 两处阈值语义不同易混 | memory/consolidation.py |
-| P3-17 ✅已修 | 模块级 `compute_novelty` 每次调用 new 一个 calculator。已改单例 `get_default_calculator()` | memory/semantic_novelty.py |
-| P3-23 ✅已修 | skills/base.py 的 SkillRegistry(76行) 删除，活路径用 skill_registry.py 线程安全版 | memory/skills/base.py |
-| P3-19 | compute_salience 仅被 consolidation 用；写入 episode 时不存 salience 字段，query_high_salience 另用 \|delta\|——两套"显著性"定义 | memory/salience.py |
-| P6-3 | reasoning_content 仅在 content 完全为空时兜底(llm_client:256-258)，且与正文混在 text 字段；需澄清/改写第8章 P8-12 与第5章 P5-3 的"不解析 reasoning_content"表述 | tools/llm_client.py:256 |
-| P6-5 ✅已修 | _chat_claude 降级路径引用未定义的 logger。已加 logger 定义 | tools/llm_client.py:469 |
-| P6-8 | _web_search 用 LLMClient 让 LLM"联网搜索"(非真搜索)，stepfun step-3.7-flash 不保证联网能力→可能是凭记忆编造；与 web_search.py 的 Bing 实现是两套 | tools/tool_executor.py:415 |
-| P6-12 ✅已修 | tool_protocol.ToolExecutor(~193行) 零实例化死代码已删除。Tool/ToolMetadata/ToolRiskLevel 基类保留（code_exec/embeddings 在用） | tools/tool_protocol.py |
-| P6-15 | 黑板成本翻倍：M_REASON/M_COORD 先调 planner.propose_plans(内部可能再调LLM)，然后 L858 又无条件 client.chat→一次"推理"两次 LLM 调用 | tools/blackboard.py:486,858 |
-| P6-17 | create_core5_experts 硬编码 gpt-4/gpt-3.5-turbo + openai.com 端点，与当前 stepfun 环境完全不匹配 | tools/blackboard.py:1298 |
-| P6-18 ✅已修 | 多模型模式丢 tools：已穿透 4 层 (orchestrator→process→expert→client)，仅 M_COORD 传 tools，ExpertResult 加 tool_calls 字段 | tools/llm_orchestrator.py + blackboard.py |
-| P6-21 | safe_executor 隐患：allowed_nodes 定义但不校验(实为黑名单)、max_memory_mb 不强制、线程超时不杀 worker、ExecutionTimeout 从不抛、reduce 非builtin 静默跳过 | tools/safe_executor.py |
-| P6-22 | code_exec 子进程模式拥有完整 stdlib+网络+文件系统，仅靠可绕过的正则前置过滤；Windows 直跑模式无 SIGALRM→无超时；docstring 要求的回放模式未实现 | tools/code_exec.py:167 |
-| P6-25 | voice：_queue/_worker_thread 异步脚手架声明不用；gender/emotion 存储不应用；讯飞 init 报成功但 speak 恒失败 | tools/voice.py |
-| P6-26 | messaging：message_queue/_worker_thread 声明但 send_message 全同步；URGENT 绕过 enabled 被基类抵消；webhook timeout=10 硬编码；单例无线程锁且 init 副作用建目录 | tools/messaging.py |
-| P6-27 ✅已修 | memory_tools 完全孤立(被 tool_executor 取代)。已删除 | ~~tools/memory_tools.py~~ |
-| P6-28 | web_search：与 tool_executor._web_search(LLMClient联网) 两套实现且后者 safe_mode 时禁用；Bing 失败静默降 mock；mock 含 rank 真结果不含→下游 KeyError | tools/web_search.py:78 |
-| P6-30 ✅已修 | cost_model 完全死代码(仅重导出不实例化)。已删除 | ~~tools/cost_model.py~~ |
-| P6-31 ✅已修 | llm_cache 完全孤立：temperature 排除在 key 外等问题。已删除 | ~~tools/llm_cache.py~~ |
-| P6-32 | tool_system_v2.SmartToolParser 用中文关键词+正则提工具意图(同器官 P5-15 脆弱性)；EnhancedToolExecutor 第三套 read/write/list 实现 | tools/tool_system_v2.py |
-| P5-5 | OrganMemoryWriter._llm_evaluate 用 find("{")/rfind("}") 提取 JSON，多 JSON 块/代码块含{} 会误提取；summary[:200] 与 thought[:500] 截断不一致 | organs/organ_llm_session.py |
-| P5-7/P5-8 | Limb/Plugin.propose_actions 恒返回[]；6 真器官用 WrappedBuiltinOrgan 动态子类重复创建6次且丢失 _llm_session 等属性 | organs/unified_organ.py + core/life_loop.py |
-| P5-11 | OrganManager.record_exploration 直接访问私有 _explored_topics，与 ScoutOrgan 同名字段完全独立，探索记录分散两处 | organs/organ_manager.py |
-| P5-18 | mind 的 record_plan_outcome/successful_patterns 学习机制 life_loop 不调，_adapt_from_history 永不触发 | organs/internal/mind_organ.py |
-| P5-23 | caretaker sleep 时间窗靠 tick×tick_duration/3600 估算，context 是否传 tick_duration 不确定；与 metabolism/circadian 真实节律可能不一致 | organs/internal/caretaker_organ.py |
-| P4-2 | **目标进度永不更新**：goal_compiler.compute_progress(77行/8类型) 和 goal_progress.ProgressCalculator 两套进度计算 life_loop 都不调，goal.progress 停在编译时初值 0.0 | cognition/{goal_compiler,goal_progress}.py | 目标反馈循环断裂，PHASE 6 后无进度跟踪 |
-| P4-7 | **Planner LLM 路径死代码 + life_loop 绕过**：propose_with_llm 零运行时调用；life_loop PHASE 8 内联自建 plans 不走 Planner；唯一调用者 blackboard 用规则版 propose_plans | cognition/planner.py + core/life_loop.py:1189 + tools/blackboard.py | docstring 宣传的"LLM-based planner"是死的 |
-| P4-12/13 | **PlanEvaluator 风险/预算惩罚形同虚设**：life_loop 内联 plan 不含 risk_level(恒0)，预算被 ×100000 放大→λ_risk·Risk 和 budget_penalty 退化为死分支 | cognition/plan_evaluator.py + core/life_loop.py:1190,1199 | J(p|S_t) 评分退化为 weighted_value − 0.001·cost |
-| P4-28 | **context_builder 硬编码假数据**：budget_tokens=10000/recent_errors=0 写死占位符（注释明说 Default/Simplified） | perception/context_builder.py:106-107 | 下游若读这两个键永远收到固定值 |
-| P4-50 | **boredom.update_boredom 丢 4/7 参数**：life_loop 只传 boredom+dt×0.5，novelty/compute/memory/socially_engaged/apply_resource_override 全用默认→η_soc/η_nov/资源覆盖三条论文机制失效 | metabolism/boredom.py + core/life_loop.py:1663 | 无聊单调上升（η_idle 每 tick 都加），资源门控永不触发 |
-| P4-53 | **circadian 时间源与模拟脱节**：time_mode 默认 realtime 且全仓库无配置，get_energy_level/get_fatigue_recovery_rate 用 datetime.now(utc) 墙钟，与 tick/sim_start_hour/caretaker 推算三者互不相干 | metabolism/circadian.py + core/life_loop.py:1644 | simulation 模式从未启用；昼夜节律与 tick 演化不同步 |
-| P4-54 | **circadian 与 caretaker 睡眠窗口冲突**：circadian 用 UTC 墙钟+offline 01-04/14-15，caretaker 用 tick 推算+sleep 22-07，两者互不引用且窗口不一致 | metabolism/circadian.py + organs/internal/caretaker_organ.py | 同一时刻两个模块报不同时段；sleep window 22-7 在 metabolism 找不到 |
-| P4-58 ✅已修 | **recovery.py 整模块死代码**：life_loop._update_body 用内联恢复公式绕过；sleep/friend/work 模式系统完全未采用。已删除（D阶段） | ~~metabolism/recovery.py~~ + core/life_loop.py | 已删除 |
-| P7-5 | **预算校验漏 3 维**：CostVector 含 6 维(cpu_tokens/io_ops/net_bytes/latency_ms/risk_score/money)，check_budget 只查 cpu_tokens 和 money | safety/budget_control.py | io_ops/net_bytes/latency_ms/risk_score 形同虚设 |
-| P7-3 | **风险评估双实现**：safety/risk_assessment（活，简单）vs immune_organ.assess_action_risk（仅测试，更完善含安全模式倍率） | safety/risk_assessment.py + organs/internal/immune_organ.py:794 | 安全模式倍率/行动信任分等机制白写 |
-| P7-7/10/13 | **safety 包 988 行死代码**：contract_guard(288 整模块死) + hallucination_check(300 整模块死) + sandbox(400 整模块死) | safety/{contract_guard,hallucination_check,sandbox}.py | 论文§3.13 安全管道覆盖度远超实际接线（只有 9a/9c/9d 三闸门活） |
-| P7-17 | **回放 schema 不匹配**：replay._load_episodes 期望 EventLogger 扁平 schema，生产写 EpisodeRecord；_load_tool_calls 期望 tick 字段，tool_system_v2 版无 tick | persistence/replay.py:339,352 + memory/episodic.py + tools/tool_system_v2.py | 即便接入回放也会因字段缺失崩溃或调用聚到 tick 0 |
-| P7-21/23 | **episodes/tool_calls 三重写入器 schema 不兼容**：persistence.EventLogger/ToolCallLogger(无人调) vs memory/episodic+ActionExecutor(生产) vs tools/tool_system_v2(独立)，三套 schema 互不兼容 | persistence/{event_log,tool_call_log}.py + memory/episodic.py + tools/tool_system_v2.py + core/handlers/action_executor.py | 第3章 P3-2"持久化绕开 JSONLWriter"的延伸 |
-| P7-26/27 | **snapshot 体系双重失效**：snapshot.py 与 replay.StateSnapshotManager 功能重叠互不兼容，且均未被 life_loop 调用；实际用 life_loop._persist_final_state 手写 final_state.json | persistence/{snapshot,replay}.py + core/life_loop.py:1841 | 无统一序列化层，重启只读 final_state.json，回放/快照形同虚设 |
-| P6-1 | **三 LLM 客户端并存**：llm_client(活路径)/llm_api(黑板用)/llm_orchestrator(门面) 接口签名/返回 dict 不一致，provider 检测逻辑重复；LLMMOrchestrator 类名拼写错误(双M)靠别名掩盖 | tools/{llm_client,llm_api,llm_orchestrator}.py | 改一处漏两处，维护高危 |
-| P6-9 | **execute_code 默认 FULL_ACCESS**：dynamic_tool_registry 用 `LLMToolExecutor(safe_mode=False)`，exec 含完整 builtins+os/sys+self；runtime.yaml `sandbox_code_exec:false` 的 flag 没被 tool_executor 读取（原 config_manager 默认 True 冲突源已随 P1-4 删除） | tools/tool_executor.py:445 + dynamic_tool_registry.py:442 | LLM 拥有完全本地执行权，沙箱配置形同虚设 |
-| P6-11 | **工具目录四重定义**：ToolRegistry(11 ToolSpec)/DynamicToolRegistry(5+技能)/AVAILABLE_TOOLS(5 schema)/skills 四处，工具名(read_file vs file_read)/风险/schema 不统一，action_executor 同时查两套注册表 | tools/{tool_registry,dynamic_tool_registry,tool_definitions}.py + memory/skills/ | "有哪些工具"无单一真相源 |
-| P6-13 ✅已修 | **黑板情绪路径死**：update_mood(dimension=) TypeError 被吞。已移除 dimension= 参数 | tools/blackboard.py | ~~情绪更新静默失效~~ 已修复 |
-| P6-14 ✅已修 | **黑板幽灵槽位丢失**：已加 vision_perception/audio_perception/expert_outputs 槽位 + to_dict + 重构写入 | tools/blackboard.py | ~~专家输出丢失~~ 已修复 |
-| P6-20 | **代码执行四套，最完善的没接**：tool_executor FULL_ACCESS(活)/tool_executor 黑名单/safe_executor AST(孤立)/code_exec 正则(孤立)；原 config_manager 的 sandbox_code_exec flag 已随 P1-4 删除，但活路径仍是无过滤全开 | tools/{tool_executor,safe_executor,code_exec}.py | 论文§3.11.3 的安全沙箱形同虚设，活路径是无过滤全开 |
-| P6-23 | **嵌入四处且三处伪**：tools/embeddings 默认 mock(hash-seed)，与 memory/retrieval(MD5)/familiarity(md5-seed) 同为伪嵌入，仅 semantic_novelty 真嵌入；默认配置下语义检索/联想/洞察新颖度都是噪声 | tools/embeddings.py + memory/{retrieval,familiarity,semantic_novelty}.py | 第3章 P3-7 的扩展(现4处) |
-| P6-24 | **edge-tts 递归崩溃**：voice.py L336 async _speak_edge 被 L382 同名同步方法覆盖，同步包装调自己→无限递归；Windows mp3 播放用 SoundPlayer(只支持wav)必抛 | tools/voice.py:336,382,364 | TTS 功能第一调用即崩(但无运行时消费者) |
-| P6-29 | **file_ops fail-open**：allow-list 为空时跳过目录检查，仅剩 forbidden_patterns(Path.match 对绝对路径在 Windows 不可靠)；空配置=任意目录可读写；_write_file 无大小上限 | tools/file_ops.py:121 | 空配置下文件工具无沙箱 |
-| P4-5/14/17/51/56 等 | **cognition/perception/metabolism 魔法数遍地**：goal_compiler(0.15/5/0.01/0.1)、plan_evaluator(λ_cost=0.001/λ_risk=0.5/budget_penalty=2.0)、verifier(0.1/0.2/0.5/0.7)、boredom(ETA 0.03/0.20/0.05 与 constants 0.005/0.10 失配)、circadian(0.65/0.35/phase 边界/recovery dict) 全硬编码无 config | cognition/ + perception/ + metabolism/ | 与第1章 P1-3 参数三重定义叠加；METABOLISM 常量整段失效(P4-64) |
-| P4-26/30/34/35/38/39 等 | **perception 包设计单薄 + 小问题**：observer 实质只是状态镜像(P4-26)、context_builder str(payload) 脆弱(P4-30)、self_perception.get_health_status 与 caretaker 撞名(P4-34)、磁盘路径假设(P4-35)、time_perception 死字段/北半球硬编码(P4-38/39) | perception/ | 维护负担 |
-| P4-36/43/45 ✅已修 | **perception 四大死文件已删除**：novelty.py(226) + signal_filter.py(222) + command_parser.py(276) + time_perception.py(247) 共 ~971 行，均仅 __init__.py re-export 无运行时消费者。被 circadian/semantic_novelty 等后续子系统取代 | ~~perception/{novelty,signal_filter,command_parser,time_perception}.py~~ | 已删除 |
-| P4-40/41 | **command_parser 被绕过 + 中文盲区**：用户输入真实路径是 get_user_input→observer→build_context，CommandParser 不在路径上；正则全英文对中文无效 | perception/command_parser.py + core/handlers/chat_handler.py | 276 行死代码，与 chat_handler 职责重叠 |
-| P4-19/21 | **insight_quality 死代码 + transferability 英文关键词**：整模块零运行时引用；transferability 关键词表(when/if/then/...)纯英文对中文 LLM 输出无效 | cognition/insight_quality.py | 206 行死代码 |
-| P4-23 | **三套目标类型分类法互不匹配**：goal_progress.GoalType(8 枚举) vs goal_compiler 模板(5) vs planner 字符串(8+)，ProgressCalculator 检查的字符串永远不匹配 goal_compiler 的 | cognition/{goal_progress,goal_compiler,planner}.py | 即便接入 goal_progress 也走不到正确分支 |
-| P4-47 | **perception __init__ 静默降级**：Time/SelfPerception 用 try/except ImportError 兜底，依赖缺失时置 None 不警告，运行期才暴露 AttributeError | perception/__init__.py | 问题被掩盖 |
-| P7-1/2/4/6 | **safety 阈值魔数散布**：integrity_check(0.9/0.1/0.1)、risk_assessment(0.8/+0.1/+0.15)、budget_control(1000/1.0/100) 硬编码无集中配置；integrity 的 modify_self 黑名单过窄（只查 params 键名） | safety/{integrity_check,risk_assessment,budget_control}.py | 与 constants 风格不一 |
-| P7-9 | **contract_guard 欺骗检测误报率高**：declared_goal 与 tool_id 的关键词交集法，tool_id="file_ops" 几乎不与任何自然语言目标词重叠，会把正常文件操作判 DECEPTION | safety/contract_guard.py:154-167 | 即便被接线也不敢启用 |
-| P7-11/12 | **hallucination_check 正则仅英文 + 死字段**：uncertainty_patterns/citation_patterns 全英文，对中文输出几乎永不触发；hallucination_indicators(L62) 定义后无引用 | safety/hallucination_check.py | 对中文数字生命场景失效 |
-| P7-15 | **sandbox 资源限制无强制力**：check_resource_usage 只比较传入数值，不实际采样进程内存/CPU（无 resource/psutil），max_memory_mb=512 是声明值 | safety/sandbox.py:276 | 即便被接线也是空壳 |
-| P7-18/19 | **replay 存根 + 魔数**：verify_replay_consistency 注释自承 simplified 未真正迭代所有 tick（恒返回 True）；snapshot_interval=10/Jaccard 0.4/coverage 0.5/tolerance 0.01/hash[:16]/[-10:] 全硬编码 | persistence/replay.py:690,198,181,432 | 回放验证不可靠 |
-| P7-22/24/25/28/29/31/32 | **persistence 杂项**：EventLogger _file_handle 死字段(P7-22)、ToolCallLogger get_tool_calls_for_tick 无索引全表扫(P7-24)、_redact_sensitive 仅英文(P7-25)、snapshot incremental 空壳(P7-28)、SnapshotManager 无 import(P7-29)、Storage 后端声明与实现不符 SQLITE/MEMORY 未实现(P7-31)、append O(n²) 反模式(P7-32) | persistence/ | 工程债 |
-| P7-33 | **persistence 孤儿包**：grep `from persistence` 全工程仅 tests/conftest.py 命中，life_loop 完全不导入；__init__ docstring 所称职责与实际运行时持久化重复且未被采纳 | persistence/__init__.py + core/life_loop.py | 整包可考虑删除或重新接入 |
-| P9-8 | **web run_dir 固定→重启覆盖语义混乱**：web 用固定 artifacts/web_run（run.py/daemon 用时间戳目录）；ensure_initialized/api_reinit/api_restart_system 重建 LifeLoop 复用同目录，但 schema/skill 不持久化(P3-5)——重启后"知识"丢失而 episodic 跨会话累积，与 run.py 隔离目录策略语义相反 | web/app.py:284 + core/life_loop.py:190 | 两套 run_dir 策略并存易混；web 重启丢失 schema/skill |
-| P9-13 ✅已修 | SSE progress 队列加 TTL 清理（10 分钟无活动自动删除，创建新队列时顺带扫除过期项） | web/app.py |
+| P1-1 | Goal.priority(deprecated) 与 priority_level 并存 | common/models.py |
+| P2-1/2/4 | axiology 重复实现（fallback 类/权重计算重复/setpoint 散落3处） | axiology/ |
+| P1-7/8/9 | auth.py(699行)+database.py(12行) 过度工程 | common/ |
+| P8-5 | update_body 每 tick psutil.cpu_percent(0.1) 阻塞 100ms | core/state.py |
+| P8-14/16 | MetabolicLedger/limb_builder 小 bug | core/stores/ + core/growth/ |
+| P3-1/2 | 持久化逻辑绕开 JSONLWriter 重写3套 | memory/ |
+| P3-4/8/11/12/14/16/19/21 | memory 各模块重复实现/参数不一致 | memory/ |
+| P3-9 | smart_retrieval LLM 决策死代码 | memory/smart_retrieval.py |
+| P5-1/2/3/4/5/9/11/13/14/16/17/18/22/23 | organs 各小问题（OrganMemoryWriter/共享大脑稀释/reasoning_content/降级信号/Drive 矛盾/Limb 重复类等） | organs/ |
+| P4-2/5/7/12/13/14/17/19/21/23/26/28/30/34/35/38/39/40/41/47/51/56 | cognition/perception 魔法数遍地/死代码/重复实现 | cognition/ + perception/ |
+| P6-3/8/15/17/21/22/23/25/26/28/29/32 | tools 各问题（reasoning_content/web_search/黑板双调/专家硬编码/safe_executor/code_exec/voice/messaging等） | tools/ |
+| P7-1/2/3/4/6/7/9/10/11/12/13/15/17/18/19/21-33 | safety/persistence 阈值魔数/死代码/重复实现/孤儿包 | safety/ + persistence/ |
+| P9-3/5/6/8/10/11/12 | web/daemon 入口层重复/空壳线程/信号不可靠/initiative 死队列/配置热改脆弱 | web/ + daemon.py |
+
+### ✅ 已处理归档（70 项，仅 ID + 一句话）
+
+<details><summary>点击展开已处理项列表</summary>
+
+| ID | 摘要 |
+|---|---|
+| P0-1 | 价值→行为反馈环路断裂 → 已修（器官结构化动作+价值驱动兜底）|
+| P1-2 | Goal.is_expired 死参数 → 已删 |
+| P1-4 | 双配置体系 config_manager.py → 已删(509行) |
+| P2-3 | axiology 代码重复 → 已修 |
+| P2-5 | drives/ 注释禁用但实际活着 → 注释已清 |
+| P3-3 | episodic print 调试 → 已改 logger |
+| P3-5 | Schema/Skill 不持久化 → 已修 |
+| P3-6/7 | 嵌入统一到 semantic_novelty → 已修 |
+| P3-13 | dream.py 孤立 → 已删(671行) |
+| P3-15 | 联想网络持久化 → 已修 |
+| P3-17 | compute_novelty 单例 → 已修 |
+| P3-18 | auto_detect_backend → 已修 |
+| P3-20 | personality_encoding.py 孤立 → 已删(624行) |
+| P3-22 | limb_guides 导入崩 → 已修 |
+| P3-23 | SkillRegistry 重复 → 已删(76行) |
+| P4-1 | priority_level 未设置 → 已修 |
+| P4-19/20/21 | insight_quality 死代码 → 已删 |
+| P4-22 | goal_progress.py 死代码 → 已删(562行) |
+| P4-31 | self_perception 工具断链 → 已修 |
+| P4-36/43/45 | perception 4 死文件 → 已删(971行) |
+| P4-58 | recovery.py 死代码 → 已删 |
+| P4-61 | resource_pressure 公式相反 → 已修 |
+| P4-64 | METABOLISM 死常量 → 已删(31行) |
+| P5-6 | UnifiedOrganManager 接入 → 已修 |
+| P5-10 | 驱动力→器官传导断裂 → 已修 |
+| P5-15 | LLM 思考被关键词降级 → 已修 |
+| P5-18 | mind 学习机制不调用 → 已随 P5-21 接通 |
+| P5-19 | 中文分词 split() → 已改正则 |
+| P5-20 | immune 否决权未接入 → 记录已知 |
+| P5-21 | 器官学习不持久化 → 已修(PHASE 11.5+持久化) |
+| P6-5 | _chat_claude logger 未定义 → 已修 |
+| P6-12 | ToolExecutor 死代码 → 已删(193行) |
+| P6-13 | 黑板 update_mood(dimension=) → 已修 |
+| P6-14 | 黑板 ghost slots → 已修 |
+| P6-18 | 多模型丢 tools → 已修(4层穿透) |
+| P6-27 | memory_tools 孤立 → 已删 |
+| P6-30 | cost_model 死代码 → 已删 |
+| P6-31 | llm_cache 孤立 → 已删 |
+| P7-8 | 三套契约系统 → 已修 |
+| P7-14 | 代码执行沙箱 → 已修(安全flag) |
+| P7-16 | persistence 孤岛 → 已修(STRICT回放) |
+| P8-1 | CapabilityManager 重复 import → 已删 |
+| P8-2 | life_loop_backup.py → 已删(2565行) |
+| P8-4 | GlobalState↔FieldStore 双真相源 → 已修(方案A) |
+| P8-6 | from_dict 默认值不一致 → 已修 |
+| P8-7 | 自定义基因被缓存吞 → 已修 |
+| P8-8 | 每 tick 新建 Differentiator → 已缓存 |
+| P8-9 | abstract_state.py → 已删(478行) |
+| P8-10 | 多轮 CHAT 响应覆盖 → 已修 |
+| P8-11 | tool/tool_id 键不一致 → 已修 |
+| P8-12 | _call_llm 无 timeout → 已缓解(llm_client 有60s) |
+| P8-13 | 未知 ActionType 返回 True → 已改 False |
+| P8-15 | 进化管道空操作 → 记录已知(5/6完成,1 TODO暂缓) |
+| P8-18 | core 6模块孤立 → 部分已修(exceptions等已删) |
+| P9-3(部分) | chat_interactive 死方法 → 已删 |
+| P9-4 | 死 import → 已删 |
+| P9-7 | Web 并发无锁 → 记录已知 |
+| P9-13 | SSE 队列无 TTL → 已修 |
+| P9-14 | web 多模型丢 tools → 已随 P6-18 修 |
+| P9-16 | WebSocket 硬禁用 → 已删(274行) |
+| P9-18 | lifecycle/ 第二条引擎 → 已删(784行) |
+
+</details>
 | P9-17 | **WebSocket 流式/状态是占位符**：_handle_stream_chat 按10字符分块+sleep(0.02) 假装流式（注释"暂时用非流式模拟"）；_get_current_state 恒返回 {"status":"running"}（注释"需外部注入"但无人注入）——即便启用 WebSocket 这两处也是占位 | web/websocket_server.py:116,155 | 启用 WS 后流式/状态推送仍是假数据 |
 | P9-15 | **生产安全配置定位模糊**：_validate_production_security 强制 SECRET_KEY/CORS 是唯一面向"部署"的代码，但项目核心是单实例桌面数字生命(P1-9)——不部署则过度安全，部署又不够(无 HTTPS 强制/rate limit/api 认证)；定位模糊 | web/app.py:52 | 安全投入与项目定位不匹配 |
 | P9-1 | **run.py --config 注释误导**：注释示例写 `--config config/runtime.yaml`（文件），但 --config 实际是目录（传给 load_config(Path) 按目录读多 yaml） | run.py:6 | 注释与实现不符 |
@@ -2513,108 +2461,20 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 - **session_id**: genesisx_persistent（记忆跨重启累积）
 - **注意**: step-3.7-flash 是推理模型，响应含 `reasoning_content`，正式回答在 `content`。默认思考模式关闭。
 
-### 实测记录与已修复问题
+### 修复历史摘要
 
-#### 实测发现（2026-07-06，run_20260706_062952，17 tick）
-- **P0-1 价值→行为断链**（见 A 节）：17 tick 全 REFLECT/THINK，0 EXPLORE/CHAT，mood 跌至 0 卡死。**当前最高优先级**。
-- 无用户输入时系统缺乏主动行动驱动，陷入反思死循环。
-- 巩固未触发（需 ≥20 episode，17 tick 被超时中断于 shutdown 前，schemas/skills 未落盘）。
+> 详细的 commit 级记录已移除（见 git log）。以下保留关键设计决策和回滚信息。
 
-#### 已修复（2026-07-06）
-| 问题 | commit | 说明 |
-|---|---|---|
-| inspect.is_function（Py3.13 兼容，新发现） | `a50083d` | dynamic_tool_registry.py，5 个工具文件报错消除 |
-| P3-3 episodic.py print→logger | `ba70b80` | 5 处 print 替换为结构化日志 |
-| P3-5 Schema/Skill 持久化接入 | `15e0051` | 构造传 persist_path + shutdown 调 save_to_disk |
-| P3-22 limb_guides 崩溃重复包 | `前一个` | 删 4 个与 skills/ 逐字节重复文件 + 崩溃 __init__，保留 data/ 目录 |
-| P6-30/P6-31/P6-27 死代码 | `前一个` | 删 cost_model/llm_cache/memory_tools（~920行，零引用） |
-| P3-18 auto_detect_backend 接入 | `6ee3b00` | 加 @classmethod + from_env 调用；**意外收益：本机有 sentence-transformers，语义嵌入从 TF-IDF 升级为真嵌入** |
-| P3-17 compute_novelty 单例 | `28af13a` | 避免每次调用重新加载模型，缓存生效 |
-| **P0-1 核心死锁（器官结构化动作 + 9a 豁免）** | `6b80130` | base_organ 抽模板方法（结构化【动作:XXX】→关键词 fallback→规则）；6 器官迁移；integrity_check 解 mood<0.1 死锁（低风险 EXPLORE 豁免）。**实测：CHAT 从 0→出现，mood 出现回升**。顺带根治 P5-15/P5-10/P5-16 |
-| **P0-1 第二层（CHAT bond 增益）** | `3f5c2b6` | action_executor bond +0.01→+0.05/次，trust 同比例。诊断发现 PHASE 11 的 CHAT +0.2 bonus 实际生效，但 bond 涨太慢填不平 attachment 缺口 |
-| **P0-1 第三层（bond 冷启动）** | `7e70740` | bond 初始值 0→0.4（FieldStore + life_loop）。attachment 缺口从 0.45 降到 0.21，CHAT reward 从 -0.12 改善到 -0.02 |
-| **P4-61/P4-58 RP 公式混淆 + recovery 死代码** | `（D阶段）` | 删 metabolism/resource_pressure.py(256) + recovery.py(173)。resource_pressure 论文版 RP 公式与 state.py 生产版语义相反且零运行时引用；recovery 被 life_loop 内联绕过。boredom 资源覆盖死分支删除，compute_effective_boredom 简化为兼容存根。资源紧急判断统一由 state.py 基于 psutil 实现 |
-| **P4-1 priority_level 全域未设** | `6cb0202` | GoalCompiler._priority_to_level 将 priority float 映射到论文§3.8.1 的 PriorityLevel(1-6)，safety/homeostasis 维度加成。两处 Goal 创建设 priority_level。论文 6 级优先级系统运行时生效 |
-| **P7-14 代码执行 FULL_ACCESS** | `d88b5fa` | 加 env flag GENESISX_ALLOW_FULL_ACCESS。默认保持 FULL_ACCESS（单用户本地系统），设 =0 时强制走沙箱。部署公网/多用户时关闭 |
-| **P9-7 Web 并发无锁** | （已知问题不修） | 5 线程并发 tick 同一 life_loop 无锁是架构级问题，加锁会退化成串行（auto-run 被聊天阻塞）。记录为已知，根本解决需重构（消息队列+单消费者） |
-| **P8-11/P8-10/P8-13 action_executor 三 bug** | `0d192ea` | P8-11 tool/tool_id 键不一致（gap_detector 读'tool' executor 读'tool_id'）统一；P8-10 多轮 CHAT 响应覆盖改累积拼接；P8-13 未知 ActionType 返回 success=True 改 False |
-| **P4-31 self_perception 工具断链** | `9e1d64e` | tool_registry 注册 read_own_logs/system_stats 但 _execute 无分发分支→LLM 选了静默失败。加 3 个 dispatch 分支 + _execute_self_perception 桥接方法 |
-| **P5-19 中文分词失效** | `c17846b` | scout/mind 的 _extract_topic_from_thought 用 split() 按空格，中文无空格→整段当一个 word。改正则提取连续中文/英文词组 |
-| **P1-2/P6-5 小 bug** | `81e6722` | P1-2 Goal.is_expired 移除误导的 current_tick 死参数；P6-5 _chat_claude 方法内无 logger 定义→降级路径 NameError，加 logger 定义 |
-| **P2-3 value_dimensions 重复** | `f02bd76` | 删 axiology/value_dimensions.py(799行)，与 feature_extractors+utilities_unified 100%重叠，零外部引用 |
-| **P2-5 drives 禁用注释** | `e27195c` | life_loop 顶部"暂时禁用"注释与实际状态不符（drives 由 organ_manager 间接调用已接入），清理注释 |
-| **P5-6 UnifiedOrganManager 只写** | `78e89ba` | 探查发现接入 PHASE 7 无收益（limb/plugin propose_actions 恒空），接入 USE_TOOL 路径（tool_registry 找不到时回退 unified_organ_manager.execute_capability）+ limb prompt 要求方法名=能力名 |
-| **P5-20 immune 否决权** | `1216d03` | 3 个安全方法保留备用，标注已知设计偏差（safety/ 取代，完整接入会两套安全系统重叠） |
-| **P7-16 persistence 整包孤岛** | `e1996e2` | 接入 STRICT 回放（run.py --replay <dir>），PHASE 10 用缓存 outcome。删 4 个零引用写入器(602行)。解 P7-21/23/26/27/30/31/32 |
+**P0-1 回滚预案**：`git revert 6b80130 3f5c2b6 7e70740`，或 `.env` 设 `STRUCTURED_ORGAN_ACTIONS=0` 回退到原关键词逻辑。
 
-#### P0-1 修复的实测对比（2026-07-06）
-| 指标 | 修复前 (run_062952) | 修复后 (run_151237) |
-|---|---|---|
-| CHAT/EXPLORE 数量 | 0（29 tick 全 REFLECT/THINK） | CHAT 出现（结构化路径产生） |
-| attachment 缺口 | 0.45（深，bond 从 0 起步） | 0.21（bond 初始 0.4 + 增益 +0.05） |
-| CHAT 的 reward | -0.12（+0.2 bonus 盖不过负效用） | -0.02（接近 0，闭环几乎转正） |
-| mood 单调锁死归零 | 是（0.5→0 单调，永久卡死） | 核心死锁解开，但 mood 稳定性仍受推理模型影响（见下） |
+**P0-1 残留调优项**（非 bug，属系统调优）：① mood 跌速 vs curiosity 涨速不匹配（兜底触发时 mood 已死）；② PHASE 8 plan_evaluator 评分等价（EXPLORE≈REFLECT）；③ 推理模型格式遵守不稳定（~70% 退回关键词 fallback）。建议：降低兜底阈值/动态调整、PHASE 8 匹配缺口的动作加分、换非推理模型。
 
-#### P0-1 残留项（后续优化，非死锁）
-P0-1 的**三环死锁已解开**（器官层结构化 + 9a 豁免 + attachment 闭环），但实测发现 mood 在长 tick 后仍会回落到 0，根因已转移：
+**P3-18 副作用**：首次启动加载 sentence-transformers（all-MiniLM-L6-v2，1-2 秒）。无此包则自动回退 TF-IDF。
 
-**已做的残留修复（commit d928797 + 5c33d73）**：
-- `BaseOrgan._value_driven_fallback`：结构化+关键词都失败时，按当前最大价值缺口维度选动作（curiosity→EXPLORE/attachment→CHAT/homeostasis→SLEEP 等），让价值系统真正驱动行为。
-- `life_loop` PHASE 4.5：把 gaps/weights 写入 `context['value_gaps']`（P5-10 延伸），器官 fallback 可读。
-- `_format_structured_output_prompt_prefix`：格式要求前置到 prompt 开头（推理模型对开头指令更敏感）。
-- 步骤 2.5：关键词 fallback 只产被动动作（REFLECT/THINK）且有显著缺口时，追加价值驱动动作。
-- 实测：EXPLORE/CHAT 候选能进入 PHASE 8，curiosity 缺口大时触发 EXPLORE。
-
-**仍存在的问题（多参数耦合，属系统调优非 bug）**：
-1. **mood 跌速 vs curiosity 涨速不匹配**：mood 从 0.4 跌到 0 要 ~5 tick，curiosity 从 0 涨到 0.3（触发价值兜底）要 ~6 tick——价值兜底触发时 mood 已死。
-2. **PHASE 8 plan_evaluator 评分等价**：EXPLORE 和 REFLECT 评分近乎相同（estimated_reward 都硬编码 0.5），选哪个取决于器官优先级排序，REFLECT 常排前面。
-3. **推理模型格式遵守**：step-3.7-flash 仍不稳定输出【动作:XXX】标记（~70% tick 退回关键词 fallback）。
-
-**建议后续（系统调优，非本次范围）**：① 降低价值驱动兜底阈值或按 mood 动态调整；② PHASE 8 评分让"匹配当前最大缺口的动作"加分；③ 收紧 REFLECT 关键词；④ 换用非推理模型或强化 few-shot。
-
-#### C 阶段：死代码清理（2026-07-06，共删 5370 行）
-| commit | 删除 | 行数 | 解的问题 |
-|---|---|---|---|
-| `d33c532` | lifecycle/ 整包 + test_lifecycle.py | 1029 | P9-18（第二条 tick 引擎，所有相位空壳） |
-| `8d0ed55` | memory/dream.py + personality_encoding.py | 1295 | P3-13（DreamDirector 重复）/ P3-20（人格调制编码孤立） |
-| `bc81361` | cognition/goal_progress.py + insight_quality.py + test_insight_quality.py | 768 | P4-22（整模块死）/ P4-19（Q^insight 三重实现之一） |
-| `66cd7a2` | core/exceptions.py + scheduler.py + capability_router.py | 1290 | P8-18 部分 / P8-19（能力管理三件套碎片化） |
-| `fa815d1` | safety/contract_guard.py + hallucination_check.py + sandbox.py | 988 | P7-7/P7-10/P7-13（safety 包 988 行死代码） |
-
-**保留**：core/emotion_decay.py(615) 暂留——life_loop 不用但 benchmarks/run_gxbs.py 的 emotion_benchmark 依赖（评测基础设施）。
-**验证**：5 批删除后 core/memory/cognition/safety 包导入正常，pytest 关键测试 134 passed（1 个预存失败），1 tick 冒烟测试实跑成功（THINK+CHAT 正常产出）。
-
-
-#### 修复说明
-- **死代码删除原则**：只删"包外零引用 + 删除后包导入正常"的，保留有数据依赖的目录（如 limb_guides/data/）。
-- **P3-18 副作用**：首次启动会加载 sentence-transformer 模型（all-MiniLM-L6-v2，约 1-2 秒）。若环境无此包则自动回退 TF-IDF，行为不变。
-- **P0-1 回滚预案**：`git revert 6b80130 3f5c2b6 7e70740`，或 `.env` 设 `STRUCTURED_ORGAN_ACTIONS=0` 回退到原关键词逻辑。
+**死代码删除原则**：只删"包外零引用 + 删除后包导入正常"的，保留有数据依赖的目录（如 limb_guides/data/）。
 
 ---
 
-#### F 阶段：双配置体系 + METABOLISM 死常量清理（2026-07-13，共删 ~540 行）
-| commit | 删除 | 行数 | 解的问题 |
-|---|---|---|---|
-| `f4a9189` | common/config_manager.py 整文件 | 509 | P1-4（ConfigManager/GenesisXConfig 零引用死代码，与 config.py 同名 load_config() 混淆） |
-| `34825ec` | README×3 + PROJECT_STRUCTURE_TREE×2 死链 + P6-9/P6-20 文档订正 | 8 | P1-4 文档清理 |
-| `32287d4` | constants.py 的 MetabolismConstants 类 + METABOLISM 实例 + re-export | 31 | P4-64（13 个 metabolism 常量零读取，实际计算用 emotion_decay/boredom 各自硬编码） |
-
-**验证**：每批删除后跑代表性测试集（test_fixes/life_loop_integration/organs/axiology/memory/chat_interaction），结果零差异；2 个 pre-existing 失败（integrity 维度 KeyError / chat）与本次无关。
-**未动**：config.py 的 Pydantic 模型/.env 逻辑；constants.py 其余 10 个常量类。
-
-#### G 阶段：GlobalState↔FieldStore 双真相源收敛（2026-07-13，方案 A）
-| commit | 改动 | 行数 | 解的问题 |
-|---|---|---|---|
-| `792fb6f` | GlobalState 7 情感标量改为 property 委托 FieldStore + 注入参数 + 本地 fallback | +90/-43 | P8-4 Step1（单一真相源委托，energy/fatigue/bond/trust 不再折叠到 activity_fatigue/relationship） |
-| `b95af3d` | 删 `_sync_state_to_global`/`_sync_fields_to_global` + 8 handler 调用点改 fields.set + _persist 不再写两遍 | +34/-93 | P8-4 Step2（消灭手工同步，FieldStore 注入 GlobalState） |
-| `b5ea311` | invariants.py mood 范围 [-1,1]→[0,1] + CODE_MAP 文档 | +10/-8 | P8-15（mood 范围统一，affect/mood.py 实际 clamp [0,1]） |
-
-**验证**：1-tick 实测 7 标量 state==fields 零 drift；代表性测试集零回归。
-**数据模型决定**：以 FieldStore 为准（7 独立字段）；UI 7 标量只读展示，无手动改值，方案 A 无障碍。
-**未动**：FieldStore 结构；GlobalState 非情感字段。（原 life_loop_backup.py 死代码已随 P8-2 删除）
-
----
-
-*文档状态：全 9 章精读完成（原 242 文件/84k 行；经多轮修复后现 **197 文件/74k 行**，累计删除约 13300 行死代码/重复代码）。全局问题清单收录 **227 项**，其中 **70 项已处理**（含已修/已接入/记录已知，见上方"已修复"表 + A 节✅标记）。高优先级 29 项 **全部已处理** 🎉，无剩余。本轮主要成果：**A 阶段** P0-1 死锁解开 + 器官结构化动作 + 价值驱动兜底；**C 阶段** 死代码清理 5370 行；**D 阶段** P4-61 RP 公式 + P4-1 priority_level + P8-7 基因缓存；**E 阶段** P7-14 安全 flag；**纯 bug 批次**（P8-11/10/13/P4-31/P5-19/P1-2/P6-5）；**决策批次**（P2-3 删/P2-5 注释/P5-6 USE_TOOL 接入/P5-20 记录/P7-16 replay 接入/P3-15 联想重建/P3-6,7 嵌入统一）；**F 阶段** P1-4 config_manager.py(509行) + P4-64 METABOLISM 死常量(31行)；**G 阶段** P8-4 GlobalState↔FieldStore 双真相源收敛（方案A）+ P8-15 mood 范围统一 [0,1]；**H 阶段** P8-2 life_loop_backup.py(2565行) + 小死代码(~60行) + 测试修复(11失败→0)；**I 阶段** P5-21 器官学习接通+持久化；**J 阶段** P6-13/14/18 多模型3bug修复 + P4-36/43/45 perception 4死文件(971行) + P8-9 abstract_state(478行) + P9-16 websocket(274行) + 中优先级死代码/bug批次 + P8-15 进化系统精确审计(5/6完成,1个TODO暂缓)。*
+*文档状态：全 9 章精读完成。现 **197 文件/74k 行**（原 242 文件/84k 行），累计删除约 13300 行死代码/重复代码。全局问题清单 227 项中 **70 项已处理**。高优先级 29/29 ✅。测试 271 passed / 0 failed。修复分 A-J 阶段，详见 git log。*
 
 
