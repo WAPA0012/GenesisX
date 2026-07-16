@@ -333,7 +333,7 @@ class VoiceOutput:
                 "text": text,
             }
 
-    async def _speak_edge(self, text: str, save_to_file: str = None) -> Dict[str, Any]:
+    async def _speak_edge_async(self, text: str, save_to_file: str = None) -> Dict[str, Any]:
         """使用Edge TTS生成音频"""
         import edge_tts
         import asyncio
@@ -380,7 +380,7 @@ class VoiceOutput:
             }
 
     def _speak_edge(self, text: str, save_to_file: str = None) -> Dict[str, Any]:
-        """同步版本的Edge TTS"""
+        """同步版本的Edge TTS (P6-24 修复: 原 self._speak_edge 递归调用自身)"""
         import asyncio
 
         try:
@@ -389,7 +389,7 @@ class VoiceOutput:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(self._speak_edge(text, save_to_file))
+        return loop.run_until_complete(self._speak_edge_async(text, save_to_file))
 
     def _speak_baidu(self, text: str, save_to_file: str = None) -> Dict[str, Any]:
         """使用百度TTS"""
