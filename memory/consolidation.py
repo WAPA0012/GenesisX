@@ -360,35 +360,25 @@ class DreamConsolidator:
 
         has_tool_evidence = tool_call_count >= cfg.min_tool_calls
 
-        # 检查用户确认证据
-        # 检查多种可能的用户反馈字段
+        # 检查用户确认证据 (P3-10 修复: 原检查 user_confirmed/user_rating/feedback 字段
+        # 在 EpisodeRecord 上不存在→hasattr 恒 False→证据门虚设。改为检查实际存在的字段)
         user_confirmation_count = 0
         for ep in episodes:
-            # 检查1: user_confirmed字段（布尔值）
-            if hasattr(ep, 'user_confirmed') and ep.user_confirmed:
+            # 检查1: outcome 成功 + 正向 reward（成功的行动≈用户认可）
+            if hasattr(ep, 'outcome') and ep.outcome and ep.outcome.ok:
+                if hasattr(ep, 'reward') and ep.reward is not None and ep.reward > 0:
+                    user_confirmation_count += 1
+                    continue
+
+            # 检查2: 正向 RPE（delta > 0 表示超出预期，间接表示用户满意）
+            if hasattr(ep, 'delta') and ep.delta is not None and ep.delta > 0.05:
                 user_confirmation_count += 1
                 continue
 
-            # 检查2: user_rating字段（评分，通常>=3/5表示满意）
-            if hasattr(ep, 'user_rating') and ep.user_rating is not None:
-                # 假设评分是1-5分，3分以上表示确认
-                if ep.user_rating >= 3.0:
-                    user_confirmation_count += 1
-                    continue
-
-            # 检查3: feedback字段中的积极反馈
-            if hasattr(ep, 'feedback') and ep.feedback:
-                feedback_lower = str(ep.feedback).lower()
-                positive_keywords = ['good', 'correct', 'yes', 'approve', 'confirm', 'ok', '正确', '好', '是']
-                if any(keyword in feedback_lower for keyword in positive_keywords):
-                    user_confirmation_count += 1
-                    continue
-
-            # 检查4: 从outcome中推断用户满意度（成功的action可能表示用户认可）
-            if hasattr(ep, 'outcome') and ep.outcome and ep.outcome.ok:
-                # 如果action是USE_TOOL且成功，可能表示用户满意
-                if hasattr(ep, 'action') and ep.action and ep.action.type == "USE_TOOL":
-                    user_confirmation_count += 1
+            # 检查3: outcome 有 evidence_refs（显式证据引用）
+            if hasattr(ep, 'outcome') and ep.outcome and ep.outcome.evidence_refs:
+                user_confirmation_count += 1
+                continue
 
         has_user_evidence = user_confirmation_count >= cfg.min_user_confirmations
 

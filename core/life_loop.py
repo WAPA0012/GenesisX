@@ -569,8 +569,13 @@ class LifeLoop(GapDetectorMixin):
         if 'value_parameters' in self.config:
             self.value_learner.set_parameters(self.config['value_parameters'])
 
-        # 昼夜节律
-        self.circadian = CircadianRhythm(self.config.get("circadian", {}))
+        # 昼夜节律 (P4-53/54: 默认 simulation 模式 + seconds_per_tick 对齐 tick_dt)
+        circadian_config = self.config.get("circadian", {})
+        if "time_mode" not in circadian_config:
+            circadian_config["time_mode"] = "simulation"
+        if "seconds_per_tick" not in circadian_config:
+            circadian_config["seconds_per_tick"] = self.config.get("runtime", {}).get("tick_dt", 1.0)
+        self.circadian = CircadianRhythm(circadian_config)
 
         # 情感调制
         self.affect_modulator = AffectModulation(self.config.get("affect_modulation", {}))
@@ -1794,9 +1799,9 @@ class LifeLoop(GapDetectorMixin):
         self.state.update_resources()
         self.state._update_resource_pressure()
 
-        # 获取昼夜节律调整系数
-        circadian_energy = self.circadian.get_energy_level()
-        recovery_rate = self.circadian.get_fatigue_recovery_rate()
+        # 获取昼夜节律调整系数 (P4-53/54: 传 tick 使 simulation 模式生效，与 caretaker 时钟一致)
+        circadian_energy = self.circadian.get_energy_level(tick=t)
+        recovery_rate = self.circadian.get_fatigue_recovery_rate(tick=t)
 
         # 论文 v14: Energy_t 和 Fatigue_t 已被数字原生模型替代
         # 修复：低能量时应该有恢复趋势，而不是持续下降
@@ -1813,8 +1818,17 @@ class LifeLoop(GapDetectorMixin):
         new_fatigue = max(0.0, fatigue - 0.05 * dt * recovery_rate)
 
         # Stress 更新移至 Affect Phase，这里保持当前值不变
-        # 修复：无聊增长速度减半，避免持续积累导致死锁
-        new_boredom = update_boredom(boredom, dt * 0.5)
+        # P4-50 修复：update_boredom 原来只传 boredom+dt，novelty 默认 0 → ETA_IDLE 每 tick 触发
+        # → boredom 单调上升。现在传 novelty=0.5（未知/中等，阻止 ETA_IDLE 空转），
+        # 并从最近 episode 推导 socially_engaged（上 tick 是 CHAT 且成功→社交中→降低无聊）
+        socially_engaged = False
+        try:
+            recent = self.episodic.query_recent(1)
+            if recent and recent[0].action and recent[0].action.type == "CHAT":
+                socially_engaged = recent[0].outcome is not None and recent[0].outcome.ok
+        except Exception:
+            pass
+        new_boredom = update_boredom(boredom, dt * 0.5, novelty=0.5, socially_engaged=socially_engaged)
 
         # 疲劳恢复率受昼夜节律影响
         if new_fatigue < fatigue:

@@ -2311,10 +2311,10 @@ user_input → self._pending_user_input
 
 | ID | 问题 | 位置 | 影响 |
 |---|---|---|---|
-| **P4-50** | boredom.update_boredom 丢 4/7 参数：只传 boredom+dt×0.5，novelty/compute/memory/socially_engaged/apply_resource_override 全用默认→η_idle 每 tick 都加，boredom 单调上升无法恢复 | metabolism/boredom.py + life_loop.py | 数字生命越来越无聊且无法恢复 |
-| **P4-53/54** | circadian 用 UTC 壁钟 vs tick/caretaker 用 tick 推算，两者睡眠窗口不一致（circadian 01-04/14-15 vs caretaker 22-07） | metabolism/circadian.py + caretaker_organ.py | 睡眠触发时机不对 |
-| **P3-10** | 巩固证据门虚设：min_user_confirmations=0，检查的 user_confirmed/rating/feedback 字段不在 EpisodeRecord | memory/consolidation.py | 高影响洞察无证据验证 |
-| **P7-5** | check_budget 只验证 cpu_tokens+money，io_ops/net_bytes/latency_ms/risk_score 不强制 | safety/budget_control.py | 4 维预算形同虚设 |
+| P4-50 ✅已修 | boredom 传 novelty=0.5（阻止 ETA_IDLE 空转）+ 从最近 episode 推导 socially_engaged | core/life_loop.py | ~~boredom 单调上升~~ 已修复 |
+| P4-53/54 ✅已修 | circadian 传 tick 参数 + 默认 simulation 模式 + seconds_per_tick 对齐 tick_dt | metabolism/circadian.py + core/life_loop.py | ~~三套时间源不一致~~ 已统一为 tick-based |
+| P3-10 ✅已修 | 证据门改检查 EpisodeRecord 实际字段（reward>0/delta>0.05/evidence_refs） | memory/consolidation.py | ~~证据门虚设~~ 已修复 |
+| P7-5 ✅已修 | check_budget 检查全部 5 维（cpu_tokens/io_ops/net_bytes/risk_score/money）；latency_ms 不检查（非累积预算） | safety/budget_control.py | ~~4 维预算形同虚设~~ 已修复 |
 | **P6-24** | voice.py _speak_edge async 被 sync 同名方法遮蔽→无限递归（无运行时消费者） | tools/voice.py | TTS 第一调用即崩 |
 | **P9-7** ✅记录已知 | Web 5 线程并发 tick 无锁（auto-run+chat+async chat+initiative+reinit）| web/app.py | 状态撕裂（单线程测试无法暴露）|
 
