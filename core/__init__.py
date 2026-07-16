@@ -135,39 +135,8 @@ try:
 except ImportError:
     pass
 
-# Abstract state layer (论文 3.4.2)
-try:
-    from .abstract_state import (
-        EmotionState,
-        AbstractEmotionalState,
-        AbstractGoal,
-        AbstractMemoryPointer,
-        AbstractContextSummary,
-        AbstractState,
-        SwitchEvent,
-        StateTransitionManager,
-        BlackboardWithAbstractState,
-        # Factory functions
-        get_blackboard_with_abstract_state,
-        create_abstract_state,
-        create_transition_manager,
-    )
-    __all__.extend([
-        "EmotionState",
-        "AbstractEmotionalState",
-        "AbstractGoal",
-        "AbstractMemoryPointer",
-        "AbstractContextSummary",
-        "AbstractState",
-        "SwitchEvent",
-        "StateTransitionManager",
-        "BlackboardWithAbstractState",
-        "get_blackboard_with_abstract_state",
-        "create_abstract_state",
-        "create_transition_manager",
-    ])
-except ImportError:
-    pass
+# P8-9: abstract_state.py 已删除（功能被 GlobalState + FieldStore + BlackboardState 覆盖）
+# 原 re-export 块已移除
 
 # Fine-grained emotion decay (论文 3.7.3)
 try:

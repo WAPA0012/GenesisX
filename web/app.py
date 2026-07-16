@@ -2797,42 +2797,8 @@ def api_set_safe_mode():
 # WebSocket Support
 # ============================================================================
 
-# WebSocket 服务器实例
-ws_server = None
-
-def init_websocket():
-    """初始化 WebSocket 服务器."""
-    global ws_server
-    # 暂时禁用 WebSocket，专注于修复聊天功能
-    logger.info("WebSocket server disabled temporarily")
-    return
-    try:
-        from web.websocket_server import start_ws_server
-        # 在端口 5001 启动 WebSocket 服务
-        ws_server = start_ws_server(host='127.0.0.1', port=5001)
-        if ws_server:
-            # 设置聊天消息回调
-            async def ws_chat_handler(message: str, user: str) -> str:
-                """WebSocket 聊天消息处理器."""
-                if manager.life_loop is None:
-                    return "系统正在初始化，请稍后再试"
-                return manager.send_message(message, user)
-
-            ws_server.on_chat_message = ws_chat_handler
-            logger.info("WebSocket server started on ws://127.0.0.1:5001")
-    except Exception as e:
-        logger.warning(f"Failed to start WebSocket server: {e}")
-
-
-def broadcast_state_to_ws(state: dict):
-    """通过 WebSocket 广播状态更新."""
-    global ws_server
-    if ws_server:
-        try:
-            from web.websocket_server import broadcast_state_sync
-            broadcast_state_sync(state)
-        except Exception as e:
-            logger.debug(f"Failed to broadcast state: {e}")
+# P9-16: WebSocket 服务器已删除（功能被 SSE /api/progress/<id> 完全覆盖，前端无 WS 客户端）
+# 原 init_websocket / broadcast_state_to_ws / ws_server 已移除
 
 
 # ============================================================================
@@ -2861,9 +2827,7 @@ def run_server(host='0.0.0.0', port=5000, debug=False):
         port: Port to bind to
         debug: Debug mode
     """
-    # 启动 WebSocket 服务器
-    init_websocket()
-
+    # P9-16: WebSocket 已删除（功能被 SSE /api/progress/<id> 覆盖，前端无 WS 客户端）
     app.run(host=host, port=port, debug=debug, threaded=True)
 
 

@@ -2338,7 +2338,7 @@ user_input → self._pending_user_input
 | P1-7/P1-9 | auth.py(699行)+models/(786行) 多用户 Web 模块疑似过度工程 | common/+models/ |
 | P1-8 | database.py 仅 12 行形同虚设，SQLAlchemy 依赖可能可移除 | common/ |
 | P8-6 ✅已修 | GlobalState dataclass 默认值与 from_dict 回退值不一致(mood 0.0 vs 0.5 等)。已对齐 | core/state.py |
-| P8-9 | abstract_state 抽象层核心转换未实现(to_concrete 忽略参数, stress=1-valence 语义错)，未被接入 | core/abstract_state.py |
+| P8-9 ✅已修 | abstract_state.py(478行) 已删除——功能被 GlobalState+FieldStore+BlackboardState 完全覆盖，to_concrete 是 no-op 且有 stress=1-valence 语义 bug。re-export 清理 + benchmark 优雅跳过 | ~~core/abstract_state.py~~ |
 | P8-12 ✅已缓解 | ~~`_call_llm` 不传 timeout~~。`_call_llm` 已不存在（LLM 调用走 llm_client.py），且 llm_client.py 所有 HTTP 调用已设 timeout=60s (L33/L244/L573/L654) | core/handlers/action_executor.py |
 | P8-13 ✅已修 | 未知 ActionType 返回 success:True，分派 bug 被静默。已改为 success:False | core/handlers/action_executor.py:87 |
 | P8-15 | 进化管道实际空操作：mutation LLM 响应未解析(changes 恒空)→transfer 遍历空→整体 no-op | core/evolution/mutation_manager.py |
@@ -2366,7 +2366,7 @@ user_input → self._pending_user_input
 | P5-22 | archivist 器官与 memory/consolidation+pruning 职责三重重叠，只提 REFLECT 动作，本地计数器与真实 EpisodicMemory 不同步 | organs/internal/archivist_organ.py |
 | P5-17 | _should_respond_to_user 检查 obs.type=="user_chat"，需对齐 Observation.type 实际值，否则用户消息永不触发 CHAT | organs/internal/mind_organ.py |
 | P9-5 | **daemon 巩固/健康恢复线程是空壳**：consolidation_worker 体只有 `# This would call the consolidator` 注释，_attempt_recovery 只 save_state（注释"Could trigger consolidation here"）——daemon 两大卖点实现为空，实际只做 while tick+sleep | daemon.py（start_consolidation_thread/start_health_check_thread/_attempt_recovery） | 定时巩固/自动恢复不工作；daemon 与 run.py 无本质区别 |
-| P9-16 | **WebSocket 整模块运行时硬禁用**：app.init_websocket 第一行 return（注释"暂时禁用"），ws_server 恒 None，broadcast_state_to_ws 永远 early return；274 行完整代码被一行 return 关闭，实时推送全走 SSE | web/app.py:2794 + web/websocket_server.py | web 层最大死代码（完整功能被关闭） |
+| P9-16 ✅已修 | **WebSocket 已删除**(274行)——功能被 SSE /api/progress 完全覆盖，前端无 WS 客户端（用 setInterval+fetch 轮询）。app.py 死管道(init_websocket/broadcast_state_to_ws/ws_server)已清理 | ~~web/websocket_server.py~~ |
 | P9-3 | **入口胶水四份重复 + chat_interactive 工具循环死代码**：config 加载/run_dir 命名/safe_mode 读取/shutdown 在 run/chat_interactive/daemon/web 4 入口各写一遍无公共层；chat_interactive._handle_tool_calls/_autonomous_action 零调用(process_input 直接走 life_loop.tick) | run.py + chat_interactive.py + daemon.py + web/app.py | 维护负担；改一处忘另三处 |
 | P9-2 | **chat_interactive LLM 客户端选型与活路径不一致**：_init_llm 首选 llm_api.create_llm_from_env(第二套客户端)，失败才回退 llm_client.LLMClient；而 action_executor/器官内部用 llm_client——chat_interactive 的 self.llm 与 life_loop 内部是两个独立 HTTP 客户端/两套 session | chat_interactive.py:268 + 第6章 P6-1 | 配置漂移(timeout/retry 各异)；第6章三客户端问题在入口层的具体暴露 |
 | P9-9 | **tick 计数双源**：web/chat_interactive 显式传 t=state.tick+1(强制递增，注释"确保 episodes 不被覆盖")，daemon/run/auto-run 不传或传 state.tick；LifeLoop.tick 的 t 参数语义不统一 | web/app.py:590 + chat_interactive.py:360 + daemon.py:309 | tick 跳号或倒退；不同入口行为不一致 |
