@@ -398,11 +398,22 @@ class EvaluationManager:
         Returns:
             统计信息字典
         """
-        passed = sum(
-            1 for e in self._evaluation_history
-            if EvolutionMetrics(**e.get("metrics", {})).should_transfer()
-            if isinstance(e.get("metrics"), dict)
-        )
+        # P8-15 修复：EvolutionMetrics.to_dict() 包含 overall_score 键，
+        # 但它不是构造函数参数→EvolutionMetrics(**dict) 会 TypeError。
+        # 过滤掉 overall_score 再重建。
+        passed = 0
+        for e in self._evaluation_history:
+            metrics_dict = e.get("metrics")
+            if not isinstance(metrics_dict, dict):
+                continue
+            # 移除非构造函数参数的键
+            filtered = {k: v for k, v in metrics_dict.items() if k != "overall_score"}
+            try:
+                metrics = EvolutionMetrics(**filtered)
+                if metrics.should_transfer():
+                    passed += 1
+            except TypeError:
+                continue
 
         return {
             "total_evaluations": len(self._evaluation_history),

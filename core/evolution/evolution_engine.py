@@ -38,6 +38,8 @@
 """
 
 import time
+import uuid
+import threading
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 
@@ -129,6 +131,7 @@ class EvolutionEngine:
         self.current_clone: Optional[CloneInstance] = None
         self.current_proposal: Optional[EvolutionProposal] = None
         self.evolution_history: List[Dict[str, Any]] = []
+        self._lock = threading.Lock()  # P8-15: 防止并发 evolve()
 
         # 进化开关（默认关闭）
         self._enabled = self.config.get("enabled", False)
@@ -219,13 +222,16 @@ class EvolutionEngine:
         if not self._enabled:
             return False, "Evolution is disabled"
 
+        # P8-15: 防止并发 evolve()
+        if not self._lock.acquire(blocking=False):
+            return False, "Another evolution is in progress"
+
         logger.info(f"Starting evolution for: {evolution_need}")
         start_time = time.time()
 
         try:
-            # 1. 生成克隆体ID
-            timestamp = int(time.time())
-            clone_id = f"clone_{timestamp}"
+            # 1. 生成克隆体ID (P8-15: 用 UUID 避免秒级碰撞)
+            clone_id = f"clone_{uuid.uuid4().hex[:12]}"
 
             # 2. CLONE - 创建克隆体
             self.current_phase = EvolutionPhase.CLONING
@@ -255,19 +261,34 @@ class EvolutionEngine:
                 self._cleanup_failed_evolution()
                 return False, "Failed to apply mutation"
 
-            # 4. EVALUATE - 评估克隆体
+            # 4. TEST - 验证变异 (P8-15 接通：原跳过此阶段)
+            self.current_phase = EvolutionPhase.TESTING
+            if not self.mutation_manager.validate_mutation(self.current_clone, self.current_proposal):
+                self.current_phase = EvolutionPhase.FAILED
+                self._cleanup_failed_evolution()
+                return False, "Mutation failed validation (syntax error)"
+
+            # 5. EVALUATE - 评估克隆体
             self.current_phase = EvolutionPhase.EVALUATING
             metrics = self.evaluation_manager.evaluate(
                 self.current_clone, self.current_proposal
             )
 
-            # 5. 决定是否转移
+            # 6. 决定是否转移
             if not metrics.should_transfer():
                 self.current_phase = EvolutionPhase.FAILED
                 self._cleanup_failed_evolution()
                 return False, f"Clone did not pass evaluation (score: {metrics.overall_score():.2f})"
 
-            # 6. TRANSFER - 意识转移
+            # 7. ARCHIVE - 存档旧躯体 (P8-15: 在 transfer 之前执行，存真正的旧版本)
+            self.current_phase = EvolutionPhase.ARCHIVING
+            archive_path = self.archive_manager.archive(
+                self.project_root,
+                self.current_proposal,
+                metrics
+            )
+
+            # 8. TRANSFER - 意识转移（将克隆体的改进迁移到本体）
             self.current_phase = EvolutionPhase.TRANSFERRING
             transfer_success = self.transfer_manager.transfer(
                 self.current_clone, self.current_proposal, metrics
@@ -278,19 +299,11 @@ class EvolutionEngine:
                 self._cleanup_failed_evolution()
                 return False, "Failed to transfer consciousness"
 
-            # 7. ARCHIVE - 存档旧躯体
-            self.current_phase = EvolutionPhase.ARCHIVING
-            archive_path = self.archive_manager.archive(
-                self.project_root,
-                self.current_proposal,
-                metrics
-            )
-
-            # 8. RETIRE - 清理克隆体
+            # 9. RETIRE - 清理克隆体
             self.current_phase = EvolutionPhase.RETIRING
             self.clone_manager.cleanup_clone(self.current_clone)
 
-            # 9. 完成
+            # 10. 完成
             self.current_phase = EvolutionPhase.COMPLETED
             elapsed_time = time.time() - start_time
 
@@ -313,6 +326,8 @@ class EvolutionEngine:
             self.current_phase = EvolutionPhase.FAILED
             self._cleanup_failed_evolution()
             return False, f"Evolution failed: {str(e)}"
+        finally:
+            self._lock.release()
 
     def _cleanup_failed_evolution(self):
         """清理失败的进化"""

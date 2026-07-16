@@ -957,31 +957,31 @@ class LifeLoop(GapDetectorMixin):
         # === 新增: PHASE 4.6: 进化系统检查 ===
         # 检查是否需要触发自我进化（吞噬新软件）
         # 进化系统默认禁用，需要显式启用
-        try:
-            if hasattr(self.evolution_system, 'check_evolution_trigger') and self.evolution_system.check_evolution_trigger(drive_state, context):
-                evolution_need = self._identify_evolution_need(context)
-                if evolution_need:
-                    evolution_success, evolution_msg = self.evolution_system.evolve(
-                        evolution_need, drive_state, context
-                    )
-                    if evolution_success:
-                        logger.info(f"进化成功: {evolution_msg}")
-                        # 记录进化事件
-                        context["evolution_event"] = {
-                            "success": True,
-                            "message": evolution_msg,
-                            "need": evolution_need,
-                        }
-                    else:
-                        logger.warning(f"进化失败: {evolution_msg}")
-                        context["evolution_event"] = {
-                            "success": False,
-                            "message": evolution_msg,
-                            "need": evolution_need,
-                        }
-        except AttributeError as e:
-            # EvolutionEngine 接口未完全实现，跳过进化检查
-            pass
+        if self.evolution_system is not None:
+            try:
+                if self.evolution_system.check_evolution_trigger(drive_state, context):
+                    evolution_need = self._identify_evolution_need(context)
+                    if evolution_need:
+                        evolution_success, evolution_msg = self.evolution_system.evolve(
+                            evolution_need, drive_state, context
+                        )
+                        if evolution_success:
+                            logger.info(f"进化成功: {evolution_msg}")
+                            context["evolution_event"] = {
+                                "success": True,
+                                "message": evolution_msg,
+                                "need": evolution_need,
+                            }
+                        else:
+                            logger.warning(f"进化失败: {evolution_msg}")
+                            context["evolution_event"] = {
+                                "success": False,
+                                "message": evolution_msg,
+                                "need": evolution_need,
+                            }
+            except Exception as e:
+                # P8-15: 原 except AttributeError 太窄（漏真实 bug），改 Exception 但只 log 不崩
+                logger.warning(f"进化系统检查失败: {e}")
 
         # === PHASE 4.7: 成长系统维护 ===
         # 更新已知能力（供后续行为检查使用）

@@ -179,19 +179,26 @@ class MutationManager:
             EvolutionProposal 或 None
         """
         try:
-            prompt = f"""作为进化系统，请根据以下需求生成变异提案：
+            prompt = f"""作为进化系统，请根据以下需求生成变异提案。
 
 需求：{need}
-
 变异类型：{mutation_type.value}
 
-请提供：
-1. 具体变更描述
-2. 需要修改的文件列表
-3. 预期收益
-4. 风险评估
+请严格按以下 JSON 格式返回（不要加 markdown 代码块标记）：
+{{
+  "description": "变更的简要描述",
+  "target_files": ["相对路径/文件.py"],
+  "changes": {{
+    "相对路径/文件.py": "该文件的完整新内容"
+  }},
+  "expected_benefit": "预期收益描述"
+}}
 
-以 JSON 格式返回。"""
+注意：
+- changes 的 key 是相对项目根目录的文件路径
+- value 是该文件的**完整新内容**（不是 diff）
+- 如果不需要修改文件，返回空 changes: {{}}
+- 只修改与需求直接相关的文件，不要改不相关的代码"""
 
             # 调用 LLM
             if hasattr(self.llm_client, 'generate'):
@@ -202,20 +209,71 @@ class MutationManager:
                 logger.warning("LLM client does not have generate or chat method")
                 return None
 
-            # 解析响应（简化处理）
-            # TODO: 实现 JSON 解析
+            if not response or not isinstance(response, str):
+                logger.warning("LLM returned empty or non-string response")
+                return None
+
+            # 解析 JSON（P8-15 接通：原 TODO 处直接丢弃了 LLM 响应）
+            parsed = self._parse_llm_response(response)
+            if parsed is None:
+                logger.warning(f"Failed to parse LLM response as JSON: {response[:200]}")
+                return None
+
             return EvolutionProposal(
                 mutation_type=mutation_type,
-                description=f"LLM 生成的变异: {need[:50]}",
-                target_files=[],
-                changes={},
-                expected_benefit="待评估",
+                description=parsed.get("description", f"LLM 生成的变异: {need[:50]}"),
+                target_files=parsed.get("target_files", []),
+                changes=parsed.get("changes", {}),
+                expected_benefit=parsed.get("expected_benefit", "待评估"),
                 risk_level=risk_level,
             )
 
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
             return None
+
+    @staticmethod
+    def _parse_llm_response(response: str) -> Optional[Dict[str, Any]]:
+        """解析 LLM 返回的 JSON 响应。
+
+        处理多种情况：
+        - 纯 JSON
+        - markdown 代码块包裹的 JSON
+        - JSON 前后有额外文字
+
+        Args:
+            response: LLM 原始响应字符串
+
+        Returns:
+            解析后的字典，或 None
+        """
+        import json
+        import re
+
+        # 尝试直接解析
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试从 markdown 代码块中提取
+        code_block = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', response, re.DOTALL)
+        if code_block:
+            try:
+                return json.loads(code_block.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # 尝试找到第一个 { 和最后一个 } 之间的内容
+        first_brace = response.find('{')
+        last_brace = response.rfind('}')
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            try:
+                return json.loads(response[first_brace:last_brace + 1])
+            except json.JSONDecodeError:
+                pass
+
+        return None
 
     def _generate_from_template(
         self,
@@ -224,7 +282,10 @@ class MutationManager:
         mutation_type: MutationType,
         risk_level: float
     ) -> EvolutionProposal:
-        """从模板生成变异提案
+        """从模板生成变异提案（无 LLM 时的回退）
+
+        对于不同变异类型生成安全的、最小化的变更。
+        无 LLM 时只能做参数/配置级别的微调。
 
         Args:
             need: 进化需求
@@ -235,12 +296,26 @@ class MutationManager:
         Returns:
             EvolutionProposal
         """
-        # 简化的模板生成
+        description = f"模板变异: {need[:100]}"
+        target_files: List[str] = []
+        changes: Dict[str, str] = {}
+
+        if mutation_type == MutationType.CONFIG_CHANGE:
+            # 配置变更：在 runtime.yaml 末尾追加注释标记
+            target_files = ["config/runtime.yaml"]
+            changes = {
+                "config/runtime.yaml": f"# Evolution mark: {need[:80]}\n# (template-generated, review needed)\n"
+            }
+        elif mutation_type == MutationType.PARAMETER_TUNE:
+            # 参数微调：无文件修改，仅记录意图（最安全的变异）
+            description = f"参数微调建议: {need[:100]}"
+        # 其他类型无 LLM 时不生成实际文件变更
+
         return EvolutionProposal(
             mutation_type=mutation_type,
-            description=f"模板变异: {need[:100]}",
-            target_files=[],
-            changes={},
+            description=description,
+            target_files=target_files,
+            changes=changes,
             expected_benefit=f"满足需求: {need[:50]}",
             risk_level=risk_level,
         )
