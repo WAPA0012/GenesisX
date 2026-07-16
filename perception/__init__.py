@@ -1,24 +1,8 @@
 """Perception System - observation and context building."""
 from .observer import observe_environment
 from .context_builder import build_context
-from .novelty import NoveltyDetector
-from .signal_filter import SignalFilter, FilteredSignal, Signal  # Signal is alias for backward compatibility
-from .command_parser import CommandParser
 
-# 新增感知能力
-try:
-    from .time_perception import (
-        TimePerception,
-        get_time_perception,
-        get_current_time,
-        get_time_info,
-    )
-except ImportError:
-    TimePerception = None
-    get_time_perception = None
-    get_current_time = None
-    get_time_info = None
-
+# Self perception (used by tool_executor)
 try:
     from .self_perception import (
         SelfPerception,
@@ -34,19 +18,12 @@ except ImportError:
     get_system_stats = None
     get_health_status = None
 
+# P4-36/43/45 已删除: novelty.py / signal_filter.py / command_parser.py / time_perception.py
+# 四者均仅被 __init__.py re-export，无运行时消费者（life_loop 只用 observe_environment + build_context）
+
 __all__ = [
     "observe_environment",
     "build_context",
-    "NoveltyDetector",
-    "SignalFilter",
-    "FilteredSignal",
-    "Signal",  # Backward compatibility alias
-    "CommandParser",
-    # Time perception
-    "TimePerception",
-    "get_time_perception",
-    "get_current_time",
-    "get_time_info",
     # Self perception
     "SelfPerception",
     "get_self_perception",
