@@ -222,8 +222,7 @@ class GenesisXManager:
         self.llm = None  # LLM 客户端
         self.llm_available = False  # LLM 是否可用
 
-        # 主动对话相关
-        self._initiative_queue: List[Dict] = []  # 主动消息队列
+        # 主动对话相关 (P9-10: _initiative_queue 已删，改为实时生成)
         self._last_initiative_time: float = 0  # 上次主动说话时间
         self._last_user_interaction: float = time.time()  # 上次用户交互时间
         self._initiative_lock = threading.Lock()  # 线程锁
@@ -535,12 +534,7 @@ class GenesisXManager:
                 "timestamp": datetime.now(timezone.utc).isoformat()
             })
 
-            # 在后台尝试预生成下一条主动消息
-            # 这样即使 auto-run 关闭，用户也能在一段时间后看到主动消息
-            try:
-                self.try_generate_initiative_async()
-            except Exception as e:
-                logger.warning(f"Failed to pre-generate initiative: {e}")
+            # P9-10: initiative 预生成已删（实时模式不需要）
 
             return response
 
@@ -978,28 +972,6 @@ class GenesisXManager:
 
         return None
 
-    def add_initiative(self, initiative: Dict[str, Any]):
-        """将主动消息添加到队列
-
-        Args:
-            initiative: 主动消息字典
-        """
-        with self._initiative_lock:
-            if initiative:
-                self._initiative_queue.append(initiative)
-                logger.info(f"Added initiative to queue: {initiative.get('content', '')[:50]}")
-
-    def get_pending_initiative(self) -> Optional[Dict[str, Any]]:
-        """获取待发送的主动消息
-
-        Returns:
-            消息字典，如果没有返回 None
-        """
-        with self._initiative_lock:
-            if self._initiative_queue:
-                return self._initiative_queue.pop(0)
-            return None
-
     def check_and_generate_initiative(self) -> Optional[Dict[str, Any]]:
         """实时检查并生成主动消息（供API调用）
 
@@ -1041,15 +1013,8 @@ class GenesisXManager:
 
         return None
 
-    def try_generate_initiative_async(self) -> None:
-        """尝试异步生成主动消息（已改为实时模式，此方法不再预生成）
-
-        主动消息现在在 check_and_generate_initiative() 中实时生成，
-        基于调用时刻的真实状态。
-        """
-        # 实时模式下不需要预生成
-        # 主动消息在 API 调用 check_and_generate_initiative 时实时生成
-        pass
+    # P9-10: initiative 死队列已清理（add_initiative/get_pending_initiative/try_generate_initiative_async）
+    # 主动消息改为 check_and_generate_initiative() 实时生成
 
     # ==================== v2 独有功能 ====================
 
@@ -1436,7 +1401,7 @@ def api_initiative_debug():
     debug_info = {
         "llm_available": manager.llm_available,
         "life_loop_exists": manager.life_loop is not None,
-        "queue_length": len(manager._initiative_queue),
+        "queue_length": 0,  # P9-10: initiative 队列已删
         "last_initiative_time": manager._last_initiative_time,
         "min_interval": manager.MIN_INITIATIVE_INTERVAL,
         "thresholds": manager.INITIATIVE_THRESHOLDS,
@@ -2627,9 +2592,7 @@ def api_run_start():
 
                 tick_count += 1
 
-                # 每3个tick，尝试预生成主动消息
-                if tick_count % 3 == 0:
-                    manager.try_generate_initiative_async()
+                # P9-10: initiative 预生成已删（check_and_generate_initiative 实时生成）
 
                 # 动态调整tick间隔（基于当前状态）
                 # 高压力/无聊时加快，正常时保持
