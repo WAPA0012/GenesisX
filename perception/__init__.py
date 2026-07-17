@@ -11,7 +11,11 @@ try:
         get_system_stats,
         get_health_status,
     )
-except ImportError:
+except ImportError as e:
+    # P4-47 修复：原静默降级（置 None 不警告），改为打印警告
+    from common.logger import get_logger
+    _logger = get_logger(__name__)
+    _logger.warning(f"SelfPerception 导入失败（感知工具将不可用）: {e}")
     SelfPerception = None
     get_self_perception = None
     read_logs = None
