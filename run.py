@@ -3,7 +3,7 @@
 Usage:
     python run.py
     python run.py --ticks 100
-    python run.py --config config/runtime.yaml
+    python run.py --config config
 """
 import argparse
 from pathlib import Path

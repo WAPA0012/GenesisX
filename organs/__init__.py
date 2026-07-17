@@ -131,12 +131,7 @@ try:
 except ImportError:
     _internal_organs_available = False
 
-# 其他组件
-try:
-    from .organ_selector import OrganSelector
-    from .organ_interface import OrganInterface
-except ImportError:
-    pass
+# P5-12: organ_selector/organ_interface 已删除（第三套器官选择，被 differentiate 取代）
 
 
 __all__ = [
@@ -180,11 +175,7 @@ if _internal_organs_available:
         "ImmuneOrgan",
     ])
 
-# 添加其他组件
-try:
-    __all__.extend(["OrganSelector", "OrganInterface"])
-except NameError:
-    pass
+# P5-12: OrganSelector/OrganInterface 已删除
 
 
 # ==================== 全局单例 ====================
