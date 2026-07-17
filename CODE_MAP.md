@@ -2330,7 +2330,7 @@ user_input → self._pending_user_input
 | ~~P9-9~~ ✅已修 | tick 计数统一用 state.tick（chat 不再传 0 重置，web 不再 +1 跳号） | web/app.py + chat_interactive.py |
 | **P8-19** | 能力管理三件套碎片化（capability_router 孤立） | core/capability_*.py |
 | **P8-20** | 三套重叠"调度"概念 | core/ |
-| **P5-12** | OrganSelector/OrganInterface 第三套器官选择（仅测试用） | organs/{organ_selector,organ_interface}.py |
+| ~~P5-12~~ ✅已修 | OrganSelector/OrganInterface 已删（-722行） | organs/ |
 
 #### 🟢 代码质量/清理
 
@@ -2346,9 +2346,9 @@ user_input → self._pending_user_input
 | P3-9 | smart_retrieval LLM 决策死代码 | memory/smart_retrieval.py |
 | P5-1/2/3/4/5/9/11/13/14/16/17/18/22/23 | organs 各小问题（OrganMemoryWriter/共享大脑稀释/reasoning_content/降级信号/Drive 矛盾/Limb 重复类等） | organs/ |
 | P4-2/5/7/12/13/14/17/19/21/23/26/28/30/34/35/38/39/40/41/47/51/56 | cognition/perception 魔法数遍地/死代码/重复实现 | cognition/ + perception/ |
-| P6-3/8/15/17/21/22/23/25/26/28/29/32 | tools 各问题（reasoning_content/web_search/黑板双调/专家硬编码/safe_executor/code_exec/voice/messaging等） | tools/ |
+| ~~P6-17~~ ✅已修 / P6-3,8,15,21,22,23,25,26,28,29,32 待处理 | 专家模型从 config 读 / 其余 tools 问题 | tools/ |
 | P7-1/2/3/4/6/7/9/10/11/12/13/15/17/18/19/21-33 | safety/persistence 阈值魔数/死代码/重复实现/孤儿包 | safety/ + persistence/ |
-| P9-3/5/6/8/10/11/12 | web/daemon 入口层重复/空壳线程/信号不可靠/initiative 死队列/配置热改脆弱 | web/ + daemon.py |
+| ~~P9-10~~ ✅已修 / P9-3,5,6,8,11,12 待处理 | initiative 死队列已删 / 其余 web+daemon 问题 | web/ + daemon.py |
 
 ### ✅ 已处理归档（70 项，仅 ID + 一句话）
 
