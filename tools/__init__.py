@@ -87,85 +87,15 @@ except ImportError:
     create_core5_experts = None
     create_orchestrator = None
 
-# ========== 新增工具模块 ==========
-
-# Vision module (image analysis, OCR)
-try:
-    from .vision import (
-        VisionClient,
-        VisionModel,
-        VisionCapability,
-        create_vision_client,
-        analyze_image,
-        ocr_image,
-    )
-except ImportError:
-    VisionClient = None
-    VisionModel = None
-    VisionCapability = None
-    create_vision_client = None
-    analyze_image = None
-    ocr_image = None
-
-# Messaging module (active message sending)
-try:
-    from .messaging import (
-        Message,
-        MessagePriority,
-        MessageType,
-        MessageChannel,
-        ConsoleChannel,
-        LogChannel,
-        WebhookChannel,
-        CallbackChannel,
-        MessagingSystem,
-        get_messaging_system,
-        send_message,
-        notify_user,
-        alert_error,
-        share_insight,
-    )
-except ImportError:
-    Message = None
-    MessagePriority = None
-    MessageType = None
-    MessageChannel = None
-    ConsoleChannel = None
-    LogChannel = None
-    WebhookChannel = None
-    CallbackChannel = None
-    MessagingSystem = None
-    get_messaging_system = None
-    send_message = None
-    notify_user = None
-    alert_error = None
-    share_insight = None
-
-# Voice module (TTS)
-try:
-    from .voice import (
-        VoiceOutput,
-        TTSEngine,
-        VoiceGender,
-        VoiceEmotion,
-        get_voice_output,
-        speak,
-        is_voice_available,
-    )
-except ImportError:
-    VoiceOutput = None
-    TTSEngine = None
-    VoiceGender = None
-    VoiceEmotion = None
-    get_voice_output = None
-    speak = None
-    is_voice_available = None
+# P1-7/8/9 + tools dead code cleanup:
+# 已删除: vision.py / messaging.py / voice.py / embeddings.py / code_exec.py /
+#         safe_executor.py / web_search.py / file_ops.py (全部零引用)
 
 __all__ = [
     # LLM API
     "UniversalLLM",
     "LLMConfig",
-    "LLMClient",  # 添加向后兼容
+    "LLMClient",
     "create_llm_from_preset",
     "create_llm_from_env",
     # Tool system v2
@@ -195,34 +125,4 @@ __all__ = [
     "config_select",
     "create_core5_experts",
     "create_orchestrator",
-    # Vision module
-    "VisionClient",
-    "VisionModel",
-    "VisionCapability",
-    "create_vision_client",
-    "analyze_image",
-    "ocr_image",
-    # Messaging module
-    "Message",
-    "MessagePriority",
-    "MessageType",
-    "MessageChannel",
-    "ConsoleChannel",
-    "LogChannel",
-    "WebhookChannel",
-    "CallbackChannel",
-    "MessagingSystem",
-    "get_messaging_system",
-    "send_message",
-    "notify_user",
-    "alert_error",
-    "share_insight",
-    # Voice module
-    "VoiceOutput",
-    "TTSEngine",
-    "VoiceGender",
-    "VoiceEmotion",
-    "get_voice_output",
-    "speak",
-    "is_voice_available",
 ]

@@ -251,11 +251,10 @@ class LLMClient:
             choice = data.get("choices", [{}])[0]
             message = choice.get("message", {})
 
-            # 提取文本（GLM-5 等模型可能使用 reasoning_content）
-            text = message.get("content", "")
-            if not text:
-                # GLM-5 可能返回 reasoning_content 而不是 content
-                text = message.get("reasoning_content", "")
+            # P6-3 修复：只用 content 作为正文，不再 fallback 到 reasoning_content
+            # reasoning_content 是推理链（CoT），混入正文会污染下游器官思考/聊天历史
+            text = message.get("content", "") or ""
+            reasoning_content = message.get("reasoning_content", "")
 
             # 提取工具调用
             tool_calls = []
@@ -275,7 +274,8 @@ class LLMClient:
                 "ok": True,
                 "text": text or "",
                 "tool_calls": tool_calls,
-                "total_tokens": data.get("usage", {}).get("total_tokens", 0)
+                "total_tokens": data.get("usage", {}).get("total_tokens", 0),
+                "reasoning_content": reasoning_content,  # P6-3: 单独暴露推理链供调试
             }
 
         except requests.RequestException as e:
