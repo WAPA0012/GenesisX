@@ -26,8 +26,12 @@ from common.models import Action, CapabilityResult
 from organs.base_organ import BaseOrgan
 
 
-class Limb(BaseOrgan):
-    """肢体基类
+class DockerLimb(BaseOrgan):
+    """Docker 肢体基类 (P5-13 澄清: 原 class Limb 与 unified_organ.py 的 Limb 同名混淆)
+
+    重命名为 DockerLimb 以区分：
+    - DockerLimb (本类): 运行在 Docker 容器中的外部工具
+    - Limb (unified_organ.py): LLM 动态生成的代码模块
 
     肢体是"被吞噬的外部工具"，运行在 Docker 容器中，
     提供具体的执行能力（如 PS肢体、Excel肢体）。
@@ -139,11 +143,13 @@ class Limb(BaseOrgan):
 
 
 # 向后兼容：保留旧名称
-MountedOrgan = Limb
+Limb = DockerLimb  # P5-13: 外部调用方仍可用 limbs.Limb
+MountedOrgan = DockerLimb
 
 
 __all__ = [
-    "Limb",
+    "DockerLimb",
+    "Limb",  # 向后兼容别名
     "CapabilityResult",
     "MountedOrgan",  # 向后兼容
 ]

@@ -2327,7 +2327,7 @@ user_input → self._pending_user_input
 | **P6-9/P6-20** | execute_code 默认 FULL_ACCESS，sandbox flag 无处读取，4 套代码执行最完善的没接 | tools/{tool_executor,safe_executor,code_exec}.py |
 | **P8-17** | 插件/肢体代码无沙箱 exec，devour(".") 可读任意文件 | core/growth/ + core/plugins/ |
 | **P9-2** | chat_interactive 用 llm_api，action_executor 用 llm_client——两个 HTTP session（P6-1 的入口层暴露） | chat_interactive.py |
-| **P9-9** | tick 计数 4 入口不一致（web/chat 传 tick+1，daemon/run 不传） | web/app.py + chat_interactive.py + daemon.py |
+| ~~P9-9~~ ✅已修 | tick 计数统一用 state.tick（chat 不再传 0 重置，web 不再 +1 跳号） | web/app.py + chat_interactive.py |
 | **P8-19** | 能力管理三件套碎片化（capability_router 孤立） | core/capability_*.py |
 | **P8-20** | 三套重叠"调度"概念 | core/ |
 | **P5-12** | OrganSelector/OrganInterface 第三套器官选择（仅测试用） | organs/{organ_selector,organ_interface}.py |
@@ -2340,7 +2340,7 @@ user_input → self._pending_user_input
 | P2-1/2/4 | axiology 重复实现（fallback 类/权重计算重复/setpoint 散落3处） | axiology/ |
 | P1-7/8/9 | auth.py(699行)+database.py(12行) 过度工程 | common/ |
 | ~~P8-5~~ ✅已修 | psutil.cpu_percent interval=None 非阻塞（每 tick 省 100ms） | core/state.py |
-| ~~P8-16~~ ✅已修 / P8-14 待处理 | limb_builder label 修复 / MetabolicLedger from_dict 待修 | core/stores/ + core/growth/ |
+| ~~P8-16~~ ✅已修 / ~~P8-14~~ ✅已修 | limb_builder label + MetabolicLedger from_dict 恢复 unlimited | core/stores/ + core/growth/ |
 | P3-1/2 | 持久化逻辑绕开 JSONLWriter 重写3套 | memory/ |
 | P3-4/8/11/12/14/16/19/21 | memory 各模块重复实现/参数不一致 | memory/ |
 | P3-9 | smart_retrieval LLM 决策死代码 | memory/smart_retrieval.py |

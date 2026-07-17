@@ -318,7 +318,7 @@ class GenesisXChat:
 
     def _initial_tick(self):
         """运行初始 tick"""
-        episode = self.life_loop.tick(0)
+        episode = self.life_loop.tick(self.life_loop.state.tick)  # P9-9: 用 state.tick 不强制重置为 0
         mood = self.life_loop.fields.get("mood")
         stress = self.life_loop.fields.get("stress")
         self.display.print_emotion(mood, stress)

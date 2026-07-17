@@ -179,8 +179,15 @@ class DaemonManager:
                     time.sleep(CONSOLIDATION_INTERVAL)
                     if self.running and self.life_loop:
                         self.logger.info("Triggering scheduled memory consolidation")
-                        # Trigger consolidation
-                        # This would call the consolidator to compress memories
+                        # P9-5 修复：实际调用 consolidator（原来是空注释）
+                        if hasattr(self.life_loop, 'consolidator') and self.life_loop.consolidator:
+                            if self.life_loop.episodic.count() >= 20:
+                                stats = self.life_loop.consolidator.consolidate(
+                                    current_tick=self.life_loop.state.tick,
+                                    budget_tokens=1000,
+                                    salience_threshold=0.7,
+                                )
+                                self.logger.info(f"Consolidation done: {stats}")
                 except Exception as e:
                     self.logger.error(f"Consolidation thread error: {e}")
 

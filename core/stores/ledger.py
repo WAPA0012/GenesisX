@@ -187,3 +187,5 @@ class MetabolicLedger:
                 self.resources[name].total = res_data.get("total", 100000.0)
                 self.resources[name].reserved = res_data.get("reserved", 0.0)
                 self.resources[name].spent = res_data.get("spent", 0.0)
+                # P8-14 修复: 恢复 unlimited 标志（原漏掉，导致无限模式重启后失效）
+                self.resources[name].unlimited = res_data.get("unlimited", False)

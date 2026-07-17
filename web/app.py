@@ -970,7 +970,7 @@ class GenesisXManager:
                 # 同时执行 tick 更新状态
                 if self.life_loop:
                     try:
-                        self.life_loop.tick(t=self.life_loop.state.tick + 1)
+                        self.life_loop.tick(t=self.life_loop.state.tick)  # P9-9: 不跳号
                     except Exception as e:
                         logger.error(f"Tick error during initiative: {e}")
 
