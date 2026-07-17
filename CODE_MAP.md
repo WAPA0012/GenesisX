@@ -2328,15 +2328,15 @@ user_input → self._pending_user_input
 | **P8-17** | 插件/肢体代码无沙箱 exec，devour(".") 可读任意文件 | core/growth/ + core/plugins/ |
 | **P9-2** | chat_interactive 用 llm_api，action_executor 用 llm_client——两个 HTTP session（P6-1 的入口层暴露） | chat_interactive.py |
 | ~~P9-9~~ ✅已修 | tick 计数统一用 state.tick（chat 不再传 0 重置，web 不再 +1 跳号） | web/app.py + chat_interactive.py |
-| **P8-19** | 能力管理三件套碎片化（capability_router 孤立） | core/capability_*.py |
-| **P8-20** | 三套重叠"调度"概念 | core/ |
+| ~~P8-19~~ ✅已修 | capability_router 已删（C阶段），capability_manager 是活路径 | ~~core/~~ |
+| ~~P8-20~~ ✅已修 | scheduler.py 已删（C阶段），autonomous_scheduler 是活路径 | ~~core/~~ |
 | ~~P5-12/13/14/18/19~~ ✅已修 | organ_selector删/DockerLimb消歧义/mind学习接通/中文分词修 | organs/ |
 
 #### 🟢 代码质量/清理
 
 | ID | 问题 | 位置 |
 |---|---|---|
-| P1-1 | Goal.priority(deprecated) 与 priority_level 并存 | common/models.py |
+| ~~P1-1~~ ✅记录已知 | Goal.priority 已 deprecated，get_effective_priority() 走 priority_level，保留向后兼容 | common/models.py |
 | P2-1/2/4 | axiology 重复实现（fallback 类/权重计算重复/setpoint 散落3处） | axiology/ |
 | ~~P1-7/8/9~~ ✅已修 | auth.py + database.py + models/ 全删 (~1545行) | ~~common/~~ |
 | ~~P8-5~~ ✅已修 | psutil.cpu_percent interval=None 非阻塞（每 tick 省 100ms） | core/state.py |
