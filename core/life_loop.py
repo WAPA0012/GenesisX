@@ -932,6 +932,8 @@ class LifeLoop(GapDetectorMixin):
         context = build_context(field_snapshot, recent_episodes, retrieved, budget_remaining)
         # 添加 observations 到 context，供器官使用
         context["observations"] = ctx.obs_batch
+        # P5-23 修复：传 tick_duration 给器官（caretaker 的时间窗推算需要）
+        context["tick_duration"] = dt
 
         # === 新增: PHASE 4.5: 驱动力系统 ===
         # 构建驱动力状态，提供给 LLM 理解当前"想要什么"

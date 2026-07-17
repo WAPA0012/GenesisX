@@ -820,14 +820,34 @@ class OrganMemoryWriter:
                 result_text = response.get("text", "")
                 self._llm_judge_count += 1
 
-                # 解析 JSON
+                # 解析 JSON (P5-5 修复：原 find/rfind 在多 JSON 块时会误提取)
                 import json
-                # 尝试提取 JSON
-                json_start = result_text.find("{")
-                json_end = result_text.rfind("}") + 1
-                if json_start >= 0 and json_end > json_start:
-                    json_str = result_text[json_start:json_end]
-                    result = json.loads(json_str)
+                import re
+                # 尝试直接解析
+                try:
+                    result = json.loads(result_text)
+                except json.JSONDecodeError:
+                    # 尝试从 markdown 代码块提取
+                    code_block = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', result_text, re.DOTALL)
+                    if code_block:
+                        try:
+                            result = json.loads(code_block.group(1))
+                        except json.JSONDecodeError:
+                            result = None
+                    else:
+                        result = None
+
+                if result is None:
+                    # 最后回退到 find/rfind（兼容旧格式）
+                    json_start = result_text.find("{")
+                    json_end = result_text.rfind("}") + 1
+                    if json_start >= 0 and json_end > json_start:
+                        try:
+                            result = json.loads(result_text[json_start:json_end])
+                        except json.JSONDecodeError:
+                            result = None
+
+                if result:
 
                     return MemoryWorthiness(
                         should_save=result.get("should_save", False),

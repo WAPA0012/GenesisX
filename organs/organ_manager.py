@@ -337,9 +337,15 @@ class OrganManager:
         self.attachment.record_interaction(positive)
 
     def record_exploration(self, topic: str, novelty: float):
-        """记录探索（委托给好奇心器官）"""
-        if hasattr(self.curiosity, '_explored_topics'):
-            self.curiosity._explored_topics.add(topic)
+        """记录探索（委托给好奇心器官）
+
+        P5-11 修复：原直接访问私有 _explored_topics，改为用 ScoutOrgan 的公共方法
+        """
+        # 优先用 ScoutOrgan 的 record_exploration_outcome（如果有）
+        if hasattr(self.curiosity, 'explored_topics'):
+            self.curiosity.explored_topics.add(topic)  # 公共属性
+        elif hasattr(self.curiosity, '_explored_topics'):
+            self.curiosity._explored_topics.add(topic)  # 回退
 
     def record_achievement(self, skill: str):
         """记录成就（委托给胜任力器官）"""
