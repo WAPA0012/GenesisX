@@ -1330,6 +1330,8 @@ def create_core5_experts(llm_api_key: str = "") -> List[ExpertConfig]:
     if not llm_api_key:
         llm_api_key = os.getenv("LLM_API_KEY", "")
 
+    # P6-17 修复：原硬编码 gpt-4/openai.com，改为从环境变量读（适配 stepfun 等任意 provider）
+    default_model = os.getenv("LLM_MODEL", "gpt-4")
     base_config = {
         "api_key": llm_api_key,
         "api_base": os.getenv("LLM_API_BASE", "https://api.openai.com/v1"),
@@ -1341,32 +1343,32 @@ def create_core5_experts(llm_api_key: str = "") -> List[ExpertConfig]:
     return [
         ExpertConfig(
             role=ExpertRole.M_COORD,
-            name="gpt4-coord",
-            llm_config={**base_config, "model": "gpt-4"},
+            name="coord-expert",
+            llm_config={**base_config, "model": default_model},
             priority=10
         ),
         ExpertConfig(
             role=ExpertRole.M_MEM,
-            name="gpt4-mem",
-            llm_config={**base_config, "model": "gpt-4"},
+            name="mem-expert",
+            llm_config={**base_config, "model": default_model},
             priority=8
         ),
         ExpertConfig(
             role=ExpertRole.M_REASON,
-            name="gpt4-reason",
-            llm_config={**base_config, "model": "gpt-4"},
+            name="reason-expert",
+            llm_config={**base_config, "model": default_model},
             priority=8
         ),
         ExpertConfig(
             role=ExpertRole.M_AFFECT,
-            name="gpt4-affect",
-            llm_config={**base_config, "model": "gpt-4"},
+            name="affect-expert",
+            llm_config={**base_config, "model": default_model},
             priority=7
         ),
         ExpertConfig(
             role=ExpertRole.M_PERCEPT,
-            name="gpt35-percept",
-            llm_config={**base_config, "model": "gpt-3.5-turbo"},
+            name="percept-expert",
+            llm_config={**base_config, "model": default_model},
             priority=6
         )
     ]
