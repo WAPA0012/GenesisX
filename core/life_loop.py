@@ -1426,9 +1426,9 @@ class LifeLoop(GapDetectorMixin):
         # 直接修正 delta_per_dim，而不是 utilities
         if outcome.get("success") and outcome.get("ok"):
             # 覆盖 attachment 和 competence 的 RPE 为正值
-            # 这会让 mood 上升，stress 下降
-            delta_per_dim["attachment"] = abs(delta_per_dim.get("attachment", 0.0)) + 0.05
-            delta_per_dim["competence"] = abs(delta_per_dim.get("competence", 0.0)) + 0.03
+            # 幅度需足够大以抵消 homeostasis/safety 等维度的负 RPE
+            delta_per_dim["attachment"] = abs(delta_per_dim.get("attachment", 0.0)) + 0.15
+            delta_per_dim["competence"] = abs(delta_per_dim.get("competence", 0.0)) + 0.10
 
         # P8-4: 写 FieldStore 即自动反映到 GlobalState（单一真相源）
         new_mood = update_mood_per_dimension(self.fields.get("mood"), delta_per_dim)
@@ -1802,8 +1802,8 @@ class LifeLoop(GapDetectorMixin):
         self.state._update_resource_pressure()
 
         # 获取昼夜节律调整系数 (P4-53/54: 传 tick 使 simulation 模式生效，与 caretaker 时钟一致)
-        circadian_energy = self.circadian.get_energy_level(tick=t)
-        recovery_rate = self.circadian.get_fatigue_recovery_rate(tick=t)
+        circadian_energy = self.circadian.get_energy_level(tick=self.state.tick)
+        recovery_rate = self.circadian.get_fatigue_recovery_rate(tick=self.state.tick)
 
         # 论文 v14: Energy_t 和 Fatigue_t 已被数字原生模型替代
         # 修复：低能量时应该有恢复趋势，而不是持续下降
@@ -1816,8 +1816,10 @@ class LifeLoop(GapDetectorMixin):
             # 能量消耗：缓慢下降
             new_energy = energy * 0.99 + circadian_energy * 0.01
 
-        # 疲劳自然恢复（简化）
-        new_fatigue = max(0.0, fatigue - 0.05 * dt * recovery_rate)
+        # 疲劳：自然累积 + 昼夜节律恢复
+        # activity_fatigue 每 tick 累积（用于触发做梦），fatigue 同步（展示/器官用）
+        self.state.activity_fatigue = min(1.0, self.state.activity_fatigue + 0.01 * dt)
+        new_fatigue = max(self.state.activity_fatigue - 0.05 * dt * recovery_rate, 0.0)
 
         # Stress 更新移至 Affect Phase，这里保持当前值不变
         # P4-50 修复：update_boredom 原来只传 boredom+dt，novelty 默认 0 → ETA_IDLE 每 tick 触发
