@@ -1431,7 +1431,17 @@ class LifeLoop(GapDetectorMixin):
             delta_per_dim["competence"] = abs(delta_per_dim.get("competence", 0.0)) + 0.10
 
         # P8-4: 写 FieldStore 即自动反映到 GlobalState（单一真相源）
-        new_mood = update_mood_per_dimension(self.fields.get("mood"), delta_per_dim)
+        current_mood = self.fields.get("mood")
+        new_mood = update_mood_per_dimension(current_mood, delta_per_dim)
+
+        # mood 下跌保护：成功的动作不应让 mood 大幅下跌
+        # 根因：homeostasis/safety 的负 RPE 持续拖累 mood，即使动作本身成功了
+        # 限制：成功动作每 tick mood 最多跌 0.02（失败动作不限制）
+        if outcome.get("success", outcome.get("ok", True)):
+            max_drop = 0.02
+            if current_mood - new_mood > max_drop:
+                new_mood = current_mood - max_drop
+
         self.fields.set("mood", new_mood)
 
         # 更新 Stress：使用 affect/stress_affect.update_stress
