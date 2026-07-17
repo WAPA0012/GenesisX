@@ -1819,7 +1819,7 @@ class LifeLoop(GapDetectorMixin):
         # 疲劳：自然累积 + 昼夜节律恢复
         # activity_fatigue 每 tick 累积（用于触发做梦），fatigue 同步（展示/器官用）
         self.state.activity_fatigue = min(1.0, self.state.activity_fatigue + 0.01 * dt)
-        new_fatigue = max(self.state.activity_fatigue - 0.05 * dt * recovery_rate, 0.0)
+        new_fatigue = max(self.state.activity_fatigue - 0.005 * dt * recovery_rate, 0.0)
 
         # Stress 更新移至 Affect Phase，这里保持当前值不变
         # P4-50 修复：update_boredom 原来只传 boredom+dt，novelty 默认 0 → ETA_IDLE 每 tick 触发
