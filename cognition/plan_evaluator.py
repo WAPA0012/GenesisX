@@ -3,6 +3,12 @@ from typing import List, Dict, Any
 from .planner import Plan
 
 
+# P4-12/13: 提取魔术数到模块常量（原内联硬编码）
+LAMBDA_COST = 0.001       # 成本惩罚系数
+LAMBDA_RISK = 0.5         # 风险惩罚系数
+BUDGET_PENALTY = 2.0      # 预算违反硬惩罚
+
+
 class PlanEvaluator:
     """Evaluates candidate plans and selects best one.
 
@@ -119,17 +125,15 @@ class PlanEvaluator:
             weighted_value = estimated_reward
 
         # 成本惩罚系数 λ_cost
-        lambda_cost = 0.001  # 归一化到与奖励可比的量级
-        cost_penalty = lambda_cost * estimated_cost
+        cost_penalty = LAMBDA_COST * estimated_cost
 
         # 风险惩罚系数 λ_risk
-        lambda_risk = 0.5
-        risk_penalty = lambda_risk * total_risk
+        risk_penalty = LAMBDA_RISK * total_risk
 
         # 预算违反惩罚 (硬约束)
         budget_penalty = 0.0
         if estimated_cost > budget_remaining:
-            budget_penalty = 2.0
+            budget_penalty = BUDGET_PENALTY
 
         # J(p|S_t)
         score = weighted_value - cost_penalty - risk_penalty - budget_penalty
