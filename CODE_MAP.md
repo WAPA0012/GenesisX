@@ -2330,7 +2330,7 @@ user_input → self._pending_user_input
 | ~~P9-9~~ ✅已修 | tick 计数统一用 state.tick（chat 不再传 0 重置，web 不再 +1 跳号） | web/app.py + chat_interactive.py |
 | **P8-19** | 能力管理三件套碎片化（capability_router 孤立） | core/capability_*.py |
 | **P8-20** | 三套重叠"调度"概念 | core/ |
-| ~~P5-12~~ ✅已修 | OrganSelector/OrganInterface 已删（-722行） | organs/ |
+| ~~P5-12/13/14/18/19~~ ✅已修 | organ_selector删/DockerLimb消歧义/mind学习接通/中文分词修 | organs/ |
 
 #### 🟢 代码质量/清理
 
@@ -2338,15 +2338,15 @@ user_input → self._pending_user_input
 |---|---|---|
 | P1-1 | Goal.priority(deprecated) 与 priority_level 并存 | common/models.py |
 | P2-1/2/4 | axiology 重复实现（fallback 类/权重计算重复/setpoint 散落3处） | axiology/ |
-| P1-7/8/9 | auth.py(699行)+database.py(12行) 过度工程 | common/ |
+| ~~P1-7/8/9~~ ✅已修 | auth.py + database.py + models/ 全删 (~1545行) | ~~common/~~ |
 | ~~P8-5~~ ✅已修 | psutil.cpu_percent interval=None 非阻塞（每 tick 省 100ms） | core/state.py |
 | ~~P8-16~~ ✅已修 / ~~P8-14~~ ✅已修 | limb_builder label + MetabolicLedger from_dict 恢复 unlimited | core/stores/ + core/growth/ |
 | P3-1/2 | 持久化逻辑绕开 JSONLWriter 重写3套 | memory/ |
 | P3-4/8/11/12/14/16/19/21 | memory 各模块重复实现/参数不一致 | memory/ |
-| P3-9 | smart_retrieval LLM 决策死代码 | memory/smart_retrieval.py |
-| P5-1/2/3/4/5/9/11/13/14/16/17/18/22/23 | organs 各小问题（OrganMemoryWriter/共享大脑稀释/reasoning_content/降级信号/Drive 矛盾/Limb 重复类等） | organs/ |
-| P4-2/5/7/12/13/14/17/19/21/23/26/28/30/34/35/38/39/40/41/47/51/56 | cognition/perception 魔法数遍地/死代码/重复实现 | cognition/ + perception/ |
-| ~~P6-17~~ ✅已修 / P6-3,8,15,21,22,23,25,26,28,29,32 待处理 | 专家模型从 config 读 / 其余 tools 问题 | tools/ |
+| ~~P3-9~~ ✅已修 | ai_decide_retrieval 已删 (78行死代码) | ~~memory/smart_retrieval.py~~ |
+| ~~P5-3/9/13/18/19~~ ✅已修 / P5-1/2/4/5/11/14/16/17/22/23 待处理 | reasoning_content修/Drive矛盾已清/DockerLimb/中文分词/mind学习 已修；其余 organs 小问题低优先级（OrganMemoryWriter/共享大脑稀释/reasoning_content/降级信号/Drive 矛盾/Limb 重复类等） | organs/ |
+| ~~P4-19/21/22/26/28/30/34/35/36/38/39/40/41/43/45/47~~ ✅已修/已删 | 死代码已删+perception清理；P4-2/5/7/12/13/14/17/23/51/56 = 魔术数提取（低优先级）| cognition/ + perception/ |
+| ~~P6-3/8/15/17/21/22/25/26/28/29/32~~ ✅已修/已删 | reasoning_content修/专家config/voice/messaging/embeddings/code_exec/safe_executor/web_search/file_ops/vision 全删 | ~~tools/~~ |
 | P7-1/2/3/4/6/7/9/10/11/12/13/15/17/18/19/21-33 | safety/persistence 阈值魔数/死代码/重复实现/孤儿包 | safety/ + persistence/ |
 | ~~P9-10~~ ✅已修 / P9-3,5,6,8,11,12 待处理 | initiative 死队列已删 / 其余 web+daemon 问题 | web/ + daemon.py |
 
