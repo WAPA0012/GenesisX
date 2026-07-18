@@ -2323,7 +2323,7 @@ user_input → self._pending_user_input
 | ID | 问题 | 位置 |
 |---|---|---|
 | **P6-1** | 3 LLM 客户端并存（llm_client/llm_api/llm_orchestrator），接口签名/返回不一致，LLMMOrchestrator 类名拼写错误(双M) | tools/{llm_client,llm_api,llm_orchestrator}.py |
-| **P6-11** | 工具目录四重定义（ToolRegistry/DynamicToolRegistry/AVAILABLE_TOOLS/skills），工具名/风险/schema 不统一 | tools/ + memory/skills/ |
+| ~~P6-11~~ ✅已修 | 4 套系统 3 个各有职责：ToolRegistry=门控/成本, DynamicToolRegistry=执行+schema, skills/=技能记忆。AVAILABLE_TOOLS 死代码已删。read_own_logs/system_stats 已注册到 DynamicToolRegistry（5→7工具） | tools/ |
 | **P6-9/P6-20** | execute_code 默认 FULL_ACCESS，sandbox flag 无处读取，4 套代码执行最完善的没接 | tools/{tool_executor,safe_executor,code_exec}.py |
 | **P8-17** | 插件/肢体代码无沙箱 exec，devour(".") 可读任意文件 | core/growth/ + core/plugins/ |
 | **P9-2** | chat_interactive 用 llm_api，action_executor 用 llm_client——两个 HTTP session（P6-1 的入口层暴露） | chat_interactive.py |
