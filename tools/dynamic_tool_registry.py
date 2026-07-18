@@ -524,4 +524,44 @@ def _register_default_tools(registry: DynamicToolRegistry):
         risk_level=0.8  # 代码执行风险高
     )
 
+    # P6-11: 注册自我感知工具（原只在 ToolRegistry + tool_executor if-chain 里，LLM 调不到）
+    def _read_own_logs_wrapper(limit: int = 50, **kwargs):
+        """读取自己的运行日志"""
+        try:
+            from perception.self_perception import read_logs
+            return read_logs(limit=limit)
+        except Exception as e:
+            return f"读取日志失败: {e}"
+
+    def _system_stats_wrapper(**kwargs):
+        """获取系统状态"""
+        try:
+            from perception.self_perception import get_system_stats
+            return get_system_stats()
+        except Exception as e:
+            return f"获取系统状态失败: {e}"
+
+    registry.register(
+        name="read_own_logs",
+        description="读取自己的运行日志，了解最近发生了什么",
+        parameters={
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "返回日志条数（默认50）", "default": 50}
+            }
+        },
+        handler=_read_own_logs_wrapper,
+        category="self_perception",
+        risk_level=0.1
+    )
+
+    registry.register(
+        name="system_stats",
+        description="获取当前系统状态（CPU/内存/运行时间等）",
+        parameters={"type": "object", "properties": {}},
+        handler=_system_stats_wrapper,
+        category="self_perception",
+        risk_level=0.1
+    )
+
     logger.info(f"已注册 {len(registry._tools)} 个默认工具")

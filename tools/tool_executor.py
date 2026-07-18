@@ -7,7 +7,6 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from .tool_definitions import get_tool_definition
 
 # 加载 .env 文件
 try:
