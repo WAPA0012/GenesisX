@@ -521,6 +521,9 @@ def create_llm_from_env(api_base: Optional[str] = None) -> Union[UniversalLLM, "
     This function provides backward compatibility with chat_interactive.py
     which expects a simple client with a chat() method.
 
+    P6-1: 此函数返回 UniversalLLM；tools/llm_client.py 有同名函数返回 LLMClient。
+    调用方必须显式 import 指定来源。为消除歧义，新增 create_universal_llm_from_env 别名。
+
     Args:
         api_base: Optional API base URL override
 
@@ -531,6 +534,10 @@ def create_llm_from_env(api_base: Optional[str] = None) -> Union[UniversalLLM, "
         ValueError: If required environment variables are missing
     """
     return UniversalLLM.from_env(api_base)
+
+
+# P6-1: 明确的别名，消除与 llm_client.create_llm_from_env 的同名歧义
+create_universal_llm_from_env = create_llm_from_env
 
 
 # Backward compatibility alias

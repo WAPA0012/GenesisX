@@ -1,17 +1,23 @@
 """Tools system - Universal LLM API and other tools."""
 
+# P6-1: 注意 llm_api 和 llm_client 各有 create_llm_from_env（返回不同类型）
+# tools 包级导出的是 llm_api 版（UniversalLLM）
+# llm_client 版需显式 from tools.llm_client import create_llm_from_env
 from .llm_api import (
     UniversalLLM,
     LLMConfig,
     create_llm_from_preset,
-    create_llm_from_env,
+    create_llm_from_env,           # 返回 UniversalLLM
+    create_universal_llm_from_env, # 同上，明确命名版
 )
 
 # LLM Client (unified interface)
 try:
     from .llm_client import LLMClient
+    from .llm_client import create_llm_from_env as create_llm_client_from_env  # 返回 LLMClient
 except ImportError:
     LLMClient = None
+    create_llm_client_from_env = None
 
 # Enhanced tool system v2
 try:

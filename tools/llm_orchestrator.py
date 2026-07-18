@@ -17,7 +17,7 @@ from common.logger import get_logger
 logger = get_logger(__name__)
 
 
-class LLMMOrchestrator:
+class LLMOrchestrator:
     """统一的 LLM 编排器
 
     根据 configuration 自动选择单模型或多模型模式。
@@ -310,7 +310,7 @@ class LLMMOrchestrator:
         }
 
     @classmethod
-    def from_config(cls, config_path: str) -> "LLMMOrchestrator":
+    def from_config(cls, config_path: str) -> "LLMOrchestrator":
         """从配置文件创建编排器
 
         Args:
@@ -322,20 +322,20 @@ class LLMMOrchestrator:
         return cls(config_path=config_path)
 
     @classmethod
-    def from_env(cls) -> "LLMMOrchestrator":
+    def from_env(cls) -> "LLMOrchestrator":
         """从环境变量创建编排器（单模型模式）"""
         return cls(enable_multi_model=False, config_mode="single")
 
 
-# 兼性别名
-LLMOrchestrator = LLMMOrchestrator
+# P6-1: 原 LLMMOrchestrator 拼写错误已修正，别名保留向后兼容
+LLMMOrchestrator = LLMOrchestrator  # 向后兼容别名
 
 
 def create_llm_orchestrator(
     enable_multi_model: bool = False,
     config_mode: str = "single",
     config_path: Optional[str] = None
-) -> LLMMOrchestrator:
+) -> LLMOrchestrator:
     """创建 LLM 编排器的便捷函数
 
     Args:
@@ -346,7 +346,7 @@ def create_llm_orchestrator(
     Returns:
         LLM 编排器实例
     """
-    return LLMMOrchestrator(
+    return LLMOrchestrator(
         enable_multi_model=enable_multi_model,
         config_mode=config_mode,
         config_path=config_path
