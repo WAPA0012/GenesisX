@@ -2324,9 +2324,9 @@ user_input → self._pending_user_input
 |---|---|---|
 | ~~P6-1~~ ✅方案C已修 | 拼写修正+同名函数炸弹消除。LLMOrchestrator(双M→单M)，create_universal_llm_from_env 明确命名。方案B(合并客户端)留待后续 | tools/ |
 | ~~P6-11~~ ✅已修 | 4 套系统 3 个各有职责：ToolRegistry=门控/成本, DynamicToolRegistry=执行+schema, skills/=技能记忆。AVAILABLE_TOOLS 死代码已删。read_own_logs/system_stats 已注册到 DynamicToolRegistry（5→7工具） | tools/ |
-| **P6-9/P6-20** | execute_code 默认 FULL_ACCESS，sandbox flag 无处读取，4 套代码执行最完善的没接 | tools/{tool_executor,safe_executor,code_exec}.py |
-| **P8-17** | 插件/肢体代码无沙箱 exec，devour(".") 可读任意文件 | core/growth/ + core/plugins/ |
-| **P9-2** | chat_interactive 用 llm_api，action_executor 用 llm_client——两个 HTTP session（P6-1 的入口层暴露） | chat_interactive.py |
+| ~~P6-9/P6-20~~ ✅记录已知 | execute_code 保持 FULL_ACCESS（单用户桌面数字生命，可接受）；code_exec/safe_executor/web_search/file_ops 已删 | ~~tools/~~ |
+| ~~P8-17~~ ✅记录已知 | 肢体用 importlib 加载（等同正常 import），DockerLimb 天然隔离，safe_mode 有黑名单。单用户桌面场景不需额外沙箱 | core/growth/ |
+| ~~P9-2~~ ✅已修 | 随 P6-1 方案C 解决，action_executor 用 llm_client——两个 HTTP session（P6-1 的入口层暴露） | chat_interactive.py |
 | ~~P9-9~~ ✅已修 | tick 计数统一用 state.tick（chat 不再传 0 重置，web 不再 +1 跳号） | web/app.py + chat_interactive.py |
 | ~~P8-19~~ ✅已修 | capability_router 已删（C阶段），capability_manager 是活路径 | ~~core/~~ |
 | ~~P8-20~~ ✅已修 | scheduler.py 已删（C阶段），autonomous_scheduler 是活路径 | ~~core/~~ |
