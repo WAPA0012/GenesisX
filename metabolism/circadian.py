@@ -24,6 +24,29 @@ class CircadianPhase:
     NIGHT = "night"          # 22:00-06:00
 
 
+# P4-56: 提取魔术数到模块常量（原内联硬编码）
+# Phase 边界（小时）
+PHASE_MORNING_START = 6
+PHASE_AFTERNOON_START = 12
+PHASE_EVENING_START = 18
+PHASE_NIGHT_START = 22
+
+# 能量余弦公式参数：energy = ENERGY_BASELINE + ENERGY_AMPLITUDE × cos(angle)
+ENERGY_BASELINE = 0.65
+ENERGY_AMPLITUDE = 0.35
+ENERGY_PEAK_HOUR = 10.0      # 能量峰值时刻
+ENERGY_MIN_FLOOR = 0.3       # 能量下限（永不归零）
+ENERGY_MAX_CEIL = 1.0
+
+# 疲劳恢复倍率（按 phase）
+FATIGUE_RECOVERY_RATES = {
+    CircadianPhase.NIGHT: 2.0,
+    CircadianPhase.MORNING: 1.5,
+    CircadianPhase.AFTERNOON: 0.8,
+    CircadianPhase.EVENING: 1.0,
+}
+
+
 class CircadianRhythm:
     """
     Manages circadian rhythm and offline consolidation windows.
@@ -119,11 +142,11 @@ class CircadianRhythm:
 
         hour = time_to_use.hour
 
-        if 6 <= hour < 12:
+        if PHASE_MORNING_START <= hour < PHASE_AFTERNOON_START:
             return CircadianPhase.MORNING
-        elif 12 <= hour < 18:
+        elif PHASE_AFTERNOON_START <= hour < PHASE_EVENING_START:
             return CircadianPhase.AFTERNOON
-        elif 18 <= hour < 22:
+        elif PHASE_EVENING_START <= hour < PHASE_NIGHT_START:
             return CircadianPhase.EVENING
         else:
             return CircadianPhase.NIGHT
@@ -151,15 +174,15 @@ class CircadianRhythm:
 
         # Peak at 10:00 (10 hours), trough at 03:00 (3 hours)
         # Shift cosine wave: peak at 10, period = 24
-        phase_shift = 10.0  # Peak at 10:00
+        phase_shift = ENERGY_PEAK_HOUR  # Peak at 10:00
 
         # Cosine wave: cos(2π * (t - phase_shift) / period)
         angle = 2 * math.pi * (hours_since_midnight - phase_shift) / 24.0
 
         # Map [-1, 1] to [0.3, 1.0] (never fully zero)
-        energy = 0.65 + 0.35 * math.cos(angle)
+        energy = ENERGY_BASELINE + ENERGY_AMPLITUDE * math.cos(angle)
 
-        return max(0.3, min(1.0, energy))
+        return max(ENERGY_MIN_FLOOR, min(ENERGY_MAX_CEIL, energy))
 
     def is_offline_window(self, tick: Optional[int] = None, current_time: Optional[datetime] = None) -> Tuple[bool, float]:
         """
@@ -277,11 +300,4 @@ class CircadianRhythm:
         phase = self.get_current_phase(tick, current_time)
 
         # Recovery faster during night/early morning
-        recovery_rates = {
-            CircadianPhase.NIGHT: 2.0,
-            CircadianPhase.MORNING: 1.5,
-            CircadianPhase.AFTERNOON: 0.8,
-            CircadianPhase.EVENING: 1.0,
-        }
-
-        return recovery_rates.get(phase, 1.0)
+        return FATIGUE_RECOVERY_RATES.get(phase, 1.0)

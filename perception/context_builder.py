@@ -69,7 +69,7 @@ def build_context(
 
                 memory_summary.append({
                     "tick": ep.tick,
-                    "observation": obs_text[:100] if len(obs_text) > 100 else obs_text,
+                    "observation": obs_text[:300] if len(obs_text) > 300 else obs_text,
                     "reward": ep.reward,
                 })
 

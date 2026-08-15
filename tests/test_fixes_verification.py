@@ -11,9 +11,9 @@ Tests for verifying all paper-compliance fixes:
 7. Contract idle state handling
 """
 
+import inspect
 import pytest
 from axiology.value_learning import ValueLearner, ValueLearnerConfig, FeedbackSignal, FeedbackType
-from axiology import UtilityConfig
 from axiology.utilities_unified import utility_attachment
 from affect.rpe import compute_rpe, compute_per_dimension_rpe
 from core.life_loop import LifeLoop
@@ -72,12 +72,11 @@ class TestAttachmentTimeUnitFix:
         """
         论文Section 3.5.2(3): T_half 默认24小时
         """
-        config = UtilityConfig()
-
-        # 验证默认值是24小时（以秒为单位）
+        # utility_attachment 的默认 t_half 参数应为 24*3600 秒
+        sig = inspect.signature(utility_attachment)
         expected_half_life = 24.0 * 3600.0  # 24小时 = 86400秒
-        assert config.t_half_neglect == expected_half_life, \
-            f"T_half应该是24小时({expected_half_life}秒), 实际是{config.t_half_neglect}"
+        assert sig.parameters["t_half"].default == expected_half_life, \
+            f"T_half应该是24小时({expected_half_life}秒), 实际是{sig.parameters['t_half'].default}"
 
     def test_attachment_neglect_calculation(self):
         """

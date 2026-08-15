@@ -13,8 +13,8 @@ def update_stress(
     delta: float,
     failed: bool = False,
     s: float = 0.20,        # 论文默认: 负RPE压力增益
-    s_prime: float = 0.10,  # 论文默认: 正RPE压力缓解
-    decay: float = 0.01,
+    s_prime: float = 0.15,  # 修复（2026-07）: 原 0.10，提高到 0.15 让正反馈更强（成功时更快降压）
+    decay: float = 0.03,    # 修复（2026-07）: 原 0.01 太慢，stress 单边上涨到 1.0 触发健康检查退出。提到 0.03
     failure_penalty: float = DEFAULT_FAILURE_STRESS_INCREASE,  # Configurable failure penalty
 ) -> float:
     """Update stress level.

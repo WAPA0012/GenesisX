@@ -33,7 +33,7 @@ from common.jsonl import JSONLWriter
 from common.logger import get_logger
 
 # System modules
-from axiology import extract_all_features, compute_gaps, compute_weights, compute_utilities, compute_reward
+from axiology import extract_all_features, compute_gaps, compute_utilities, compute_reward
 from affect import ValueFunction, compute_rpe, update_mood
 from affect.rpe import RPEComputer, compute_per_dimension_rpe, compute_weighted_rpe
 from affect.mood import update_mood_per_dimension
@@ -85,6 +85,50 @@ from organs.organ_llm_session import (
 from .handlers import ActionExecutor, ChatHandler, CaretakerMode, GapDetectorMixin
 
 logger = get_logger(__name__)
+
+
+# 阶段1.3: 动作 → 价值维度映射表。
+# 用于 plan_evaluator 给每个候选动作算"对应维度的 reward"。
+# 论文语义：每个动作主要服务于一个价值维度（EXPLORE 满足 CURIOSITY，
+# LEARN_SKILL 提升 COMPETENCE，SLEEP 恢复 HOMEOSTASIS 等）。
+_ACTION_VALUE_MAP: Dict[ActionType, "ValueDimension"] = {
+    ActionType.EXPLORE: ValueDimension.CURIOSITY,
+    ActionType.USE_TOOL: ValueDimension.CURIOSITY,
+    ActionType.THINK: ValueDimension.CURIOSITY,
+    ActionType.LEARN_SKILL: ValueDimension.COMPETENCE,
+    ActionType.GROW: None,  # GROW 不由价值缺口直接驱动——"能力不足"该学习不是该造工具。
+                            # GROW 由 builder 器官在有具体建造意图时提议（探索/学习中发现了可工具化的需求）。
+    ActionType.OPTIMIZE: ValueDimension.COMPETENCE,
+    ActionType.CHAT: ValueDimension.ATTACHMENT,
+    ActionType.SOCIALIZE: ValueDimension.ATTACHMENT,
+    ActionType.SLEEP: ValueDimension.HOMEOSTASIS,
+    ActionType.REFLECT: ValueDimension.SAFETY,
+}
+
+
+def _estimate_action_reward(action: Action, gaps: Dict[ValueDimension, float]) -> float:
+    """从动作对应维度的 gap 推导 estimated_reward ∈ [0,1]。
+
+    阶段1.3：替代原来所有动作都写死 0.5 的逻辑。
+    语义：gap 大 = 该维度急需 = 对应动作 reward 高。
+    base 0.3（所有动作有基础分）+ 最多 0.4 的 gap 加成（gap≥0.5 时封顶）。
+
+    社交加成：SOCIALIZE 在 attachment gap > 0.2 时额外 +0.15，
+    模拟"社交冲动"——想交流的欲望积累到一定程度会主动找人说话。
+    """
+    dim = _ACTION_VALUE_MAP.get(action.type)
+    if dim is None:
+        return 0.5
+    gap = gaps.get(dim, 0.0) if gaps else 0.0
+    reward = 0.3 + 0.4 * min(1.0, gap / 0.5)
+
+    # 社交冲动：attachment gap 持续高时，SOCIALIZE 获得额外加成
+    if action.type == ActionType.SOCIALIZE:
+        attachment_gap = gaps.get(ValueDimension.ATTACHMENT, 0.0) if gaps else 0.0
+        if attachment_gap > 0.2:
+            reward += 0.15  # 社交冲动激活
+
+    return min(1.0, reward)
 
 
 class LifeLoop(GapDetectorMixin):
@@ -198,13 +242,29 @@ class LifeLoop(GapDetectorMixin):
         self._init_state_from_config()
 
     def _init_memories(self):
-        """初始化记忆系统"""
-        episodes_path = self.run_dir / "episodes.jsonl"
+        """初始化记忆系统。
+
+        连续性记忆修复（2026-07）：三层记忆改用固定持久路径（artifacts/persistent/），
+        而非每次 run 的新目录。这样重启后自动加载所有历史 episodes/schemas/skills，
+        系统真正"记得自己经历过什么"——这是连续性生命的基础。
+
+        episodic 记忆不做压缩/删除/归纳，原始经历全部保留（一个生命不会把经历
+        全压缩成结论——大量原始经历就该留着，构成"你是谁"）。
+        schema/skill 是 dream consolidation 额外产出的归纳，不是 episodic 的替代品。
+
+        文件大小不是问题：~500 字/episode，跑一年约 90MB；检索只取 top-K 相关，
+        不会全塞进 LLM context。
+        """
+        # 持久记忆路径：每个生命用独立子目录（artifacts/persistent/A/、B/、C/）
+        social_id = self.config.get("social", {}).get("id") or self.config.get("runtime", {}).get("social", {}).get("id", "A")
+        persistent_dir = Path(f"artifacts/persistent/{social_id}")
+        persistent_dir.mkdir(parents=True, exist_ok=True)
+
+        episodes_path = persistent_dir / "episodes.jsonl"
         self.episodic = EpisodicMemory(episodes_path)
-        # 修复 P3-5: Schema/Skill 传入 persist_path，使巩固产物持久化
-        # （save_to_disk/load_from_disk 已实现，此前因无参构造而从未生效）
-        self.schema = SchemaMemory(self.run_dir / "schemas.jsonl")
-        self.skill = SkillMemory(self.run_dir / "skills.jsonl")
+        # Schema/Skill 也用持久路径，重启后加载之前归纳的模式和技能
+        self.schema = SchemaMemory(persistent_dir / "schemas.jsonl")
+        self.skill = SkillMemory(persistent_dir / "skills.jsonl")
         self.retrieval = MemoryRetrieval(self.episodic, self.schema, self.skill)
         self.consolidator = DreamConsolidator(self.episodic, self.schema, self.skill)
         self._restore_tick_from_history()
@@ -312,6 +372,22 @@ class LifeLoop(GapDetectorMixin):
             # 注册技能系统
             register_skills(self.dynamic_tool_registry)
             logger.info("技能系统已注册到工具注册表")
+
+            # 阶段3.3 修复（2026-07）：初始化 LLMToolExecutor 实例。
+            # 原代码全项目都引用 self.life_loop.tool_executor，但 life_loop 从未创建它，
+            # 导致所有 hasattr(self.life_loop, 'tool_executor') 检查返回 False，
+            # web_search 等工具在 EXPLORE/USE_TOOL 路径下永远不执行。
+            # 现在创建实例，让工具真正可被调用。
+            try:
+                from tools.tool_executor import LLMToolExecutor
+                # safe_mode 由环境变量 GENESISX_SAFE_MODE 控制（默认 False = 完全访问）
+                import os as _os
+                safe_mode = _os.environ.get("GENESISX_SAFE_MODE", "0").lower() in ("1", "true", "yes")
+                self.tool_executor = LLMToolExecutor(safe_mode=safe_mode)
+                logger.info(f"LLMToolExecutor 已初始化 (safe_mode={safe_mode})")
+            except Exception as te:
+                logger.warning(f"LLMToolExecutor 初始化失败: {te}")
+                self.tool_executor = None
         except Exception as e:
             logger.warning(f"初始化动态工具失败: {e}")
             self.dynamic_tool_registry = None
@@ -345,6 +421,8 @@ class LifeLoop(GapDetectorMixin):
 
             from tools.llm_client import LLMClient
             global_llm_client = LLMClient(global_llm_config)
+            # P5-1: 存为实例属性，供下方独立的 memory writer try 块使用（解耦后跨 try 访问）
+            self._global_llm_client = global_llm_client
 
             # 创建全局会话配置
             global_session_config = SessionConfig(
@@ -437,8 +515,25 @@ class LifeLoop(GapDetectorMixin):
                 logger.info("OrganLLMManager: Initialized in 'independent' mode")
 
             # 初始化选择性记忆写入器（使用全局 LLM 客户端）
+            # P5-1 改进：writer 构造从 manager 的 try 拆出，避免 manager 无关异常连带 kill writer
             memory_config = organ_llm_config.get("memory", {})
-            if memory_config.get("enabled", True):
+            if not memory_config.get("enabled", True):
+                # P5-1: 配置驱动禁用时打 INFO，让用户知道器官思考不会入记忆（原静默）
+                logger.info("OrganMemoryWriter: Disabled by config (organ thoughts will NOT be saved to memory)")
+
+        except Exception as e:
+            logger.warning(f"OrganLLMManager: Failed to initialize: {e}")
+            self._organ_llm_manager = None
+            # 注：不再在这里把 _organ_memory_writer 设 None——它有自己的独立 try（见下），
+            # 避免 manager 的异常误伤 writer
+
+        # P5-1: writer 构造独立 try（与 manager 解耦）
+        try:
+            organ_llm_config = self.config.get("organ_llm", {})
+            memory_config = organ_llm_config.get("memory", {})
+            if memory_config.get("enabled", True) and self._organ_memory_writer is None:
+                # global_llm_client 在上方 manager try 里存为 self._global_llm_client（P5-1）
+                global_llm_client = getattr(self, '_global_llm_client', None)
                 self._organ_memory_writer = OrganMemoryWriter(
                     memory_system=self.episodic,
                     llm_client=global_llm_client,
@@ -446,10 +541,8 @@ class LifeLoop(GapDetectorMixin):
                     use_llm_judge=memory_config.get("use_llm_judge", True),
                 )
                 logger.info(f"OrganMemoryWriter: Initialized (llm_judge={memory_config.get('use_llm_judge', True)})")
-
         except Exception as e:
-            logger.warning(f"OrganLLMManager: Failed to initialize: {e}")
-            self._organ_llm_manager = None
+            logger.warning(f"OrganMemoryWriter: Failed to initialize, organ thoughts will not persist: {e}")
             self._organ_memory_writer = None
 
     def _save_organ_thought_to_memory(
@@ -497,6 +590,9 @@ class LifeLoop(GapDetectorMixin):
         # 成长系统（新架构：传入统一器官管理器）
         self._init_growth_system()
 
+        # 社交系统（多生命交流 + 外部新闻感知）
+        self._init_social_system()
+
         # 能力管理器
         self.capability_manager = create_capability_manager(
             growth_manager=self.growth_manager,
@@ -525,16 +621,43 @@ class LifeLoop(GapDetectorMixin):
     def _init_growth_system(self):
         """初始化成长系统"""
         growth_config = self.config.get("growth", {})
+        # 阶段2.1 修复（2026-07）：原写死 llm_client=None，导致 limb_generator 的
+        # _generate_from_llm 永远在入口返回失败（"LLM 客户端未配置"），整个成长系统瘫痪。
+        # _init_organ_llm_manager（line 258）在本方法（line 563）之前调用，
+        # 所以 self._global_llm_client（line 397）已建好，直接用。
+        global_llm_client = getattr(self, '_global_llm_client', None)
         self.growth_manager = create_growth_manager(
             organ_manager=self.organ_manager,
-            llm_client=None,
+            llm_client=global_llm_client,
             config=growth_config,
             plugin_manager=self.plugin_manager,
             unified_organ_manager=self.unified_organ_manager  # 新架构：传入统一器官管理器
         )
+        # 兜底：如果 create_growth_manager 内部没把 llm_client 传给 limb_generator，直接注入
+        if global_llm_client and hasattr(self.growth_manager, 'limb_generator'):
+            if self.growth_manager.limb_generator.llm_client is None:
+                self.growth_manager.limb_generator.llm_client = global_llm_client
+                logger.debug("[GROWTH] 事后注入 llm_client 到 limb_generator")
         self.growth_enabled = growth_config.get("enabled", True)
         if self.growth_enabled:
             logger.info("GrowthManager enabled")
+
+    def _init_social_system(self):
+        """初始化社交系统。
+
+        从 config 读 social.id（"A"/"B"/"C"），没有就默认 "A"。
+        如果 shared 目录不存在（单生命模式），social_system 为 None，不影响运行。
+        """
+        social_config = self.config.get("social") or self.config.get("runtime", {}).get("social", {})
+        self_id = social_config.get("id", "A")
+        self.social_name = social_config.get("name", self_id)
+        try:
+            from core.social import SocialSystem
+            self.social_system = SocialSystem(self_id=self_id)
+            logger.info(f"SocialSystem enabled (id={self_id}, name={self.social_name})")
+        except Exception as e:
+            logger.warning(f"社交系统初始化失败（不影响运行）: {e}")
+            self.social_system = None
 
     def _init_gap_detector(self):
         """初始化能力缺口检测器"""
@@ -585,6 +708,18 @@ class LifeLoop(GapDetectorMixin):
         self.drives_enabled = True
         self.get_user_input = None
         self._caretaker_mode_tick = None
+
+        # 阶段1.1: novelty 信号缓存。
+        # PHASE 5（axiology）算出 curiosity gap 后写到这里，PHASE 1（body代谢）读取。
+        # 语义：gap 大 = 缺好奇 = novelty 低 → boredom 上升。
+        # 首次 tick（PHASE 1 在 PHASE 5 之前）用 0.4 兜底（略低于中等，让 boredom 能启动）。
+        self._last_novelty: float = 0.4
+
+        # 工作记忆（2026-07）：跨 tick 保留的"当前任务 + 步骤 + 相关记忆"。
+        # 这是让行动连贯的关键——mind 不需要每 tick 从头决策"该做什么"，
+        # 而是看到"我正在做 X，已完成 Y，下一步该 Z"后继续。
+        # 类似人的工作记忆：此刻在想的事 + 相关的旧记忆自动浮现。
+        self._working_memory: Optional[Dict[str, Any]] = None
 
     def _init_loggers_and_handlers(self):
         """初始化日志和处理器"""
@@ -842,6 +977,56 @@ class LifeLoop(GapDetectorMixin):
         observations = observe_environment(t, self.state.mode, field_snapshot, user_input)
         for obs in observations:
             ctx.add_observation(obs)
+
+        # 社交感知（2026-07）：从共享消息板读取新闻 + 他人的消息 + 他人的状态。
+        # 这是"外部世界"和"他者"的入口——生命通过这里感知到不可控的外部输入和其他生命的存在。
+        if hasattr(self, 'social_system') and self.social_system:
+            try:
+                social_obs = self.social_system.get_observations()
+                has_content = bool(social_obs["news"] or social_obs["group_new"] or social_obs["private_new"])
+                logger.info(f"[SOCIAL] 感知检查: news={len(social_obs['news'])} group={len(social_obs['group_new'])} private={len(social_obs['private_new'])} others={len(social_obs['others'])}")
+                if has_content:
+                    from common.models import Observation
+                    # 新闻 = 外部世界输入（不可控的、世界推送的）
+                    if social_obs["news"]:
+                        news_titles = [n["title"] for n in social_obs["news"][:3]]
+                        ctx.add_observation(Observation(
+                            type="world_news",
+                            payload={"headlines": news_titles, "full": social_obs["news"]},
+                            source_ref="news_center",
+                            tick=t,
+                        ))
+                    # 群聊/私聊 = 他者的存在
+                    if social_obs["group_new"]:
+                        ctx.add_observation(Observation(
+                            type="social_group",
+                            payload={"messages": social_obs["group_new"]},
+                            source_ref="social",
+                            tick=t,
+                        ))
+                    if social_obs["private_new"]:
+                        ctx.add_observation(Observation(
+                            type="social_private",
+                            payload={"messages": social_obs["private_new"]},
+                            source_ref="social",
+                            tick=t,
+                        ))
+                        # 收到别人的私信 → attachment 需求被强烈激活
+                        bond = self.fields.get("bond") or 0.4
+                        self.fields.set("bond", min(1.0, bond + 0.05 * len(social_obs["private_new"])))
+
+                    # 收到群聊消息 → attachment 需求被激活（比私信弱）
+                    if social_obs["group_new"]:
+                        bond = self.fields.get("bond") or 0.4
+                        # 只对别人发的消息反应（不包括自己发的）
+                        others_msgs = [m for m in social_obs["group_new"] if m.get("from") != self.social_system.self_id]
+                        if others_msgs:
+                            self.fields.set("bond", min(1.0, bond + 0.02 * len(others_msgs)))
+                    # 他人的公开状态（存到实例属性，PHASE 4 构建 context 时取）
+                    if social_obs["others"]:
+                        self._social_others = social_obs["others"]
+            except Exception as e:
+                logger.debug(f"[SOCIAL] 社交感知失败（非致命）: {e}")
         phase_times["phase_2_observe"] = _time.time() - phase_start
 
         # === PHASE 3: Retrieve (智能检索：根据消息类型决定检索策略) ===
@@ -932,6 +1117,19 @@ class LifeLoop(GapDetectorMixin):
         context = build_context(field_snapshot, recent_episodes, retrieved, budget_remaining)
         # 添加 observations 到 context，供器官使用
         context["observations"] = ctx.obs_batch
+        # 社交：他人的公开状态注入 context（PHASE 2 采集的）
+        if hasattr(self, '_social_others') and self._social_others:
+            context["social_others"] = self._social_others
+        # 记忆摘要：把检索到的最近经历做成一句话摘要，注入 context 给器官的提示词用。
+        # 这样器官思考时能看到"最近发生过什么"，不再是白纸状态。
+        mem_parts = []
+        for ep in recent_episodes[:3]:
+            if ep.action and ep.outcome:
+                status = str(ep.outcome.status or "")[:150]
+                if status:
+                    mem_parts.append(f"t{ep.tick}:{status}")
+        if mem_parts:
+            context["retrieved_memories_summary"] = "; ".join(mem_parts)
         # P5-23 修复：传 tick_duration 给器官（caretaker 的时间窗推算需要）
         context["tick_duration"] = dt
 
@@ -1000,7 +1198,23 @@ class LifeLoop(GapDetectorMixin):
         self._update_phase("axiology", "评估价值", 0.20)
         features = extract_all_features(field_snapshot, context)
         gaps = compute_gaps(features, self.state.setpoints)
-        biases = {dim: 1.0 for dim in ValueDimension}
+
+        # 阶段1.1: novelty 信号由 PHASE 1（_update_body）维护——持续衰减 + EXPLORE 后重置。
+        # PHASE 5 只读不写（feature_extractors 从 fields.novelty 读，已由 PHASE 1 写入）。
+        # 注意：不要在这里用 curiosity_feature 覆盖 _last_novelty，否则会抵消 PHASE 1 的衰减。
+
+        # 阶段2.1 修复（2026-07）：原写死 biases = {dim: 1.0}，导致 yaml 的 weight_bias
+        #（curiosity=0.7/safety=1.2 等）从不生效。现从 axiology_config 读真实 bias。
+        # bias 影响 WeightUpdater 的 softmax 权重计算：bias 高的维度在同等 gap 下权重更高。
+        try:
+            from axiology.axiology_config import get_axiology_config
+            _ax_cfg = get_axiology_config()
+            biases = {}
+            for dim in ValueDimension:
+                biases[dim] = _ax_cfg.get_weight_bias(dim.value)
+        except Exception as _e:
+            logger.debug(f"读取 axiology_config weight_bias 失败，降级全 1.0: {_e}")
+            biases = {dim: 1.0 for dim in ValueDimension}
 
         # 论文 Section 3.6.4: 使用 WeightUpdater 实现软优先级覆盖
         # 修复：直接使用枚举键，避免不必要的字符串转换
@@ -1165,11 +1379,25 @@ class LifeLoop(GapDetectorMixin):
 
             with ThreadPoolExecutor(max_workers=len(sorted_organs)) as executor:
                 futures = {executor.submit(process_organ, o): o for o in sorted_organs}
-                for future in as_completed(futures):
-                    organ_name, actions, thought = future.result()
-                    with actions_lock:
-                        proposed_actions.extend(actions)
-                    save_organ_thought(organ_name, thought)
+                # 修复（2026-07）：给 as_completed 加超时，防止单个器官的 LLM 调用挂住
+                # 导致整个 PHASE 7 永久卡死。超时的器官跳过（返回空 actions）。
+                # 超时设 180 秒（单器官正常 10-20 秒，3 倍余量）。
+                ORGAN_TIMEOUT = 180
+                done_keys = set()
+                try:
+                    for future in as_completed(futures, timeout=ORGAN_TIMEOUT):
+                        done_keys.add(future)
+                        organ_name, actions, thought = future.result()
+                        with actions_lock:
+                            proposed_actions.extend(actions)
+                        save_organ_thought(organ_name, thought)
+                except TimeoutError:
+                    # 超时的 future 跳过（它们的器官会返回空 actions）
+                    timed_out = [futures[f] for f in futures if f not in done_keys]
+                    logger.warning(f"PHASE 7: 器官超时被跳过: {timed_out}")
+                    for f in futures:
+                        if f not in done_keys:
+                            f.cancel()
 
         else:  # "mixed" (默认)
             # === 混合并行模式 ===
@@ -1196,15 +1424,81 @@ class LifeLoop(GapDetectorMixin):
                 else:
                     with ThreadPoolExecutor(max_workers=len(organs_to_process)) as executor:
                         futures = {executor.submit(process_organ, o): o for o in organs_to_process}
-                        for future in as_completed(futures):
-                            organ_name, actions, thought = future.result()
-                            with actions_lock:
-                                proposed_actions.extend(actions)
-                            save_organ_thought(organ_name, thought)
+                        ORGAN_TIMEOUT = 180
+                        done_keys = set()
+                        try:
+                            for future in as_completed(futures, timeout=ORGAN_TIMEOUT):
+                                done_keys.add(future)
+                                organ_name, actions, thought = future.result()
+                                with actions_lock:
+                                    proposed_actions.extend(actions)
+                                save_organ_thought(organ_name, thought)
+                        except TimeoutError:
+                            timed_out = [futures[f] for f in futures if f not in done_keys]
+                            logger.warning(f"PHASE 7 (mixed): 器官超时被跳过: {timed_out}")
+                            for f in futures:
+                                if f not in done_keys:
+                                    f.cancel()
+
+        # 阶段2.2（2026-07）：纳入成长系统生成的肢体（limb）和插件的动作提议。
+        # 改造前：GROW 生成的肢体注册到 unified_organ_manager，但 PHASE 7 只读
+        # 旧 self.organs 字典，生成的肢体永远不可见（CODE_MAP P5-6 "只写不读"）。
+        # 现追加查询 unified_organ_manager.propose_all_actions，让生成的肢体下 tick 可被提议执行。
+        # 注意：propose_all_actions 返回 List[Tuple[organ_name, Action]]，要解包取 Action。
+        try:
+            if hasattr(self, 'unified_organ_manager') and self.unified_organ_manager:
+                limb_pairs = self.unified_organ_manager.propose_all_actions(field_snapshot, context)
+                if limb_pairs:
+                    # 解包 (organ_name, action) → 只取 action，最多 3 个
+                    limb_actions = [pair[1] for pair in limb_pairs[:3] if isinstance(pair, tuple) and len(pair) >= 2]
+                    if limb_actions:
+                        proposed_actions.extend(limb_actions)
+                        logger.debug(f"PHASE 7: unified_organ_manager 贡献 {len(limb_actions)} 个肢体动作")
+        except Exception as e:
+            logger.warning(f"unified_organ_manager 提议失败（非致命）: {e}")
 
         phase_times["phase_7_organs"] = _time.time() - phase_start
 
-        # === PHASE 8: Plan Evaluation (含单外部动作强制, 修复 H4) ===
+        # === PHASE 7.5: 决策中心（2026-07 改造）===
+        # 工作记忆检查：如果上一个 tick 有未完成的任务，mind 优先继续它。
+        # 这让行动连贯——不再是每 tick 失忆重来，而是"我记得我在做什么、做到哪了"。
+        if self._working_memory and self._working_memory.get("status") == "active":
+            wm = self._working_memory
+            wm_task = wm.get("task", "")
+            wm_steps = wm.get("steps", [])
+            wm_memories = wm.get("related_memories", "")
+
+            # 让 mind 看到"我在做 X，已完成 Y 步"后决定继续还是停止
+            selected_action = self._run_working_memory_continuation(
+                wm_task, wm_steps, wm_memories, field_snapshot, context, t
+            )
+            if selected_action:
+                logger.info(f"[WM] 继续任务: {wm_task[:40]}（第 {len(wm_steps)+1} 步）")
+            else:
+                # mind 说该停了或该做别的了 → 清空工作记忆，走正常决策
+                logger.info(f"[WM] 任务结束: {wm_task[:40]}（共 {len(wm_steps)} 步）")
+                self._working_memory = None
+                selected_action = None
+        else:
+            # 没有活跃的工作记忆 → 走正常决策中心
+            selected_action = None
+
+        # 正常决策中心（没有工作记忆或工作记忆 continuation 失败时）
+        if selected_action is None:
+            ctx.advance_phase("decision_center")
+        self._update_phase("decision_center", "决策中心", 0.48)
+        selected_action = None
+        try:
+            selected_action = self._run_decision_center(
+                proposed_actions, field_snapshot, context, observations, t
+            )
+        except Exception as e:
+            logger.warning(f"决策中心失败（降级到价值评估）: {e}")
+            selected_action = None
+
+        # === PHASE 8: Plan Evaluation（决策中心失败时的 fallback）===
+        # 如果决策中心成功产出了 selected_action，跳过价值评估。
+        # 只有决策中心失败时，才走原来的价值评估从器官提议中选。
         ctx.advance_phase("plan_evaluate")
         self._update_phase("plan_evaluate", "评估计划", 0.45)
         # 论文红线: 每tick至多一个外部动作 (USE_TOOL, CHAT with external)
@@ -1217,24 +1511,46 @@ class LifeLoop(GapDetectorMixin):
             logger.debug(f"H4 enforcement: {len(external_actions)} external actions proposed, keeping only first")
             proposed_actions = internal_actions + [external_actions[0]]
 
-        if proposed_actions:
-            # 优先选择 CHAT 动作（用户交互）
+        if selected_action is not None:
+            # 决策中心成功——用它的决策，跳过价值评估
+            logger.info(f"[DECISION] 决策中心裁决: {selected_action.type} | {selected_action.params.get('topic', selected_action.params.get('task', selected_action.params.get('skill', selected_action.params.get('thought', ''))))[:50]}")
+        elif proposed_actions:
+            # 阶段1.2 修复（2026-07）：CHAT 硬优先会让 heartbeat 自循环（无真用户时）
+            # 永远锁死在 CHAT，绕过价值评估。现改为：只有本 tick 有真用户消息
+            #（observation.type == "user_chat"）时才硬优先 CHAT；否则 CHAT 也走评估。
+            has_user_input = any(
+                getattr(o, "type", None) == "user_chat" for o in observations
+            )
             chat_actions = [a for a in proposed_actions if a.type == ActionType.CHAT]
-            if chat_actions:
+            if has_user_input and chat_actions:
                 selected_action = chat_actions[0]
             else:
-                # 构建计划列表并评估
-                plans = [
-                    {"actions": [a], "estimated_reward": 0.5, "estimated_cost": 100.0}
-                    for a in proposed_actions
-                ]
+                # 阶段1.3 修复（2026-07）：原实现把所有动作的 estimated_reward 都写死 0.5，
+                # dimension=None，导致 plan_evaluator 给所有动作打相同分，价值评估形同虚设。
+                # 现按 action.type 映射到对应价值维度，从 gaps 推导 reward：
+                # gap 大 = 该维度急需 = 该动作 reward 高。并填 dimension 字段让
+                # plan_evaluator 走"计划关联特定维度"分支（用该维度权重而非最大权重）。
+                plans = []
+                for a in proposed_actions:
+                    dim = _ACTION_VALUE_MAP.get(a.type)
+                    plans.append({
+                        "actions": [a],
+                        "estimated_reward": _estimate_action_reward(a, gaps),
+                        "estimated_cost": 100.0,
+                        "dimension": dim.value if dim else None,
+                    })
                 budget_utilization = self.ledger.normalize_all()
                 # normalize_all() returns utilization (spent/total), so remaining = 1 - utilization
                 cpu_remaining_fraction = 1.0 - budget_utilization.get("cpu_tokens", 0.0)
+                # P4-13 修复：原 cpu_remaining_fraction × 100000 与 estimated_cost（~100 token 量级）
+                # 量纲不匹配，导致 budget_penalty 几乎永不触发。现用 fraction × CPU_BUDGET_CAPACITY
+                # 对齐到 token 量级（capacity=100000 是 cpu_tokens 的默认 total）。
+                # 注：unlimited 模式下 fraction 恒为 1.0，budget_remaining 恒大，惩罚正确地不触发。
+                CPU_BUDGET_CAPACITY = 100000
                 scored = self.evaluator.evaluate_plans(
                     plans,
                     {dim.value: w for dim, w in weights.items()},
-                    cpu_remaining_fraction * 100000
+                    cpu_remaining_fraction * CPU_BUDGET_CAPACITY
                 )
                 # 论文 Section 3.9.3: 选择得分最高的计划
                 if scored and len(scored) > 0:
@@ -1268,6 +1584,11 @@ class LifeLoop(GapDetectorMixin):
         integrity_ok = check_integrity(selected_action, field_snapshot)
         if not integrity_ok.get("ok", False):
             logger.warning(f"Action blocked by integrity: {integrity_ok.get('reason')}")
+            self._last_veto_note = (
+                self.state.tick,
+                f"你上次选的 {selected_action.type.value} 被完整性检查否决"
+                f"（{integrity_ok.get('reason')}），系统强制改为睡眠",
+            )
             selected_action = Action(type=ActionType.SLEEP, params={"duration": 1})
 
         # 9b. Verifier 检查 (能力、模式、能量、压力)
@@ -1291,6 +1612,11 @@ class LifeLoop(GapDetectorMixin):
 
             if not verifier_result.get("ok", True):
                 logger.warning(f"Action blocked by verifier: {verifier_result.get('error')}")
+                self._last_veto_note = (
+                    self.state.tick,
+                    f"你上次选的 {selected_action.type.value} 被执行前检查否决"
+                    f"（{verifier_result.get('error')}），系统改为休整/反思",
+                )
                 # 根据 verifier 的建议选择替代动作
                 if "energy" in verifier_result.get("error", ""):
                     selected_action = Action(type=ActionType.SLEEP, params={"duration": 1, "reason": "low_energy"})
@@ -1305,6 +1631,10 @@ class LifeLoop(GapDetectorMixin):
             risk_score = assess_risk(selected_action, field_snapshot)
             if risk_score > 0.8:  # 高风险阈值
                 logger.warning(f"Action blocked by risk: risk_score={risk_score:.2f}")
+                self._last_veto_note = (
+                    self.state.tick,
+                    f"你上次选的 {selected_action.type.value} 风险评分过高（{risk_score:.2f}），被安全评估否决",
+                )
                 selected_action = Action(type=ActionType.REFLECT, params={"purpose": "risk_avoidance"})
 
         # 9d. 预算检查 (修复 H8: check_budget 从未调用)
@@ -1316,6 +1646,10 @@ class LifeLoop(GapDetectorMixin):
             budget_ok = check_budget(selected_action, field_snapshot, budget_remaining)
             if not budget_ok.get("ok", True):
                 logger.warning(f"Action blocked by budget: {budget_ok.get('reason')}")
+                self._last_veto_note = (
+                    self.state.tick,
+                    f"你上次选的 {selected_action.type.value} 因预算耗尽被否决（{budget_ok.get('reason')}）",
+                )
                 selected_action = Action(type=ActionType.SLEEP, params={"duration": 1, "reason": "budget_exhausted"})
 
         # 9e. 能力缺口检查（执行前检查是否拥有所需能力）
@@ -1518,7 +1852,7 @@ class LifeLoop(GapDetectorMixin):
         episode = EpisodeRecord(
             tick=t,
             session_id=self.session_id,
-            observation=observations[0] if len(observations) > 0 else None,
+            observation=next((o for o in observations if o.type not in ("heartbeat", None)), observations[0] if observations else None),
             action=selected_action,
             outcome=outcome_obj,
             reward=reward,
@@ -1609,11 +1943,19 @@ class LifeLoop(GapDetectorMixin):
             self.state.reset_activity_fatigue(amount=1.0)
             if stats.get("schemas_created", 0) > 0 or stats.get("skills_created", 0) > 0:
                 logger.info(f"Consolidation: Schemas={stats['schemas_created']}, Skills={stats['skills_created']}")
-            # P5-21: 将巩固质量反馈给 archivist 触发学习
+            # P5-21/P5-22: 将巩固质量反馈给 archivist 触发学习
+            # P5-22 改进：原二值（0.5/0.7）区分度不足，无法驱动 archivist 策略学习。
+            # 改为基于产出的连续值：基础 0.4（成功无产出）+ 每 schema/skill 加成，
+            # 上限 1.0。失败时 0.2。这样 archivist 的 strategy_effectiveness 调整有信号。
             try:
-                quality = 0.5
-                if stats.get("schemas_created", 0) > 0 or stats.get("skills_created", 0) > 0:
-                    quality = 0.7  # 有产出视为高质量
+                schemas = stats.get("schemas_created", 0)
+                skills = stats.get("skills_created", 0)
+                success = stats.get("success", True)
+                if not success:
+                    quality = 0.2
+                else:
+                    # 基础 0.4 + 每个 schema +0.15 + 每个 skill +0.2，clamp [0, 1]
+                    quality = min(1.0, 0.4 + schemas * 0.15 + skills * 0.2)
                 self.organs["archivist"].mark_consolidation_quality(quality)
             except Exception as e:
                 logger.debug(f"Archivist learning feedback skipped: {e}")
@@ -1642,7 +1984,318 @@ class LifeLoop(GapDetectorMixin):
         # === 完成 ===
         self._update_phase("complete", "处理完成", 1.0)
 
+        # 社交：更新自己的公开 profile（让其他生命能看到自己的状态）
+        if hasattr(self, 'social_system') and self.social_system:
+            try:
+                mood = self.fields.get("mood") or 0.5
+                # 从最近 episode 提取当前兴趣
+                interest = ""
+                if selected_action and selected_action.params:
+                    interest = str(selected_action.params.get("topic",
+                                selected_action.params.get("task",
+                                selected_action.params.get("thought", ""))))[:80]
+                self.social_system.update_profile(
+                    mood=mood, interest=interest, tick=t,
+                    name=getattr(self, 'social_name', None),
+                )
+            except Exception:
+                pass
+
+        # 工作记忆更新（2026-07）：在 tick 末尾更新——追加步骤或创建新任务
+        try:
+            self._update_working_memory(selected_action, outcome, t)
+        except Exception as e:
+            logger.debug(f"工作记忆更新失败（非致命）: {e}")
+
         return episode
+
+    def _update_working_memory(self, action, outcome, tick):
+        """PHASE 12 后更新工作记忆。
+
+        如果当前有活跃的工作记忆：
+        - 追加这一步的结果到 steps
+        - 如果动作不是 GROW/EXPLORE/USE_TOOL（不再是任务相关动作），标记完成
+
+        如果没有工作记忆但 mind 决策了 GROW/EXPLORE（需要多步骤）：
+        - 创建新的工作记忆 + 检索相关记忆
+        """
+        if self._working_memory and self._working_memory.get("status") == "active":
+            # 追加这一步
+            wm = self._working_memory
+            step_desc = ""
+            p = action.params or {}
+            step_desc = p.get("topic", p.get("task", p.get("skill", p.get("thought", p.get("content", "")))))
+            step_desc = str(step_desc)[:100] if step_desc else str(action.type)
+            ok = outcome.get("ok", outcome.get("success", False)) if outcome else False
+            wm["steps"].append({
+                "tick": tick,
+                "action": str(action.type),
+                "desc": step_desc,
+                "ok": ok,
+            })
+            wm["last_tick"] = tick
+
+            # 如果动作类型偏离了任务（比如从 GROW 变成 SLEEP/CHAT/SOCIALIZE），标记完成
+            task_type = wm.get("task_type", "")
+            if task_type and action.type not in (task_type, ActionType.EXPLORE, ActionType.USE_TOOL, ActionType.GROW):
+                wm["status"] = "completed"
+                logger.info(f"[WM] 任务自然完成: {wm['task'][:40]}（{len(wm['steps'])} 步）")
+                # 任务完成时——把整个工作记忆压缩成一条长程记忆写入 episodic
+                # 这样下次检索能找到"我上次完整地做了 X，经历了这些步骤"，
+                # 而不是零散的 12 条各自独立的 episode。
+                try:
+                    self._consolidate_working_memory(wm)
+                except Exception as e:
+                    logger.debug(f"工作记忆固化失败: {e}")
+                self._working_memory = None
+        else:
+            # 没有工作记忆——如果 mind 决策了 GROW/EXPLORE，创建新的
+            if action.params.get("source") == "mind_decision" and action.type in (ActionType.GROW, ActionType.EXPLORE):
+                task_desc = ""
+                p = action.params or {}
+                task_desc = p.get("topic", p.get("task", ""))
+                task_desc = str(task_desc)[:200] if task_desc else str(action.type)
+
+                # 检索跟这个任务相关的记忆（一次检索，全程用）
+                related = ""
+                try:
+                    if hasattr(self, 'episodic') and self.episodic:
+                        retrieved = self.retrieval.retrieve_by_semantic_similarity(
+                            task_desc, current_tick=tick, limit=3, min_similarity=0.1
+                        )
+                        if retrieved:
+                            parts = []
+                            for ep in retrieved[:3]:
+                                status = ""
+                                if ep.outcome and hasattr(ep.outcome, 'status'):
+                                    status = str(ep.outcome.status or "")[:60]
+                                parts.append(f"t{ep.tick}: {status}")
+                            related = "; ".join(parts)
+                except Exception:
+                    pass
+
+                self._working_memory = {
+                    "task": task_desc,
+                    "task_type": str(action.type),
+                    "steps": [],
+                    "related_memories": related,
+                    "status": "active",
+                    "created_tick": tick,
+                    "last_tick": tick,
+                }
+                logger.info(f"[WM] 新任务: {task_desc[:50]}")
+
+    def _consolidate_working_memory(self, wm: Dict[str, Any]):
+        """任务完成时——把整个工作记忆压缩成一条长程记忆写入 episodic。
+
+        这解决了"长程记忆"问题：任务做完后，12 个零散的 episode 各自独立，
+        检索时只能找到碎片。固化后，一条完整的"任务总结"记忆被写入 episodic，
+        下次检索能直接找到"我上次完整地做了 X"。
+
+        压缩方式：用 LLM 把任务+所有步骤+结果总结成一段连贯的叙述。
+        如果 LLM 失败，用规则式拼接（步骤列表）。
+        """
+        task = wm.get("task", "unknown task")
+        steps = wm.get("steps", [])
+        if not steps:
+            return
+
+        # 成功/失败统计
+        ok_count = sum(1 for s in steps if s.get("ok"))
+        total = len(steps)
+        steps_desc = "; ".join(f"{s['action']}({s['desc'][:30]})" for s in steps)
+
+        # 优先用 LLM 生成连贯的总结
+        summary = ""
+        try:
+            from tools.llm_client import LLMClient
+            client = getattr(self, '_global_llm_client', None) or LLMClient()
+            result = client.chat(
+                messages=[{"role": "user", "content": f"用一句话总结这个完成的任务（50字以内）：任务：{task}。经历{total}步({ok_count}成功)：{steps_desc[:300]}"}],
+                temperature=0.3, max_tokens=80
+            )
+            if result.get("ok") and result.get("text"):
+                summary = result["text"].strip()[:200]
+        except Exception:
+            pass
+
+        # LLM 失败时用规则式
+        if not summary:
+            summary = f"完成了'{task[:60]}'，共{total}步（{ok_count}成功）。步骤：{steps_desc[:200]}"
+
+        # 写入 episodic 记忆——作为一条完整的任务总结
+        # 用 observation 的形式写入（这样它会被 PHASE 3 检索到）
+        from common.models import Observation, Action as _Action, Outcome as _Outcome
+        try:
+            last_tick = wm.get("last_tick", self.state.tick)
+            obs = Observation(
+                type="task_completed",
+                payload={"task": task[:200], "summary": summary, "steps": total, "success_rate": ok_count/total if total else 0},
+                source_ref="working_memory_consolidation",
+                tick=last_tick,
+            )
+            # 直接追加到 episodic——它会跟其他 episode 一样被检索到
+            action_obj = _Action(type="GROW", params={"task": task[:100], "source": "consolidated"})
+            outcome_obj = _Outcome(ok=ok_count > 0, status=f"[任务完成] {summary}")
+            from common.models import EpisodeRecord
+            import time as _time
+            from datetime import datetime, timezone
+            episode = EpisodeRecord(
+                tick=last_tick,
+                session_id=self.session_id,
+                observation=obs,
+                action=action_obj,
+                outcome=outcome_obj,
+                reward=float(ok_count) / max(total, 1),
+                tags=["task_completed", "consolidated"],
+            )
+            self.episodic.append(episode)
+            logger.info(f"[WM] 固化长程记忆: {summary[:60]}")
+        except Exception as e:
+            logger.debug(f"固化写入失败: {e}")
+
+    def _run_working_memory_continuation(self, task, steps, related_memories, state_snapshot, context, tick):
+        """工作记忆延续——mind 看到"我在做 X，已完成 Y"后决定下一步。
+
+        不是重新决策"该做什么"，而是"我正在做这件事，下一步该做什么"。
+        """
+        mind = self.organs.get("mind")
+        if not mind or not mind.enabled:
+            return None
+
+        # 构建 steps 摘要（最近 5 步）
+        steps_text = ""
+        if steps:
+            parts = []
+            for s in steps[-5:]:
+                ok_mark = "✓" if s.get("ok") else "✗"
+                parts.append(f"  t{s['tick']} {s['action']} {ok_mark}: {s['desc'][:50]}")
+            steps_text = "\n".join(parts)
+
+        # 按需回溯：检索跟当前任务相关的早期 episode（补上工作记忆窗口外的记忆）
+        # 这样做到第 8 步时还能看到第 1-3 步的关键经历，不再是金鱼。
+        recalled = related_memories  # 任务创建时检索的相关记忆
+        try:
+            if hasattr(self, 'episodic') and self.episodic:
+                # 用任务关键词检索早期相关经历
+                early = self.retrieval.retrieve_by_semantic_similarity(
+                    task, current_tick=tick, limit=5, min_similarity=0.1
+                )
+                if early:
+                    # 过滤掉已经在 steps_text 里的（避免重复）
+                    step_ticks = {s.get("tick") for s in steps}
+                    early_parts = []
+                    for ep in early[:5]:
+                        if ep.tick not in step_ticks:
+                            status = ""
+                            if ep.outcome and hasattr(ep.outcome, 'status'):
+                                status = str(ep.outcome.status or "")[:60]
+                            if status:
+                                early_parts.append(f"t{ep.tick}: {status}")
+                    if early_parts:
+                        recalled = (recalled + "; " if recalled else "") + "; ".join(early_parts)
+        except Exception:
+            pass
+
+        # 注入工作记忆到 context
+        context["working_memory"] = {
+            "task": task,
+            "steps_summary": steps_text,
+            "related_memories": recalled,
+        }
+
+        try:
+            actions = mind.propose_actions(state_snapshot, context)
+            if actions:
+                final = actions[0]
+                final.params["source"] = "mind_decision"
+                p = final.params or {}
+                desc = p.get("topic") or p.get("task") or p.get("skill") or p.get("thought") or p.get("content") or ""
+                logger.info(f"[MIND] 继续决策: {final.type} | {str(desc)[:50]}")
+                return final
+        except Exception as e:
+            logger.warning(f"工作记忆延续失败: {e}")
+
+        return None
+
+    def _run_decision_center(self, proposed_actions, state_snapshot, context, observations, tick):
+        """PHASE 7.5: mind 器官做最终决策。
+
+        其他 5 个器官各自思考完毕、产出了提议。mind 作为决策器官，
+        看到所有器官的建议后做最终裁决。
+
+        mind 跟其他器官一样有 LLM session，但它的 prompt 里多了
+        "其他器官的建议"——这让 mind 从全局视角决策，而不是只看自己的专业领域。
+        """
+        if not proposed_actions:
+            return None
+
+        mind = self.organs.get("mind")
+        if not mind or not mind.enabled:
+            return None
+
+        # 把其他器官的提议注入 context，让 mind 的 prompt 能看到
+        suggestions = []
+        for a in proposed_actions[:10]:
+            p = a.params or {}
+            desc = p.get("topic", p.get("task", p.get("skill", p.get("thought", p.get("content", "")))))
+            desc = str(desc)[:200] if desc else ""
+            suggestions.append(f"{a.type.value}: {desc}")
+        context["organ_suggestions"] = suggestions
+
+        # 否决记录注入——让 mind 看见上次的边界。之前五道闸门静默改判，
+        # mind 永远不知道自己的决定被换掉了，也就永远学不会边界在哪。
+        veto_note = getattr(self, "_last_veto_note", None)
+        if veto_note and self.state.tick - veto_note[0] <= 3:
+            context["last_veto_note"] = veto_note[1]
+
+        # 社交消息也注入
+        social_parts = []
+        for obs in observations:
+            obs_type = getattr(obs, "type", "") if not isinstance(obs, dict) else obs.get("type", "")
+            if obs_type in ("world_news", "social_group", "social_private"):
+                payload = getattr(obs, "payload", {}) if not isinstance(obs, dict) else obs.get("payload", {})
+                if obs_type == "world_news":
+                    headlines = payload.get("headlines", [])
+                    if headlines:
+                        social_parts.append(f"新闻: {headlines[0][:200]}")
+                elif obs_type in ("social_group", "social_private"):
+                    msgs = payload.get("messages", [])
+                    for m in msgs[:2]:
+                        social_parts.append(f"{m.get('from', '?')}: {str(m.get('content', ''))[:200]}")
+        context["social_feed"] = social_parts
+
+        # 让 mind 重新思考（这次它能看到其他器官的建议）
+        try:
+            actions = mind.propose_actions(state_snapshot, context)
+            if actions:
+                final = actions[0]
+                final.params["source"] = "mind_decision"
+                p = final.params or {}
+                # 清理 CoT 残留——mind 的输出里可能混了推理过程
+                for key in ("topic", "task", "skill", "thought", "content"):
+                    val = p.get(key, "")
+                    if val and isinstance(val, str):
+                        # 去掉常见 CoT 开头
+                        import re as _re
+                        val = _re.sub(r'^[\d.]+\s*', '', val)  # "1. " 开头
+                        val = _re.sub(r'^(我现在最想|我还是|哦对|等下|首先|然后|所以|最终)[，。：\s]*', '', val)
+                        val = val.strip("。.，,；;")
+                        # 清理后太短或仍残留动作标记才置空。
+                        # 宽松化（之前 "等下/哦对" 出现在正常句子里也会整段置空，误杀正文）
+                        if len(val) < 3 or "【动作" in val:
+                            val = ""
+                        p[key] = val[:400]
+                # SOCIALIZE 如果 content 为空，让 mind 用 agentic loop 生成
+                if final.type == ActionType.SOCIALIZE and not p.get("content"):
+                    p["content"] = ""  # _execute_socialize 会处理空 content
+                desc = p.get("topic") or p.get("task") or p.get("skill") or p.get("thought") or p.get("content") or ""
+                logger.info(f"[MIND] 决策: {final.type} | {str(desc)[:50]}")
+                return final
+        except Exception as e:
+            logger.warning(f"mind 决策失败: {e}")
+
+        return None
 
     def _record_organ_learning(self, t: int, goal, action, outcome: Dict[str, Any], reward: float):
         """PHASE 11.5: 将动作结果反馈给器官，触发 record_* 学习 (P5-21)。
@@ -1834,17 +2487,78 @@ class LifeLoop(GapDetectorMixin):
         new_fatigue = max(self.state.activity_fatigue - 0.005 * dt * recovery_rate, 0.0)
 
         # Stress 更新移至 Affect Phase，这里保持当前值不变
-        # P4-50 修复：update_boredom 原来只传 boredom+dt，novelty 默认 0 → ETA_IDLE 每 tick 触发
-        # → boredom 单调上升。现在传 novelty=0.5（未知/中等，阻止 ETA_IDLE 空转），
-        # 并从最近 episode 推导 socially_engaged（上 tick 是 CHAT 且成功→社交中→降低无聊）
+        #
+        # 阶段1.1 修复（2026-07）：原 P4-50 把 novelty 写死为 0.5（"阻止 ETA_IDLE 空转"），
+        # 但这把整个 novelty→boredom 通路切断了——boredom 永不累积，系统永远不无聊、
+        # 永远不探索。现改用 PHASE 5 缓存的真实 novelty（self._last_novelty，来自
+        # curiosity gap 的补数）。novelty 低（<0.2）时 ETA_IDLE 触发，boredom 自然累积。
+        #
+        # P5-XX 修复（2026-07）：原逻辑只看"上 tick 是 CHAT 且成功"，但 heartbeat 自循环
+        # CHAT（无真用户，_generate_contextual_greeting 自己生成消息）也被算社交，
+        # 导致 boredom 永远被 η_soc 削减，系统陷入 CHAT 死循环无法触发探索。
+        # 现增加观察：只有 observation.type == "user_chat"（真用户消息）才算社交。
         socially_engaged = False
         try:
             recent = self.episodic.query_recent(1)
             if recent and recent[0].action and recent[0].action.type == "CHAT":
-                socially_engaged = recent[0].outcome is not None and recent[0].outcome.ok
+                is_user_chat = (
+                    recent[0].observation is not None
+                    and getattr(recent[0].observation, "type", None) == "user_chat"
+                )
+                socially_engaged = (
+                    is_user_chat
+                    and recent[0].outcome is not None
+                    and recent[0].outcome.ok
+                )
         except Exception:
             pass
-        new_boredom = update_boredom(boredom, dt * 0.5, novelty=0.5, socially_engaged=socially_engaged)
+        # 阶段1.1: novelty 的代谢更新（持续衰减）。
+        # 真实 novelty 应来自记忆检索相似度（memory/semantic_novelty.py），但当前 life_loop
+        # 没接检索结果（阶段2 会接）。在无真实外部输入时，novelty 持续衰减——
+        # 旧东西越来越不新，符合"没新输入就该无聊"的直觉。
+        # EXPLORE/USE_TOOL 成功后会重置 novelty 回高值（见 action_executor._execute_explore）。
+        # 衰减率 NOVELTY_DECAY_RATE=0.02：每 tick novelty 减 2%，约 35 tick 从 0.5 降到 0.2。
+        NOVELTY_DECAY_RATE = 0.02
+        new_novelty = max(0.0, self._last_novelty - NOVELTY_DECAY_RATE * dt)
+        new_novelty = max(0.0, min(1.0, new_novelty))
+        self._last_novelty = new_novelty  # 更新缓存，下 tick 从这里继续衰减
+
+        # 注意：不再乘 0.5（原 dt*0.5 把 boredom 累积减半，导致永远涨不到触发阈值）。
+        # dt=1.0 时 boredom 每 tick 增 0.03，约 8 tick 到 0.25 触发记忆漫游。
+        new_boredom = update_boredom(boredom, dt, novelty=new_novelty, socially_engaged=socially_engaged)
+
+        # 阶段X（2026-07）：curiosity 衰减。
+        # 问题：curiosity 只在 EXPLORE 时 +0.05，从不下降，导致一路涨到 1.0 饱和，
+        # 系统被好奇绑架"停不下来"（累了还硬撑着探索/学习）。
+        # 修复：curiosity 每 tick 向基线（CURIOSITY_BASELINE=0.4）缓慢回落。
+        # 语义：探索的满足感会随时间消退——你今天满足了的好奇，过段时间又会重新好奇。
+        # 衰减率小（0.008/tick），约 60 tick 从 1.0 回落到 0.5，不会过快扼杀探索欲。
+        # EXPLORE 时 +0.05 仍然有效（净效应：频繁探索能维持高 curiosity，停下后自然回落）。
+        CURIOSITY_BASELINE = 0.4
+        CURIOSITY_DECAY_RATE = 0.008
+        curiosity_current = self.fields.get("curiosity") or 0.5
+        if curiosity_current > CURIOSITY_BASELINE:
+            curiosity_current = max(CURIOSITY_BASELINE, curiosity_current - CURIOSITY_DECAY_RATE * dt)
+        elif curiosity_current < CURIOSITY_BASELINE:
+            curiosity_current = min(CURIOSITY_BASELINE, curiosity_current + CURIOSITY_DECAY_RATE * dt * 0.5)
+        self.fields.set("curiosity", curiosity_current)
+
+        # 阶段X（2026-07）：mood 衰减（向基线回归）。
+        # 问题：update_mood 只有正/负 RPE 增减，没有自然回归基线的机制。
+        # 当大部分动作 reward 偏正时（LEARN_SKILL/THINK 等），mood 只涨不跌直到 1.0 饱和，
+        # 之后 80+ tick 不动，情绪失去表达力。
+        # 修复：mood 每 tick 向基线（MOOD_BASELINE=0.5）缓慢回落。
+        # 语义：好心情会慢慢淡忘——你不会因为一件开心事兴奋一整天，情绪自然回归中性。
+        # PHASE 11 的 update_mood 仍然有效（正 RPE 推高，负 RPE 拉低），衰减只是加个"重力"。
+        # 衰减率 0.01/tick：约 50 tick 从 1.0 回落到 0.5，不会过快抹杀好心情。
+        MOOD_BASELINE = 0.5
+        MOOD_DECAY_RATE = 0.01
+        mood_current = self.fields.get("mood") or 0.5
+        if mood_current > MOOD_BASELINE:
+            mood_current = max(MOOD_BASELINE, mood_current - MOOD_DECAY_RATE * dt)
+        elif mood_current < MOOD_BASELINE:
+            mood_current = min(MOOD_BASELINE, mood_current + MOOD_DECAY_RATE * dt * 0.5)
+        self.fields.set("mood", mood_current)
 
         # 疲劳恢复率受昼夜节律影响
         if new_fatigue < fatigue:
@@ -1858,6 +2572,10 @@ class LifeLoop(GapDetectorMixin):
         self.fields.set("fatigue", new_fatigue)
         self.fields.set("stress", stress)
         self.fields.set("boredom", new_boredom)
+        # 把 novelty 写进 fields，让 PHASE 2 的 field_snapshot 包含它，
+        # PHASE 5 的 extract_curiosity 能读到真实 novelty（state.get("novelty")），
+        # 不再走 fallback。
+        self.fields.set("novelty", new_novelty)
 
     # ===== 以下方法已移至 ActionExecutor =====
     # _execute_action -> ActionExecutor.execute()
@@ -1974,6 +2692,14 @@ class LifeLoop(GapDetectorMixin):
                 logger.debug("Skill memory persisted")
         except Exception as e:
             logger.error(f"Error persisting skill memory: {e}")
+
+        # P3-1/P3-2: 关闭 episodic 常驻 JSONLWriter（迁移自原手写 open/append/close）
+        try:
+            if hasattr(self, 'episodic') and self.episodic:
+                self.episodic.close()
+                logger.debug("Episodic writer closed")
+        except Exception as e:
+            logger.error(f"Error closing episodic writer: {e}")
 
         # Persist value learning parameters
         try:

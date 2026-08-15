@@ -3,6 +3,7 @@
 Tests the complete system flow according to paper specifications.
 """
 import pytest
+import os
 from datetime import datetime
 from pathlib import Path
 import tempfile
@@ -326,6 +327,15 @@ class TestSemanticNovelty:
 
 
 class TestLifeLoopIntegration:
+    @pytest.fixture(autouse=True)
+    def _isolate_cwd(self, tmp_path):
+        """连续性记忆（artifacts/persistent/{id}）是 CWD 相对路径，生产环境由
+        systemd WorkingDirectory 锚定。测试必须切到临时 CWD，否则会读写仓库
+        自身的持久记忆（tick 被历史恢复到 max_ticks 导致会话空转、artifacts 被污染）。"""
+        old_cwd = Path.cwd()
+        os.chdir(tmp_path)
+        yield
+        os.chdir(old_cwd)
     """Integration tests for the main life loop."""
 
     @pytest.fixture
@@ -386,8 +396,9 @@ class TestLifeLoopIntegration:
 
         loop.run_session(max_ticks=5)
 
-        # Check episode file was created
-        episode_file = temp_run_dir / "episodes.jsonl"
+        # 连续性记忆契约（2026-07）：episode 写入 CWD 下 artifacts/persistent/{social_id}/，
+        # 而非 run_dir（run_dir 是单次运行的临时产物目录）。测试 social_id 默认 "A"。
+        episode_file = Path.cwd() / "artifacts" / "persistent" / "A" / "episodes.jsonl"
         assert episode_file.exists()
 
 

@@ -162,10 +162,19 @@ class CapabilityManager:
     def _build_capability_map(self):
         """构建能力映射"""
         # 内置能力（系统始终拥有）
+        # 阶段2.3 修复（2026-07）：原只有 3 个（llm_access/memory_access/tool_use），
+        # 但 dynamic_tool_registry 注册的工具按 category 标记（network/file_system/
+        # code/self_perception），USE_TOOL 动作的 capability_req 引用这些 category 名，
+        # 导致 web_search (req ["network"]) 等被 capability_denied 永远执行不了。
+        # 现补上这些 category 作为内置能力——单机本地系统默认拥有这些能力。
         builtin_capabilities = [
             "llm_access",      # LLM 访问能力
             "memory_access",   # 记忆访问能力
             "tool_use",        # 工具使用能力
+            "network",         # web_search 等网络工具
+            "file_system",     # read_file/write_file/list_directory
+            "code",            # execute_code
+            "self_perception", # read_own_logs/system_stats
         ]
         for cap in builtin_capabilities:
             self._capability_map[cap] = CapabilitySource.PLUGIN  # 标记为内置

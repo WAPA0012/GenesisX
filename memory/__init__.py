@@ -96,11 +96,6 @@ __all__ = [
     "SkillCostType",
     "SkillRegistry",
     "get_global_registry",
-    # 肢体使用指南
-    "FileOpsGuide",
-    "WebFetcherGuide",
-    "DataAnalysisGuide",
-    "PDFProcessingGuide",
     # 器官指南管理器
     "OrganGuide",
     "OrganGuideManager",

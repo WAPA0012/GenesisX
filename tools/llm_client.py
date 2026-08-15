@@ -237,11 +237,14 @@ class LLMClient:
             logger.info(f"[LLMClient] Calling API: {url}")
             logger.info(f"[LLMClient] Model: {self.config.model}")
 
+            # 修复（2026-07）：timeout 用 tuple (connect, read) 防止"读 body 卡住"导致永久挂起。
+            # 原来的 timeout=int 只保护连接阶段，服务器发了半个 response 后卡住会无限等。
+            # connect=15 秒（建连），read=90 秒（两个数据块之间最长间隔）。
             response = requests.post(
                 url,
                 headers=headers,
                 json=payload,
-                timeout=self.config.timeout
+                timeout=(15, 90)
             )
             response.raise_for_status()
 
@@ -251,10 +254,20 @@ class LLMClient:
             choice = data.get("choices", [{}])[0]
             message = choice.get("message", {})
 
-            # P6-3 修复：只用 content 作为正文，不再 fallback 到 reasoning_content
-            # reasoning_content 是推理链（CoT），混入正文会污染下游器官思考/聊天历史
+            # P6-3 修复（2026-07 修订）：
+            # step_plan 端点的 step-3.7-flash 强制走推理模式——content 恒为空，
+            # 所有输出在 reasoning_content 里。enable_thinking=False 无效（已测）。
+            # reasoning_content 的结构：推理过程 + 最终结论混在一起。
+            # 策略：content 非空用它；为空时从 reasoning_content 提取最终结论。
+            #
+            # 推理模型的输出通常在末尾给出结论（如【动作:GROW】【主题:xxx】），
+            # 前面全是"首先...然后...哦对..."的推理噪音。
+            # 提取方法：找最后一个结构化标记（【动作:xxx】）后的内容作为结论；
+            # 如果没有标记，取最后 2-3 句（推理模型通常在末尾定稿）。
             text = message.get("content", "") or ""
             reasoning_content = message.get("reasoning_content", "")
+            if not text and reasoning_content:
+                text = self._extract_conclusion(reasoning_content)
 
             # 提取工具调用
             tool_calls = []
@@ -286,6 +299,48 @@ class LLMClient:
                 "tool_calls": [],
                 "total_tokens": 0
             }
+
+    def _extract_conclusion(self, reasoning: str) -> str:
+        """从推理模型的 reasoning_content 里提取最终结论。
+
+        step_plan 端点的 step-3.7-flash 把推理过程和结论混在 reasoning_content 里。
+        推理过程是"首先...然后...哦对..."这种 CoT 噪音，结论通常在末尾。
+
+        提取策略（按优先级）：
+        1. 如果有【动作:xxx】标记，取最后一个标记到结尾（这是器官的最终决策）
+        2. 如果有明显的结论分隔（"结论：""最终：""答案是"），取之后的内容
+        3. 都没有，取最后 3 句（推理模型通常在末尾定稿）
+        """
+        if not reasoning:
+            return ""
+
+        import re
+
+        # 策略 1：找最后一个【动作:xxx】【主题:xxx】块
+        action_matches = list(re.finditer(r'【动作[:：].*?(?:【主题[:：].*?)?】', reasoning, re.DOTALL))
+        if action_matches:
+            last_match = action_matches[-1]
+            # 取最后一个动作标记到结尾
+            conclusion = reasoning[last_match.start():].strip()
+            return conclusion
+
+        # 策略 2：找结论分隔词
+        for separator in ['结论：', '结论:', '最终：', '最终:', '答案是', '总结：', '总结:', '所以：', '所以:']:
+            idx = reasoning.rfind(separator)
+            if idx >= 0:
+                return reasoning[idx:].strip()
+
+        # 策略 3：取末尾结论段（推理模型通常在末尾定稿）。
+        # 保留更多内容（最后 6 句）——之前只留 3 句会把模型的正文 reasoning 阉割掉，
+        # 导致下游解析拿不到完整决策上下文。
+        sentences = re.split(r'[。！？\n]+', reasoning)
+        sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 5]
+        if len(sentences) >= 6:
+            return '。'.join(sentences[-6:]) + '。'
+        elif sentences:
+            return '。'.join(sentences) + '。'
+
+        return reasoning[-600:] if len(reasoning) > 600 else reasoning
 
     def _chat_qianwen(
         self,

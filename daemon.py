@@ -73,6 +73,10 @@ class DaemonManager:
         self.consolidation_thread = None
         self.health_check_thread = None
 
+        # P9-5: 连续健康失败计数（超阈值退出 daemon 让外部 supervisor 重启）
+        self._consecutive_health_failures = 0
+        self._health_failure_threshold = 5  # 连续 5 次失败（约 5 分钟）后退出
+
         # Logging
         self._setup_logging()
 
@@ -183,7 +187,7 @@ class DaemonManager:
                         if hasattr(self.life_loop, 'consolidator') and self.life_loop.consolidator:
                             if self.life_loop.episodic.count() >= 20:
                                 stats = self.life_loop.consolidator.consolidate(
-                                    current_tick=self.life_loop.state.tick,
+                                    current_tick=self.life_loop.state.tick + 1,
                                     budget_tokens=1000,
                                     salience_threshold=0.7,
                                 )
@@ -208,8 +212,8 @@ class DaemonManager:
                     if self.running and self.life_loop:
                         # Check if life loop is healthy
                         if not self._health_check():
-                            self.logger.warning("Health check failed, attempting recovery")
-                            self._attempt_recovery()
+                            self.logger.warning("Health check failed")
+                            self._report_unhealthy()
                 except Exception as e:
                     self.logger.error(f"Health check thread error: {e}")
 
@@ -239,23 +243,46 @@ class DaemonManager:
                 self.logger.warning(f"Critical stress level: {stress}")
                 return False
 
+            # P9-5: 健康时清零连续失败计数
+            self._consecutive_health_failures = 0
             return True
         except Exception:
             return False
 
-    def _attempt_recovery(self):
-        """Attempt to recover from unhealthy state."""
+    def _report_unhealthy(self):
+        """Report unhealthy state (P9-5: replaces _attempt_recovery).
+
+        原设计的"恢复"逻辑有缺陷：
+        1. life_loop is None / state is None 是致命错误，daemon 自己救不了
+           （调 self.life_loop.state.stress 会 AttributeError）
+        2. stress > 0.95 是非致命状态，life_loop 内部已有自愈：
+           - stress > 0.7 触发 REFLECT stress_relief (life_loop.py:1258)
+           - fatigue > 0.8 触发巩固 + reset_activity_fatigue (life_loop.py:1598)
+        所以 daemon 做 recovery 是冗余且可能冲突（多线程并发调 consolidate 会破坏
+        cooldown 状态）。改为报警 + 标记 + 连续失败超阈值退出，让外部 supervisor 重启。
+        """
+        self._consecutive_health_failures += 1
+        failures = self._consecutive_health_failures
+
+        # 尽力保存状态（不阻塞）
         try:
-            self.logger.info("Attempting recovery...")
-
-            # Trigger rest mode if stressed
-            if self.life_loop.state.stress > 0.8:
-                self.logger.info("Triggering stress recovery")
-                # Could trigger consolidation here
-
             self.save_state()
-        except Exception as e:
-            self.logger.error(f"Recovery failed: {e}")
+        except Exception:
+            pass
+
+        if failures >= self._health_failure_threshold:
+            self.logger.error(
+                f"Health check failed {failures} consecutive times "
+                f"(threshold={self._health_failure_threshold}). Exiting daemon for external restart. "
+                f"Last state: stress={getattr(self.life_loop.state, 'stress', '?') if self.life_loop else '?'}, "
+                f"life_loop_alive={self.life_loop is not None}"
+            )
+            self.running = False  # 让主循环退出，外部 supervisor（systemd/supervisor）可重启
+        else:
+            self.logger.warning(
+                f"Health check failed ({failures}/{self._health_failure_threshold}). "
+                f"Will retry; daemon will exit after threshold exceeded."
+            )
 
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown."""
@@ -313,8 +340,27 @@ class DaemonManager:
             while self.running:
                 try:
                     # Run one tick
-                    episode = self.life_loop.tick(t=self.life_loop.state.tick)
-
+                    # P0: 文件式用户输入注入（/tmp/user_input.txt 有内容则注入）
+                    import os as _os
+                    _input_file = "/tmp/user_input.txt"
+                    if _os.path.exists(_input_file):
+                        try:
+                            with open(_input_file, 'r') as _f:
+                                _msg = _f.read().strip()
+                            if _msg:
+                                _os.remove(_input_file)
+                                self.life_loop.get_user_input = lambda msg=_msg: msg
+                                self.logger.info(f"[USER_INPUT] Injected: {_msg[:60]}")
+                            else:
+                                if self.life_loop.get_user_input is not None:
+                                    self.life_loop.get_user_input = None
+                        except Exception as _e:
+                            self.logger.warning(f"[USER_INPUT] Read failed: {_e}")
+                    else:
+                        # 没有新消息时，清掉上次的回调（避免重复注入）
+                        if self.life_loop.get_user_input is not None:
+                            self.life_loop.get_user_input = None
+                    episode = self.life_loop.tick(t=self.life_loop.state.tick + 1)
                     # Reset error counter on success
                     max_consecutive_errors = 0
                     restart_delay = 1

@@ -106,6 +106,7 @@ class ActionType(str, Enum):
     OPTIMIZE = "OPTIMIZE"
     GROW = "GROW"  # 构建任务（创建、实现、生成）
     THINK = "THINK"  # 思考任务（通用思考）
+    SOCIALIZE = "SOCIALIZE"  # 社交（发消息到消息板，群聊/私聊）
 
 
 class Observation(BaseModel):

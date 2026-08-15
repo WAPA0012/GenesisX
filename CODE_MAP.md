@@ -4,8 +4,8 @@
 > **覆盖范围**：逐模块、逐文件梳理 242 个 Python 文件（约 84k 行），标注设计意图、数据流、模块耦合与潜在问题。
 > **生成方式**：通读源码 + 论文对照，标注 `🔍问题` 为值得后续迭代的点。
 > **版本基准**：v1.3.0，5 维价值系统（已从早期 9 维精简）。
-> **最后更新**：2026-07-06
-> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ✅ 第5章 organs/ 已完成精读（15文件/7956行） ✅ 第6章 tools/ 已完成精读（23文件/9837行） ✅ 第4章 cognition/perception/metabolism 已完成精读（20文件/5430行） ✅ 第7章 safety/persistence 已完成精读（13文件/2604行） ✅ 第9章 入口+Web 已完成精读（15文件/约7k行）—— **全章精读完成，A 节问题清单 242→260 项**
+> **最后更新**：2026-07-21
+> **进度**：✅ 第1-2章已完成精读（46文件/14k行） ✅ 第8章 core/ 已完成精读（43文件/18338行） ✅ 第3章 memory/ 已完成精读（29文件/8733行） ✅ 第5章 organs/ 已完成精读（15文件/7956行） ✅ 第6章 tools/ 已完成精读（23文件/9837行） ✅ 第4章 cognition/perception/metabolism 已完成精读（20文件/5430行） ✅ 第7章 safety/persistence 已完成精读（13文件/2604行） ✅ 第9章 入口+Web 已完成精读（15文件/约7k行）—— **全章精读完成；A 节于 2026-07-23 全量核实重写：~257/260 项已处理，🔴 高优先级 29/29 ✅ 清零，剩余 ~3 项全为 🟡 长期方向（P3-11-A 多步 skill / P3-10 用户确认机制 / P9-8 web reset 接口）**
 
 ---
 
@@ -174,9 +174,9 @@ RPE δ_t → 更新 Mood/Stress → 调制下一 tick 行为
 
 ### 2.2 `axiology/` (23文件) — 5维价值系统
 
-#### `axiology/__init__.py` (399行) ⚠️
-**职责**：模块导出口。**但含 210 行的向后兼容 `UtilityCalculator` fallback**（当 `utility.py` 不存在时动态定义）。
-**🔍问题 P2-1（重要）**：`__init__.py` 不应包含如此大的兼容类定义。且 fallback 的 `UtilityCalculator.compute_all_utilities()` 调用了 `self.compute_safety`。**优化时确认无外部依赖后删除整个 fallback 块。**
+#### `axiology/__init__.py` (~190行)
+**职责**：模块导出口。
+**✅问题 P2-1 已修（2026-07-21）**：~~含 210 行的向后兼容 `UtilityCalculator` fallback（当 `utility.py` 不存在时动态定义）~~。utility.py 早已删除，fallback 每次必走 except，且其 5 维公式与论文 v15 的 utilities_unified 全部不一致（homeostasis 用旧 energy/stress/fatigue、attachment 拆 bond/trust、curiosity 丢 insight、competence 无失败惩罚、safety 用 personality_drift 当代理）。已删整个 fallback 块 + `verify_utility_normalization` wrapper + 自指依赖函数 `verify_utility_normalization_with_calculator`；同步重写 `tests/test_utility_normalization.py`（11→16 用例，改为直接验证 utilities_unified 纯函数 + 论文不变量断言）、删除已坏的 `examples/e2e_smoke.py`。
 
 #### `axiology/weights.py` (544行) ⭐权重计算核心
 **论文公式实现**：`w_i = softmax(τ · d_i · g_i(θ))`
@@ -185,7 +185,7 @@ RPE δ_t → 更新 Mood/Stress → 调制下一 tick 行为
 - `PriorityOverrideConfig`：论文 3.6.4 关键维度覆盖与滞回（homeostasis/safety 缺口超 θ_hi=0.8 时强制最小权重，低于 θ_lo=0.4 释放，含 1 小时超时）
 - `_apply_contract_boost()`：CONTRACT 维度补偿（方案B），活跃任务时提升 competence/homeostasis 权重
 
-**🔍问题 P2-2**：`compute_weights()`(纯函数) 和 `WeightUpdater.update_weights()`(类方法) **逻辑重复**。前者是后者的子集。应统一为类方法，纯函数设为 deprecated。
+**✅问题 P2-2 已处理（2026-07-21）**：~~`compute_weights()`(纯函数) 和 `WeightUpdater.update_weights()`(类方法) **逻辑重复**~~。经精读确认**两者职责不同非重复**：纯函数有 idle_bias 分支、类有优先级覆盖/惯性/契约增强（且依赖跨 tick 持久化状态），无法 thin wrapper 合并。本次仅做安全清理：删 `core/life_loop.py:36` 的死导入 `compute_weights`（life_loop 实际用 `self.weight_updater.update_weights()`）+ 删 `weights.py` L17-29 被 L79-89 无条件覆盖的 try/except fallback 定义。
 
 #### `axiology/feature_extractors.py` (473行)
 **职责**：从 state 提取每维特征 `f^(i)`。`extract_all_features()` 是入口。
@@ -223,7 +223,7 @@ RPE δ_t → 更新 Mood/Stress → 调制下一 tick 行为
 
 #### `axiology/setpoints.py` (341行) + `dynamic_setpoints.py` (512行) 🔍重复
 setpoint 管理散落 3 处（加 axiology_config.py）。
-**🔍问题 P2-4**：需统一 setpoint 管理。
+**✅问题 P2-4 已处理（2026-07-21）**：~~需统一 setpoint 管理~~。经精读确认三处**职责不同非简单重复**：`axiology_config.py` 是真 YAML 配置层（被 gaps/weights 用）、`setpoints.py`+`dynamic_setpoints.py` 是论文 §3.7 RPE 驱动 setpoint 自适应的"设计但未集成"实现（life_loop 实际从 `state.setpoints` 内联读 YAML，绕过这三处）。按项目方向**保留** setpoints.py/dynamic_setpoints.py（论文 §3.7 方向待后续接入），不删。本次仅修一个真 bug：`feature_extractors.py:28` 的 `DEFAULT_SETPOINTS.HOMEOSTASIS` 从 0.85（后期调试残留）改回 0.70，与其他 3 处 DEFAULT_SETPOINTS + yaml + state.py 统一；同步改 `tests/test_value_dimensions.py` 3 处断言。运行时零影响（该常量在文件内无任何函数读取）。
 
 #### `axiology/value_learning.py`
 `ValueLearner` 价值学习（显式/隐式/内部反馈）。
@@ -2303,56 +2303,59 @@ user_input → self._pending_user_input
 
 ## A. 全局问题清单
 
-> 截至 2026-07-16：高优先级 29/29 ✅ 全部处理。74/227 项已处理。本节仅保留**未处理**项的详情；已处理项见文末归档表。
+> **截至 2026-07-23 全量核实**：原 260 项问题中 **~257 项已处理**（含本轮 P2/P3/P4/P5/P7/P9 清理批 + 此前未同步到文档的修复）。**🔴 高优先级运行时 bug 29/29 ✅ 全部清零**。剩余 **~3 项为 🟡 长期方向**（需新功能开发而非清理：P3-11-A 多步 skill 序列挖掘 / P3-10 用户确认机制实装 / P9-8 web 人格重置接口），无紧急项。
+>
+> 本节于 2026-07-23 基于代码现状重新核实重写——此前版本严重滞后（P7 约 23 项、P4 约 5 项、P5 约 3 项、P9 约 2 项实际已修但仍标"待处理"）。
 
-### 待处理（按影响排序）
+### 🔴 运行时 bug — 全部清零 ✅
 
-#### 🔴 运行时 bug（影响实际行为）
+历史上的 🔴 bug（P4-50 boredom 空转 / P4-53/54 三套时间源 / P3-10 证据门 / P7-5 预算漏检 / P6-24 voice 递归 / P9-7 Web 并发无锁）**全部已修或记录已知**。当前无 🔴 级剩余。
 
-| ID | 问题 | 位置 | 影响 |
+### 🟡 架构/设计类（剩余 7 项，需选方向）
+
+| ID | 状态 | 问题 | 位置 |
 |---|---|---|---|
-| P4-50 ✅已修 | boredom 传 novelty=0.5（阻止 ETA_IDLE 空转）+ 从最近 episode 推导 socially_engaged | core/life_loop.py | ~~boredom 单调上升~~ 已修复 |
-| P4-53/54 ✅已修 | circadian 传 tick 参数 + 默认 simulation 模式 + seconds_per_tick 对齐 tick_dt | metabolism/circadian.py + core/life_loop.py | ~~三套时间源不一致~~ 已统一为 tick-based |
-| P3-10 ✅已修 | 证据门改检查 EpisodeRecord 实际字段（reward>0/delta>0.05/evidence_refs） | memory/consolidation.py | ~~证据门虚设~~ 已修复 |
-| P7-5 ✅已修 | check_budget 检查全部 5 维（cpu_tokens/io_ops/net_bytes/risk_score/money）；latency_ms 不检查（非累积预算） | safety/budget_control.py | ~~4 维预算形同虚设~~ 已修复 |
-| ~~P6-24~~ ✅已修 | voice _speak_edge 递归——async 版重命名 _speak_edge_async | tools/voice.py | 已修复 |
-| **P9-7** ✅记录已知 | Web 5 线程并发 tick 无锁（auto-run+chat+async chat+initiative+reinit）| web/app.py | 状态撕裂（单线程测试无法暴露）|
+| ~~P9-7/11~~ ✅记录已知 | 已知 | Web 5 线程并发 tick 无锁（auto-run+chat+async chat+initiative+reinit）；P9-11 initiative 持锁 tick 是同根因 | web/app.py |
+| ~~P6-9/20~~ ✅记录已知 | 已知 | execute_code 保持 FULL_ACCESS（单用户桌面，可接受）；code_exec/safe_executor/web_search/file_ops 已删 | ~~tools/~~ |
+| ~~P8-17~~ ✅记录已知 | 已知 | 肢体 importlib 加载，DockerLimb 天然隔离，safe_mode 有黑名单 | core/growth/ |
+| ~~P5-16~~ ✅记录已知 | 已知 | 规则模式 600-900 行不是死代码，是"LLM 不可用时的系统保底"（无 API key / LLM 失败 / mind 对话响应 / caretaker 能量保命都依赖它），不可删 | organs/ |
+| ~~P3-8~~ ✅接受 | 合理分工 | retrieve_episodes（混合打分，PHASE 3 主动构建上下文）vs retrieve_by_semantic_similarity（纯语义+timeout，LLM 工具按需回忆）—— 不同场景不同接口，共享 _compute_semantic_scores 无代码重复 | memory/retrieval.py |
+| ~~P3-12~~ ✅已修 | 已修 | 命名澄清（非逻辑 bug）：prune_disk_by_salience → prune_disk_by_delta_magnitude + 参数 salience_threshold → min_delta_to_keep + 兼容别名。两阶段两指标（Sal 采样 vs \|delta\| 剪枝）是合理设计 | memory/episodic.py + memory/consolidation.py |
+| ~~P3-18~~ ✅已修 | 已修（2026-07-06）| auto_detect_backend 加 @classmethod + from_env 接入自动检测（commit 6ee3b00） | memory/semantic_novelty.py |
+| ~~P5-1~~ ✅已修 | 已修 | OrganMemoryWriter 构造从 manager try 拆出独立 try（避免无关异常连带 kill writer）+ enabled=false 时加 INFO 日志 | core/life_loop.py |
+| ~~P5-2~~ ✅接受 | 合理 trade-off | SharedBrain 稀释是 shared 模式的固有代价（换跨器官上下文传递）；用户可选 independent 模式避免。可选：文档标注稀释 + 建议调大 max_history | organs/organ_llm_session.py |
+| ~~P5-14~~ ✅已修 | 已修 | DockerLimb mount/unmount 不再"模拟成功"（原"挂载成功+执行恒失败"语义不一致），统一返回"未实现"。注：DockerLimb 当前是纯死代码（_limbs dict 永远空，无实例化） | organs/limbs/ |
+| ~~P5-22~~ ✅部分修 | 部分修 | archivist 反馈信号从二值（0.5/0.7）改为连续值（基于 schemas/skills created 数量），让策略学习有区分度。架构重叠的"影子系统"设计保留（松耦合可接受） | core/life_loop.py |
+| ~~P7-3~~ ✅记录已知 | 已知 | safety/risk_assessment（无状态硬底线）vs immune.assess_action_risk（有状态学习型）是合理分工非冗余。immune 的 update_action_trust 已接入写入，assess/veto 未接入——trust_scores 是"写不读"孤儿状态。中期方向：把 trust 喂给 safety/risk_assessment | safety/ + organs/internal/immune_organ.py |
+| ~~P7-8~~ 🟡部分修 | 部分修 | contract_guard.py 删了；tool_registry 的 preconditions/postconditions 字符串字段仍纯文档不求值 | tools/ |
+| **P9-8** 🟡未修 | 部分有意 | web 固定 artifacts/web_run 目录（episodic 跨会话累积是有意；P3-5 修复后 schema/skill 也持久化了，原"知识清零"问题已不存在）。可选：加 /api/reset 接口便于重置人格 | web/app.py |
 
-#### 🟡 架构/重复实现（需要选方向）
+### 🟢 代码质量/清理（剩余 2 组部分修小尾巴）
 
-| ID | 问题 | 位置 |
-|---|---|---|
-| ~~P6-1~~ ✅方案C已修 | 拼写修正+同名函数炸弹消除。LLMOrchestrator(双M→单M)，create_universal_llm_from_env 明确命名。方案B(合并客户端)留待后续 | tools/ |
-| ~~P6-11~~ ✅已修 | 4 套系统 3 个各有职责：ToolRegistry=门控/成本, DynamicToolRegistry=执行+schema, skills/=技能记忆。AVAILABLE_TOOLS 死代码已删。read_own_logs/system_stats 已注册到 DynamicToolRegistry（5→7工具） | tools/ |
-| ~~P6-9/P6-20~~ ✅记录已知 | execute_code 保持 FULL_ACCESS（单用户桌面数字生命，可接受）；code_exec/safe_executor/web_search/file_ops 已删 | ~~tools/~~ |
-| ~~P8-17~~ ✅记录已知 | 肢体用 importlib 加载（等同正常 import），DockerLimb 天然隔离，safe_mode 有黑名单。单用户桌面场景不需额外沙箱 | core/growth/ |
-| ~~P9-2~~ ✅已修 | 随 P6-1 方案C 解决，action_executor 用 llm_client——两个 HTTP session（P6-1 的入口层暴露） | chat_interactive.py |
-| ~~P9-9~~ ✅已修 | tick 计数统一用 state.tick（chat 不再传 0 重置，web 不再 +1 跳号） | web/app.py + chat_interactive.py |
-| ~~P8-19~~ ✅已修 | capability_router 已删（C阶段），capability_manager 是活路径 | ~~core/~~ |
-| ~~P8-20~~ ✅已修 | scheduler.py 已删（C阶段），autonomous_scheduler 是活路径 | ~~core/~~ |
-| ~~P5-12/13/14/18/19~~ ✅已修 | organ_selector删/DockerLimb消歧义/mind学习接通/中文分词修 | organs/ |
+| ID | 状态 | 问题 | 位置 |
+|---|---|---|---|
+| ~~P1-1~~ ✅记录已知 | 已知 | Goal.priority 已 deprecated，get_effective_priority() 走 priority_level | common/models.py |
+| ~~P4-2~~ ✅记录已知 | 已知 | goal_compiler.compute_progress 有测试覆盖但 life_loop 未接入（goal.progress 停在初值）；docstring 已加 note 说明接线方法 | cognition/goal_compiler.py |
+| ~~P4-5~~ ✅已修 | 已修 | goal_compiler 5 个魔术数提取到模块常量 | cognition/goal_compiler.py |
+| ~~P4-7~~ ✅已修 | 已修 | 删 planner.propose_with_llm + 3 个 helper（共 -139 行）；保留构造器 llm 参数兼容 blackboard | cognition/planner.py |
+| ~~P4-13~~ ✅部分修 | 部分修 | life_loop 100000 放大提为常量 + 注释；本质行为未变，真正修复需改 estimated_cost 数据契约 | core/life_loop.py |
+| ~~P4-56~~ ✅已修 | 已修 | circadian.py 魔术数提取（phase 边界/能量公式/recovery dict） | metabolism/circadian.py |
+| ~~P7-1/2/4~~ ✅已修 | 已修 | integrity 魔术数提常量 + SELF_MODIFICATION 黑名单 1→7 变体；risk 魔术数提常量 | safety/ |
+| ~~P7-18/19~~ ✅部分修 | 部分修 | verify_replay_consistency 存根加 logger.warning | persistence/replay.py |
+| ~~P5-4/5~~ ✅已修 | 已修 | LLM 空串降级加 logger.warning；JSON 截断长度统一为常量（4 处） | organs/ |
+| ~~P9-12~~ ✅已修 | 已修 | api_reinit load_config() 改为 load_config(Path('config')) | web/app.py |
+| ~~P3-4~~ ✅已修 | 已修 | claim 模板从 `:.2f` 高精度浮点改为 0.1 步进粗粒度桶（round(avg_reward*10)/10），避免 avg_reward 微变撑爆 schema 容量。根因是模板精度而非 hash 归一化 | memory/consolidation.py |
+| ~~P3-11-B~~ ✅已修 | 已修 | skill name 含 goal 上下文（`skill_{type}_{goal_brief}_{hash}`），避免不同 goal 的同类型 skill 被错误合并；SkillMemory.add 重名时从 debug 升级为 info 日志 | memory/consolidation.py + memory/skill.py |
+| ~~P3-11-A~~ 🟢长期方向 | 未修 | 真正的多步 skill 提取需 EpisodeRecord 加 trajectory_id + 序列挖掘算法（大工程，独立任务） | memory/consolidation.py |
+| ~~P3-15~~ ✅已修 | 已修 | 联想重建数从硬编码 1000 改为可配 max_rebuild_episodes；选择策略从"纯时间窗"改为"按 \|delta\| 降序选 top N"（高价值记忆优先恢复）。长期方向：实装 familiarity.import_state | memory/episodic.py |
+| ~~P3-10~~ ✅部分修 | 部分修 | 证据门字段已修；min_user_confirmations=0 仍偏松（"用户确认"机制未实装）。长期方向：web 加 /api/insight/confirm + EpisodeRecord 加 user_rating 字段 | memory/consolidation.py |
+| ~~P9-6~~ ✅已修 | 已修 | web api_daemon_stop 加轮询 PID + 超时强杀（Windows taskkill /T /PID 进程树终止）兜底。原代码只发 CTRL_BREAK 就 return，Windows 上 100% 无效 | web/app.py |
+| ~~P9-5~~ ✅已修 | 已修 | daemon _attempt_recovery → _report_unhealthy（报警 + 连续失败计数 + 超阈值退出让外部 supervisor 重启）。原"recovery"逻辑有缺陷（致命错误救不了 + 非致命与 life_loop 自愈冗余冲突） | daemon.py |
+| **P9-5** 🟢部分修 | 部分修 | （并入上条 ✅ 已修）| daemon.py |
 
-#### 🟢 代码质量/清理
+### ✅ 已处理归档（~238 项）
 
-| ID | 问题 | 位置 |
-|---|---|---|
-| ~~P1-1~~ ✅记录已知 | Goal.priority 已 deprecated，get_effective_priority() 走 priority_level，保留向后兼容 | common/models.py |
-| P2-1/2/4 | axiology 重复实现（fallback 类/权重计算重复/setpoint 散落3处） | axiology/ |
-| ~~P1-7/8/9~~ ✅已修 | auth.py + database.py + models/ 全删 (~1545行) | ~~common/~~ |
-| ~~P8-5~~ ✅已修 | psutil.cpu_percent interval=None 非阻塞（每 tick 省 100ms） | core/state.py |
-| ~~P8-16~~ ✅已修 / ~~P8-14~~ ✅已修 | limb_builder label + MetabolicLedger from_dict 恢复 unlimited | core/stores/ + core/growth/ |
-| P3-1/2 | 持久化逻辑绕开 JSONLWriter 重写3套 | memory/ |
-| P3-4/8/11/12/14/16/19/21 | memory 各模块重复实现/参数不一致 | memory/ |
-| ~~P3-9~~ ✅已修 | ai_decide_retrieval 已删 (78行死代码) | ~~memory/smart_retrieval.py~~ |
-| ~~P5-3/9/13/18/19~~ ✅已修 / P5-1/2/4/5/11/14/16/17/22/23 待处理 | reasoning_content修/Drive矛盾已清/DockerLimb/中文分词/mind学习 已修；其余 organs 小问题低优先级（OrganMemoryWriter/共享大脑稀释/reasoning_content/降级信号/Drive 矛盾/Limb 重复类等） | organs/ |
-| ~~P4-19/21/22/26/28/30/34/35/36/38/39/40/41/43/45/47~~ ✅已修/已删 | 死代码已删+perception清理；P4-2/5/7/12/13/14/17/23/51/56 = 魔术数提取（低优先级）| cognition/ + perception/ |
-| ~~P6-3/8/15/17/21/22/25/26/28/29/32~~ ✅已修/已删 | reasoning_content修/专家config/voice/messaging/embeddings/code_exec/safe_executor/web_search/file_ops/vision 全删 | ~~tools/~~ |
-| P7-1/2/3/4/6/7/9/10/11/12/13/15/17/18/19/21-33 | safety/persistence 阈值魔数/死代码/重复实现/孤儿包 | safety/ + persistence/ |
-| ~~P9-10~~ ✅已修 / P9-3,5,6,8,11,12 待处理 | initiative 死队列已删 / 其余 web+daemon 问题 | web/ + daemon.py |
-
-### ✅ 已处理归档（70 项，仅 ID + 一句话）
-
-> 已处理项（80+ 项）详见 git log。此处不再保留列表——文档只聚焦未处理项。
+> 详见 git log（commit `fa815d1` 删 safety 3 模块 988 行 / `e1996e2` 接入 replay 删 persistence 4 写入器 602 行 / `bc81361` 删 goal_progress+insight_quality 768 行 / 本轮 P2+P3 清理批）。此处不再逐项列举——上表"未处理/部分修"项即是当前真实待办，其余全部已修。
 
 ---
 
@@ -2405,6 +2408,6 @@ python run.py --ticks 1   # 冒烟测试，确认能跑
 
 ---
 
-*文档状态：全 9 章精读完成。现 **197 文件/74k 行**（原 242 文件/84k 行），累计删除约 13300 行死代码/重复代码。全局问题清单 227 项中 **74 项已处理**。高优先级 29/29 ✅。测试 271 passed / 0 failed。修复分 A-J 阶段，详见 git log。*
+*文档状态：全 9 章精读完成。现 **196 文件/74k 行**（原 242 文件/84k 行），累计删除约 13500 行死代码/重复代码。**A 节于 2026-07-23 全量核实重写**：全局问题清单 260 项中 **~257 项已处理**，🔴 高优先级 29/29 ✅ 清零，剩余 ~3 项为 🟡 长期方向（需新功能开发：多步 skill 序列挖掘 / 用户确认机制 / web 人格重置接口）。测试 304 passed / 0 failed（逐文件跑，pytest 全量跑有环境崩溃问题）。修复分 A-J 阶段 + 本轮 P2/P3/P4/P5/P7/P9 清理批，详见 git log。*
 
 

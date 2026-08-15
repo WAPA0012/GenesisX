@@ -1168,8 +1168,10 @@ def api_reinit():
     """重新初始化系统（加载最新配置）."""
     try:
         # 重新加载配置
+        # P9-12 修复：原 load_config() 无参，与其他入口（__main__/api_configure/api_restart_system）
+        # 的 load_config(Path('config')) 不一致。统一传 Path('config')。
         from common.config import load_config
-        new_config = load_config()
+        new_config = load_config(Path('config'))
 
         # 重新初始化 manager
         manager.initialize(new_config)
@@ -2521,13 +2523,23 @@ def api_daemon_start():
 
 @app.route('/api/daemon/stop', methods=['POST'])
 def api_daemon_stop():
-    """Stop running daemon."""
+    """Stop running daemon.
+
+    P9-6 修复：原代码只发 CTRL_BREAK_EVENT 就 return，但 web 用 CREATE_NEW_CONSOLE
+    启动 daemon（新进程组），CTRL_BREAK 收不到 → 100% 无效。现改为：
+    1. 发信号（仍尝试，对直接命令行启动的 daemon 有效）
+    2. 轮询 PID 存活（最多 SHUTDOWN_TIMEOUT 秒）
+    3. 超时则强制终止：Windows 用 taskkill /T /PID（进程树终止），Linux 用 SIGKILL
+    这与 daemon.py:stop_daemon 的策略一致，避免强杀跳过 schema/skill save。
+    """
     import signal
     import os
+    import subprocess
     import time
     from pathlib import Path
 
     pid_file = Path("artifacts/genesisx.pid")
+    SHUTDOWN_TIMEOUT = 30  # 秒，与 daemon.py 一致
 
     if not pid_file.exists():
         return jsonify({"error": "守护进程未运行"}), 400
@@ -2536,17 +2548,75 @@ def api_daemon_stop():
         with open(pid_file, 'r') as f:
             pid = int(f.read().strip())
 
-        # Send SIGTERM
-        if os.name == 'nt':
-            # Windows
-            os.kill(pid, signal.CTRL_BREAK_EVENT)
-        else:
-            os.kill(pid, signal.SIGTERM)
+        def _pid_alive(p):
+            """Check if process is alive (cross-platform)."""
+            try:
+                if os.name == 'nt':
+                    import ctypes
+                    kernel32 = ctypes.windll.kernel32
+                    handle = kernel32.OpenProcess(0x1000, False, p)  # SYNCHRONIZE
+                    if not handle:
+                        return False
+                    kernel32.CloseHandle(handle)
+                    return True
+                else:
+                    os.kill(p, 0)
+                    return True
+            except (OSError, ProcessLookupError):
+                return False
 
-        return jsonify({
-            "status": "stopping",
-            "message": f"已发送停止信号到守护进程 (PID: {pid})"
-        })
+        def _force_kill(p):
+            """Force kill process tree (cross-platform)."""
+            try:
+                if os.name == 'nt':
+                    # /T = 终止进程树（含子进程），/F = 强制
+                    subprocess.run(['taskkill', '/T', '/F', '/PID', str(p)],
+                                   capture_output=True, timeout=10)
+                else:
+                    os.kill(p, signal.SIGKILL)
+            except Exception:
+                pass
+
+        # 步骤 1：发优雅停止信号
+        try:
+            if os.name == 'nt':
+                os.kill(pid, signal.CTRL_BREAK_EVENT)
+            else:
+                os.kill(pid, signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass  # 进程可能已退出
+
+        # 步骤 2：轮询等待退出
+        deadline = time.time() + SHUTDOWN_TIMEOUT
+        stopped_gracefully = False
+        while time.time() < deadline:
+            if not _pid_alive(pid):
+                stopped_gracefully = True
+                break
+            time.sleep(0.5)
+
+        # 步骤 3：超时强制终止
+        forced = False
+        if not stopped_gracefully and _pid_alive(pid):
+            _force_kill(pid)
+            time.sleep(1)
+            forced = not _pid_alive(pid)
+
+        # 清理 PID 文件
+        try:
+            pid_file.unlink()
+        except Exception:
+            pass
+
+        if stopped_gracefully:
+            msg = f"守护进程已优雅停止 (PID: {pid})"
+        elif forced:
+            msg = f"守护进程超时未响应，已强制终止 (PID: {pid})——可能丢失最近一次巩固产物"
+        else:
+            msg = f"停止信号已发送但进程仍在运行 (PID: {pid})，请手动检查"
+
+        return jsonify({"status": "stopped" if (stopped_gracefully or forced) else "stopping",
+                        "message": msg, "forced": forced})
     except Exception as e:
         return jsonify({
             "error": f"停止失败: {str(e)}"

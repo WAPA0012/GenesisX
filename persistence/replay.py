@@ -27,6 +27,10 @@ import hashlib
 from datetime import datetime, timezone
 import copy
 
+from common.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class ReplayMode(str, Enum):
     """Replay mode selection."""
@@ -714,9 +718,14 @@ def verify_replay_consistency(
     """
     engine = ReplayEngine(original_dir, ReplayMode.STRICT)
 
-    # Load both runs and compare
-    # This is a simplified implementation
-    # In production, iterate through all ticks and verify
+    # P7-18: This is a simplified implementation that does not actually iterate
+    # through all ticks. It only reads engine.divergences (empty on a fresh engine),
+    # so it effectively always returns consistent=True. Callers should not rely on
+    # this for real verification until full tick-by-tick comparison is implemented.
+    logger.warning(
+        "verify_replay_consistency is a stub (P7-18); result is always consistent=True. "
+        "Do not rely on this for real divergence detection."
+    )
 
     return {
         "consistent": len(engine.divergences) == 0,

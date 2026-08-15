@@ -725,11 +725,17 @@ class ImmuneOrgan(BaseOrgan):
         return actions
 
     # === VETO AND ASSESSMENT METHODS ===
-    # P5-20（2026-07）：以下 3 个方法（veto_risky_action/assess_action_risk/update_action_trust）
-    # 未接入 life_loop 主循环——安全执行由 safety/（integrity_check/risk_assessment/budget_control）
-    # 负责。论文 §3.4.2 设计 immune 为安全执行者（优先级最高），但当前实现中 immune 降级为
-    # 纯提案器官（只提 REFLECT），安全职责由 safety/ 取代。完整接入会创造两套安全系统重叠，
-    # 记录为已知设计偏差。这些方法保留备用，待 safety/ 重构时统一。
+    # P5-20/P7-3（2026-07）：以下 3 个方法的接入状态：
+    # - update_action_trust：已接入 life_loop._record_organ_learning（life_loop.py:1664 附近），
+    #   每次动作执行后更新 action_trust_scores。
+    # - assess_action_risk / veto_risky_action：仍未接入——安全执行由 safety/
+    #   （integrity_check/risk_assessment/budget_control）负责。
+    # 论文 §3.4.2 设计 immune 为安全执行者（优先级最高），但当前实现中 immune 降级为
+    # 纯提案器官（只提 REFLECT）+ 被动学习（写 trust_scores 但不读取）。
+    # 注：action_trust_scores 当前是"写不读"的孤儿状态——update 写入但 assess/veto
+    # 从不调用。完整接入会创造两套安全系统重叠，记录为已知设计偏差。
+    # 中期方向：把 trust_scores 作为 context 喂给 safety/risk_assessment，消除孤儿状态，
+    # 同时不创造两套安全系统。这些方法保留备用，待 safety/ 重构时统一。
 
     def veto_risky_action(self, action: Action, state: Dict[str, Any]) -> bool:
         """Check if action should be vetoed for safety.

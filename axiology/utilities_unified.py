@@ -596,21 +596,22 @@ def compute_utilities(
 # ===== Verification function =====
 
 def verify_utility_normalization(
-    utilities_or_calculator,
+    utilities: Dict[Any, float],
     u_min: float = -1.0,
     u_max: float = 1.0,
-    num_samples: int = 100,
-) -> Union[Tuple[bool, Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[bool, Dict[str, Any]]:
     """Verify that all utilities are within normalized range.
 
     论文Section 3.5.2: 效用函数尺度归一化
-    """
-    # Detect if first arg is a calculator
-    if hasattr(utilities_or_calculator, 'compute_homeostasis'):
-        return verify_utility_normalization_with_calculator(utilities_or_calculator, num_samples)
 
-    # Original utilities dict signature
-    utilities = utilities_or_calculator
+    Args:
+        utilities: Dict mapping dimension -> utility value
+        u_min: Allowed minimum (default -1.0)
+        u_max: Allowed maximum (default 1.0)
+
+    Returns:
+        (all_normalized, report) tuple
+    """
     violations = {}
     all_normalized = True
 
@@ -637,70 +638,6 @@ def verify_utility_normalization(
     return all_normalized, report
 
 
-def verify_utility_normalization_with_calculator(
-    calculator,
-    num_samples: int = 100,
-) -> Dict[str, Any]:
-    """Verify utility normalization using a UtilityCalculator instance."""
-    import random
-    from common.models import CostVector
-
-    utility_ranges = {}
-    violations = []
-
-    # P8-4 审计修复：原代码用 type('StateSnapshot', (), kwargs)() 伪造状态对象，
-    # 但字段名与 compute_* 实际读取的不匹配（缺 energy/fatigue/bond/trust 等），
-    # 导致 AttributeError。改为构造真实的 StateSnapshot 实例。
-    from axiology import StateSnapshot
-
-    def _random_snapshot() -> "StateSnapshot":
-        return StateSnapshot(
-            energy=random.random(),
-            fatigue=random.random(),
-            stress=random.random(),
-            bond=random.random(),
-            trust=random.random(),
-            boredom=random.random(),
-            dt_since_user=random.random() * 100000,
-            success_rate=random.random(),
-            quality_score=random.random(),
-            skill_coverage=random.random(),
-            novelty=random.random(),
-            personality_drift=random.random(),
-            insight_formed=random.choice([True, False]),
-            insight_quality=random.random() if random.random() > 0.5 else 0.0,
-        )
-
-    for _ in range(num_samples):
-        state_t = _random_snapshot()
-        state_t1 = _random_snapshot()
-
-        # Test each utility function (5维)
-        utilities = {
-            "homeostasis": calculator.compute_homeostasis(state_t, state_t1),
-            "attachment": calculator.compute_attachment(state_t, state_t1),
-            "curiosity": calculator.compute_curiosity(state_t, state_t1),
-            "competence": calculator.compute_competence(state_t, state_t1),
-            "safety": calculator.compute_safety(state_t, state_t1),
-        }
-
-        for dim, u in utilities.items():
-            if dim not in utility_ranges:
-                utility_ranges[dim] = [u, u]
-            else:
-                utility_ranges[dim][0] = min(utility_ranges[dim][0], u)
-                utility_ranges[dim][1] = max(utility_ranges[dim][1], u)
-
-            if u < -1.0 or u > 1.0:
-                violations.append(f"{dim}: {u} out of [-1, 1]")
-
-    return {
-        "all_normalized": len(violations) == 0,
-        "violations": violations,
-        "ranges": {k: (v[0], v[1]) for k, v in utility_ranges.items()},
-    }
-
-
 __all__ = [
     # Normalization functions
     "clip_utility",
@@ -723,5 +660,4 @@ __all__ = [
     "compute_utilities",
     # 验证
     "verify_utility_normalization",
-    "verify_utility_normalization_with_calculator",
 ]

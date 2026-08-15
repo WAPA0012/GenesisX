@@ -202,16 +202,48 @@ class LimbGenerator:
         """
         logger.info(f"开始生成肢体: {requirement.name}")
 
-        # 使用 LLM 自主生成
+        # Self-debugging 闭环（2026-07）：像开发者一样——写→测→看报错→修→再测。
+        # 出错了就把错误告诉它，让它修。修好了就过，修不好它自己会放弃
+        # （连续修不动 = 它搞不定这个任务，自然结束，不强求）。
         logger.info(f"使用 LLM 自主生成: {requirement.name}")
         limb = self._generate_from_llm(requirement)
 
-        if not limb:
-            logger.warning(f"LLM 生成失败: {requirement.name}")
-            return False, None
+        fix_round = 0
+        no_progress = 0  # 连续"修不动"计数（LLM 反复修不好同一个错）
+        while limb and fix_round < 10:  # 最多 10 轮防卡死（正常 2-3 轮就够）
+            error = self._get_syntax_error(limb.code)
+            if error is None:
+                logger.info(f"语法检查通过（{fix_round} 轮修复后）: {requirement.name}")
+                break
 
-        # 测试肢体
-        if not self._test_limb(limb):
+            # 有错——告诉它哪里错了，让它修
+            fix_round += 1
+            logger.info(f"Self-debug 第 {fix_round} 轮: {error.msg} (L{error.lineno}) → 喂回 LLM: {requirement.name}")
+            fixed_code = self._fix_limb_code(limb.code, error, requirement)
+
+            if fixed_code and fixed_code != limb.code and self._get_syntax_error(fixed_code) is None:
+                # 修好了
+                limb.code = fixed_code
+                logger.info(f"Self-debug 第 {fix_round} 轮修复成功: {requirement.name}")
+                break
+            elif fixed_code and fixed_code != limb.code:
+                # 修了但还有错——用修复版继续下一轮（它至少在尝试改）
+                limb.code = fixed_code
+                no_progress = 0
+            else:
+                # LLM 没给出有效修复（返回空或没变化）——它在放弃
+                no_progress += 1
+                if no_progress >= 2:
+                    # 连续 2 次修不动，它搞不定，自然放弃
+                    logger.info(f"Self-debug: 连续修不动，放弃: {requirement.name}")
+                    break
+                # 给它换一种方式——重新从头生成
+                logger.info(f"Self-debug: 修复无效，重新生成: {requirement.name}")
+                limb = self._generate_from_llm(requirement)
+                no_progress = 0
+
+        if not limb or self._get_syntax_error(limb.code) is not None:
+            logger.warning(f"肢体生成未成功（修了 {fix_round} 轮）: {requirement.name}")
             return False, None
 
         # 保存肢体
@@ -328,11 +360,13 @@ class LimbGenerator:
 3. 实现 __init__ 方法和必要的功能方法
 4. **重要：每个能力必须有一个同名方法**（能力名作为方法名，接受 **kwargs）。
    例如能力 ["weather_query"] 必须有 `def weather_query(self, **kwargs)` 方法。
-   系统通过能力名查找同名方法来执行，方法名不匹配会导致能力无法调用。
 5. 每个方法都要有文档字符串
 6. 包含错误处理
 7. 如果需要外部依赖，在代码注释中说明
 8. 不要使用 markdown 代码块标记
+9. **极其重要：代码中所有标点符号必须是 ASCII 半角字符**（冒号 : 逗号 , 括号 () 引号 "" 等）。
+   绝对禁止使用中文全角标点（：，，（）""），否则代码会语法错误。
+   docstring 和注释里的中文可以用中文，但标点仍用 ASCII。
 
 直接输出代码，不要有其他解释。"""
 
@@ -373,19 +407,58 @@ class LimbGenerator:
             # 尝试不同的 LLM 客户端接口
             if hasattr(self.llm_client, 'generate'):
                 # 标准生成接口
-                return self.llm_client.generate(prompt, system_prompt, temperature=0.3)
+                result = self.llm_client.generate(prompt, system_prompt, temperature=0.3)
+                # generate 可能返回 str 或 dict
+                if isinstance(result, str):
+                    return result
+                elif isinstance(result, dict):
+                    return result.get("text", "") or result.get("content", "")
+                return result
 
             elif hasattr(self.llm_client, 'chat'):
-                # 聊天接口
-                return self.llm_client.chat(prompt, system_prompt)
+                # 聊天接口。LLMClient.chat 的签名是 chat(messages, system_prompt=None, ...)
+                # messages 必须是 [{"role":..,"content":..}] 列表，返回 dict {"ok":..,"text":..}
+                # 修复（2026-07）：原代码 self.llm_client.chat(prompt, system_prompt) 把字符串
+                # 当 messages 传，且没从返回 dict 提取 text，导致下游 _extract_code 收到 dict 报错。
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ]
+                result = self.llm_client.chat(messages, temperature=0.3, max_tokens=2000)
+                if isinstance(result, dict):
+                    raw = result.get("reasoning_content", "") or result.get("text", "")
+                    if raw:
+                        # 从 reasoning_content 取的代码也要走 NFKC 清洗（中文引号等）
+                        import unicodedata
+                        raw = unicodedata.normalize('NFKC', raw)
+                        for full, half in {'——':'--','……':'...','、':',','。':'.','〃':'"',
+                            '《':'<','》':'>','「':'"','」':'"','『':'"','』':'"',
+                            '【':'[','】':']','〔':'(','〕':')','〖':'[','〗':']',
+                            '〘':'(','〙':')','〚':'[','〛':']','〜':'~','〰':'~',
+                            '〝':'"','〞':'"','〟':'"','〄':'#','〒':'#','〓':'#'}.items():
+                            raw = raw.replace(full, half)
+                    return raw or ""
+                elif isinstance(result, str):
+                    return result
+                return None
 
             elif hasattr(self.llm_client, 'complete'):
                 # 补全接口
-                return self.llm_client.complete(prompt, system=system_prompt)
+                result = self.llm_client.complete(prompt, system=system_prompt)
+                if isinstance(result, str):
+                    return result
+                elif isinstance(result, dict):
+                    return result.get("text", "") or result.get("content", "")
+                return result
 
             elif callable(self.llm_client):
                 # 可调用对象
-                return self.llm_client(prompt, system_prompt)
+                result = self.llm_client(prompt, system_prompt)
+                if isinstance(result, str):
+                    return result
+                elif isinstance(result, dict):
+                    return result.get("text", "") or result.get("content", "")
+                return result
 
             else:
                 logger.error(f"未知的 LLM 客户端类型: {type(self.llm_client)}")
@@ -439,6 +512,39 @@ class LimbGenerator:
                 break
 
         code = '\n'.join(lines[start_idx:end_idx])
+
+        # 修复（2026-07）：LLM 偶尔在代码里混入中文全角标点（：，（）、。？等），
+        # 这些会触发 Python 语法错误（invalid character）。
+        # 实测 Python 3 对 90+ 个 CJK Unicode 字符都会报错（全角数字、全角字母、
+        # 各种括号/引号/声调符号等）。
+        # 两步处理：
+        # 1) NFKC 规范化：覆盖所有全角 ASCII 变体（０-９，Ａ-Ｚ，ａ-ｚ，：；＜＝＞？＠等）
+        # 2) CJK 专属标点 map：NFKC 不覆盖 U+3000-303F 和 CJK 引号，手动补
+        import unicodedata
+        code = unicodedata.normalize('NFKC', code)
+        # CJK 专属标点（NFKC 保留的，Python 会报错的）
+        for full, half in {
+            '——': '--', '……': '...',  # 多字符序列
+            '、': ',', '。': '.', '〃': '"',  # CJK 标点
+            '《': '<', '》': '>',  # 书名号
+            '「': '"', '」': '"', '『': '"', '』': '"',  # CJK 引号
+            '【': '[', '】': ']',  # 方头括号
+            '〔': '(', '〕': ')', '〖': '[', '〗': ']',  # 龟壳/白 bracket
+            '〘': '(', '〙': ')', '〚': '[', '〛': ']',  # 白 bracket
+            '〜': '~', '〰': '~',  # 波浪线
+            '〝': '"', '〞': '"', '〟': '"',  # double prime 引号
+            '〄': '#', '〒': '#', '〓': '#',  # 特殊符号映射到无害字符
+        }.items():
+            code = code.replace(full, half)
+
+        # 修复（2026-07）：LLM 偶尔生成未闭合的三引号字符串
+        #（如 docstring 的 """ 漏了一个），导致 unterminated triple-quoted string。
+        # 自动检测：如果 """ 或 ''' 出现奇数次，在末尾补一个闭合。
+        for quote in ('"""', "'''"):
+            count = code.count(quote)
+            if count % 2 == 1:  # 奇数 = 有未闭合的
+                code = code.rstrip() + '\n' + quote  # 补闭合
+                logger.info(f"自动闭合未配对的三引号（{quote} 出现 {count} 次）")
 
         # 验证代码是否有效
         if not any(keyword in code for keyword in ['def ', 'class ', 'import ']):
@@ -523,6 +629,68 @@ class LimbGenerator:
         except SyntaxError as e:
             logger.error(f"肢体代码语法错误: {e}")
             return False
+
+    def _get_syntax_error(self, code: str):
+        """检查代码语法，返回 SyntaxError（有错）或 None（无错）。
+
+        用于 self-debugging 闭环——提取具体错误信息喂回 LLM 修复。
+        """
+        try:
+            compile(code, '<string>', 'exec')
+            return None
+        except SyntaxError as e:
+            return e
+
+    def _fix_limb_code(self, code: str, error: SyntaxError, requirement) -> Optional[str]:
+        """Self-debugging：把出错的代码 + 具体错误喂回 LLM，让它修复。
+
+        不是重新生成，是"看着自己写的代码，找到错的地方，改对"。
+        这模拟了真实开发者的调试过程——没人一次写对，但看报错修就能修好。
+        """
+        if not self.llm_client:
+            return None
+
+        try:
+            # 提取出错位置附近的代码（让 LLM 聚焦在错误处）
+            lines = code.split('\n')
+            error_line = error.lineno or 1
+            start = max(0, error_line - 4)
+            end = min(len(lines), error_line + 3)
+            context_lines = '\n'.join(f"{i+1}: {lines[i]}" for i in range(start, end))
+
+            fix_prompt = f"""你之前为一个数字生命系统生成了 Python 代码，但代码有语法错误。请修复它。
+
+原始需求: {requirement.description[:200]}
+
+你写的代码在第 {error_line} 行附近出错：
+{context_lines}
+
+错误信息: {error.msg} (第 {error_line} 行{f', 字符位置 {error.offset}' if error.offset else ''})
+
+请输出**修复后的完整代码**（不是只输出改的那几行，是整个模块的完整代码）。
+仔细检查所有括号是否闭合、缩进是否一致（用4个空格）、def/class/if/else 后面是否都有冒号。
+只输出代码，不要解释。"""
+
+            system = "你是 Python 专家。修复代码里的语法错误。输出完整的修复后代码。"
+
+            fixed = self._call_llm(fix_prompt, system)
+            if not fixed:
+                return None
+
+            # 从修复响应中提取代码（可能被包裹在 markdown 里）
+            fixed = self._extract_code(fixed)
+            if not fixed:
+                return None
+
+            # 验证修复后的代码至少比原来长（不是空回复）
+            if len(fixed) < 50:
+                return None
+
+            return fixed
+
+        except Exception as e:
+            logger.debug(f"Self-debug 修复失败: {e}")
+            return None
 
     def _save_limb(self, limb: GeneratedLimb):
         """保存肢体到磁盘"""
@@ -621,6 +789,8 @@ class LimbGenerator:
 
     def _record_generation(self, limb: GeneratedLimb, requirement: LimbRequirement):
         """记录生成历史"""
+        # 修复（2026-07）：requirement.__dict__ 含 GenerationType 枚举，json.dumps 不认。
+        # 用 default 回调把枚举转成 .value，避免 "Object of type GenerationType is not JSON serializable"
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "limb_name": limb.name,
@@ -634,7 +804,7 @@ class LimbGenerator:
         # 保存历史
         history_file = self._output_dir / "generation_history.jsonl"
         with open(history_file, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(record) + "\n")
+            f.write(json.dumps(record, default=lambda o: o.value if hasattr(o, "value") else str(o)) + "\n")
 
     def get_generated_limbs(self) -> List[str]:
         """获取已生成的肢体列表"""

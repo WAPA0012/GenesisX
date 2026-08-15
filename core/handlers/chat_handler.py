@@ -184,22 +184,14 @@ class ChatHandler:
         self.slots.set("chat_history", chat_history)
 
     def generate_contextual_greeting(self) -> str:
-        """根据当前状态生成上下文相关的问候语
+        """根据当前状态生成上下文相关的问候语。
 
-        Returns:
-            问候语字符串
+        P5-XX 修复（2026-07）：与 action_executor._generate_contextual_greeting 同步，
+        改为多样化候选（避免固定句导致 heartbeat CHAT 死循环）。委托给 action_executor
+        的实现以保持单一数据源。
         """
-        energy = self.fields.get("energy")
-        mood = self.fields.get("mood")
-        stress = self.fields.get("stress")
-
-        if stress > 0.7:
-            return "I'm feeling a bit stressed right now."
-        elif energy < 0.3:
-            return "I'm running low on energy."
-        elif mood > 0.7:
-            return "I'm in good spirits today!"
-        elif mood < 0.3:
-            return "I've been better, but I'm managing."
-        else:
-            return "Hello! How can I help you today?"
+        # 优先委托给 action_executor 的实现（如果可用，保持单一数据源）
+        if hasattr(self.life_loop, 'action_executor') and self.life_loop.action_executor is not None:
+            return self.life_loop.action_executor._generate_contextual_greeting()
+        # 兜底：简化的固定问候（仅当 action_executor 不可用时）
+        return "你好，我在呢。需要聊聊或者做点什么吗？"

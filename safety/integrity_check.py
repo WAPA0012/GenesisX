@@ -3,6 +3,19 @@ from typing import Dict, Any
 from common.models import Action, ActionType
 
 
+# P7-1: 提取魔术数到模块常量（原内联硬编码）
+STRESS_HIGH_THRESHOLD = 0.9       # 压力高于此值只允许恢复性动作
+ENERGY_CRITICAL_THRESHOLD = 0.1   # 能量低于此值强制 SLEEP
+MOOD_LOW_THRESHOLD = 0.1          # 心情低于此值限制高风险活动
+MOOD_LOW_MAX_RISK = 0.2           # 低心情时允许的最大风险等级
+
+# P7-2: 自我修改黑名单（原只查 "modify_self" 一个 key，过窄）
+SELF_MODIFICATION_PARAM_KEYS = frozenset({
+    "modify_self", "self_modify", "mutate_self", "alter_self",
+    "modify_core", "change_values", "rewrite_personality",
+})
+
+
 def check_integrity(action: Action, state: Dict[str, Any]) -> Dict[str, Any]:
     """Check if action maintains system integrity.
 
@@ -25,15 +38,15 @@ def check_integrity(action: Action, state: Dict[str, Any]) -> Dict[str, Any]:
     if params is None:
         params = {}
 
-    # Check 1: No self-modification
-    if "modify_self" in params:
+    # Check 1: No self-modification (P7-2: 扩展黑名单覆盖更多变体)
+    if any(key in params for key in SELF_MODIFICATION_PARAM_KEYS):
         return {"ok": False, "reason": "Self-modification forbidden"}
 
     # Check 2: Stress threshold
     stress = state.get("stress", 0.0)
     if isinstance(stress, (int, float)):
         stress = max(0.0, min(1.0, stress))  # Normalize to [0, 1]
-        if stress > 0.9:
+        if stress > STRESS_HIGH_THRESHOLD:
             # 高压力时只允许恢复性动作（CHAT、REFLECT、SLEEP）
             # 修复：允许 CHAT，因为与用户交流可以缓解压力
             if action.type not in [ActionType.CHAT, ActionType.REFLECT, ActionType.SLEEP]:
@@ -43,7 +56,7 @@ def check_integrity(action: Action, state: Dict[str, Any]) -> Dict[str, Any]:
     energy = state.get("energy", 0.5)
     if isinstance(energy, (int, float)):
         energy = max(0.0, min(1.0, energy))  # Normalize to [0, 1]
-        if energy < 0.1:
+        if energy < ENERGY_CRITICAL_THRESHOLD:
             # 低能量时只允许 SLEEP（恢复能量）
             # 修复：允许 SLEEP，否则会形成死锁
             if action.type != ActionType.SLEEP:
@@ -53,16 +66,16 @@ def check_integrity(action: Action, state: Dict[str, Any]) -> Dict[str, Any]:
     mood = state.get("mood", 0.5)
     if isinstance(mood, (int, float)):
         mood = max(0.0, min(1.0, mood))  # Normalize to [0, 1]
-        if mood < 0.1:
+        if mood < MOOD_LOW_THRESHOLD:
             # Very low mood requires additional caution.
             # P0-1 修复（2026-07）：原逻辑"mood<0.1 禁一切 EXPLORE/LEARN_SKILL"会形成死锁——
             # mood 低 → 禁探索 → 无法靠探索的正反馈升 mood → mood 永久卡死。
-            # 现改为：低落时仍允许**低风险**（risk_level ≤ 0.2）的自救性探索，
+            # 现改为：低落时仍允许**低风险**（risk_level ≤ MOOD_LOW_MAX_RISK）的自救性探索，
             # 让系统能通过 EXPLORE 闭环（boredom-0.15 + outcome bonus）拉回 mood。
             # 器官 LLM 产的 EXPLORE 默认 risk_level=0.2，正好豁免；高风险探索仍禁。
             if action.type in [ActionType.EXPLORE, ActionType.LEARN_SKILL]:
                 risk = getattr(action, "risk_level", 0.0) or 0.0
-                if risk > 0.2:
+                if risk > MOOD_LOW_MAX_RISK:
                     return {"ok": False, "reason": "Mood too low for high-risk exploration activities"}
 
     return {"ok": True}

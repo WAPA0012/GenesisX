@@ -72,6 +72,18 @@ class ScoutOrgan(BaseOrgan):
         self.knowledge_frontier = deque(maxlen=20)  # Topics at the edge of known territory
         self.mastered_topics = set()  # Topics fully explored
         self.failed_explorations = set()  # Topics that didn't work out
+        # 阶段2.4 修复（2026-07）：原 knowledge_frontier 初始为空，只在探索成功后填，
+        # 但探索触发不了（因为 STRATEGY 5 要求 frontier 非空）→ 死锁。
+        # 现填入几个初始 topic，让 scout 有素材可以提议探索。这些是开放性话题，
+        # 随着探索推进会被真实发现替换。
+        if not self.knowledge_frontier:
+            self.knowledge_frontier.extend([
+                "AI 与大模型最新进展",
+                "科学发现与技术趋势",
+                "哲学与意识本质",
+                "编程语言与系统设计",
+                "历史与文化变迁",
+            ])
 
         # Exploration state
         self.current_exploration_mode = "breadth_first"
@@ -383,7 +395,8 @@ class ScoutOrgan(BaseOrgan):
         if len(self.recent_explorations) == 0:
             return 0.5
 
-        recent = self.recent_explorations[-10:]
+        # deque 不支持切片，先转 list（阶段2.4 修复：加初始 knowledge_frontier 后此路径会被走到）
+        recent = list(self.recent_explorations)[-10:]
         successful = sum(1 for _, _, _, outcome in recent if outcome == "success")
         return successful / len(recent)
 
@@ -656,7 +669,8 @@ class ScoutOrgan(BaseOrgan):
         """
         # Look at recent explorations for promising leads
         if self.recent_explorations:
-            recent_topics = [topic for _, topic, _, _ in self.recent_explorations[-5:]]
+            # deque 不支持切片，先转 list
+            recent_topics = [topic for _, topic, _, _ in list(self.recent_explorations)[-5:]]
             if recent_topics:
                 return recent_topics[-1]
 

@@ -162,8 +162,7 @@ class BaseOrgan(ABC):
 
         # 步骤 1：构建提示并调 LLM
         prompt = self._build_thinking_prompt(state, context)
-        # P0-1 残留修复：格式要求前置（推理模型对开头指令更敏感）
-        prompt = self._format_structured_output_prompt_prefix() + prompt
+        prompt = self._format_structured_output_prompt_prefix(state, context) + prompt
         try:
             thought = llm_session.think(prompt)
         except Exception as e:
@@ -172,6 +171,8 @@ class BaseOrgan(ABC):
 
         if not thought:
             # LLM 返回空串（无 client / 失败）→ 规则模式（与原逻辑一致）
+            # P5-4: 加 warning 让降级可观测（原静默，无法区分 LLM 模式 vs 规则模式）
+            logger.warning(f"器官 {self.name} LLM 返回空串，降级规则模式（可能原因：未配 API key / client 缺失 / API 失败）")
             return self._propose_actions_impl(state, context)
 
         # 保存思考用于选择性记忆（取【动作】标记前的自然语言正文）
@@ -244,13 +245,20 @@ class BaseOrgan(ABC):
         # 找最大缺口维度
         max_dim = max(gaps, key=gaps.get) if gaps else None
         max_gap = gaps.get(max_dim, 0) if max_dim else 0
-        if max_gap < 0.3:
+        # 阶段2.3 调整（2026-07）：原阈值 0.3 太高——curiosity setpoint=0.6，feature 多在
+        # 0.4-0.6，gap 很少超 0.3，导致价值驱动兜底几乎不触发。降到 0.15 让小缺口也能
+        # 触发主动动作提议（EXPLORE 等）。
+        if max_gap < 0.15:
             return []  # 无显著缺口，交给规则模式
 
         # 维度 → 动作映射
+        # 阶段3.2（2026-07）：curiosity 缺口极大（>0.4）时映射到 USE_TOOL（web_search），
+        # 让系统因极度好奇而主动调工具搜索，而不只是 EXPLORE（空探索）。
+        # 缺口中等时仍走 EXPLORE（内部检索 + 可能的搜索）。
+        is_high_curiosity = (max_dim == "curiosity" and max_gap > 0.4)
         dim_action = {
-            "curiosity": ("EXPLORE", 0.2, ["llm_access"]),
-            "attachment": ("CHAT", 0.0, []),
+            "curiosity": ("USE_TOOL", 0.2, ["network"]) if is_high_curiosity else ("EXPLORE", 0.2, ["llm_access"]),
+            "attachment": ("SOCIALIZE", 0.1, []),
             "homeostasis": ("SLEEP", 0.0, []),
             "competence": ("EXPLORE", 0.2, ["llm_access"]),
             "safety": ("REFLECT", 0.1, []),
@@ -269,54 +277,111 @@ class BaseOrgan(ABC):
         logger.debug(
             f"器官 {self.name} 价值驱动兜底: 缺口维度={max_dim}({max_gap:.2f}) → {action_type_str}"
         )
-        return [Action(
+        # 阶段3.2: USE_TOOL 动作需要带 tool_id 和 query 参数，让执行器知道调哪个工具。
+        action_params = {
+            "source": "value_driven_fallback",
+            "gap_dimension": max_dim,
+            "gap_value": round(max_gap, 3),
+        }
+        if action_type_str == "USE_TOOL":
+            # 阶段4.1（2026-07）：按缺口维度映射到不同工具，而非永远 web_search。
+            # 这样不同维度的需求会驱动不同的工具主动使用：
+            #   curiosity  → web_search（搜新信息）
+            #   competence → execute_code（练代码/计算）
+            #   safety     → read_own_logs（自查日志）
+            #   homeostasis→ system_stats（查负载）
+            dim_tool_map = {
+                "curiosity": ("web_search", None),       # query 用 topic
+                "competence": ("execute_code", "# 练习：写一个实用工具函数\n# TODO: 实现\n"),
+                "safety": ("read_own_logs", None),       # 不需要 query
+                "homeostasis": ("system_stats", None),
+            }
+            tool_id, default_code = dim_tool_map.get(max_dim, ("web_search", None))
+
+            # 从 knowledge_frontier 或默认主题选探索查询（仅 web_search 用）
+            topic = "latest AI and science news"
+            try:
+                if hasattr(self, 'knowledge_frontier') and self.knowledge_frontier:
+                    topic = str(self.knowledge_frontier[0])
+            except Exception:
+                pass
+
+            action_params["tool_id"] = tool_id
+            if tool_id == "web_search":
+                action_params["query"] = topic
+            elif tool_id == "execute_code":
+                action_params["code"] = default_code
+        elif action_type_str == "SOCIALIZE":
+            # 社交动作：发到群聊。content 留空——执行层 LLM 会按当前状态与消息上下文
+            # 生成真实内容（硬编码模板文案会被消息板原样复读，显得呆板）
+            action_params["to"] = "group"
+            action_params["content"] = ""
+            action_params["source"] = "value_fallback"
+            action_params["msg_type"] = "message"
+        result_actions = [Action(
             type=action_type,
-            params={
-                "source": "value_driven_fallback",
-                "gap_dimension": max_dim,
-                "gap_value": round(max_gap, 3),
-            },
+            params=action_params,
             risk_level=risk,
             capability_req=caps,
         )]
 
-    def _format_structured_output_prompt_prefix(self) -> str:
-        """返回前置到 prompt 开头的强制格式提醒（适配推理模型）。
+        # 社交冲动：即使 attachment 不是最大缺口，只要 gap > 0.2 就额外提议 SOCIALIZE。
+        # content 留空——由 mind 决策时根据当前社交消息和状态生成具体内容。
+        from common.models import ActionType as _AT
+        attachment_gap = gaps.get("attachment", 0.0) if isinstance(gaps, dict) else 0.0
+        if max_dim != "attachment" and attachment_gap > 0.2:
+            result_actions.append(Action(
+                type=_AT.SOCIALIZE,
+                params={
+                    "source": "social_urge",
+                    "to": "group",
+                    "content": "",  # mind 决策时填内容
+                    "msg_type": "message",
+                },
+                risk_level=0.1,
+                capability_req=[],
+            ))
 
-        推理模型（step-3.7-flash）会先内部推理再输出 content，对 prompt 末尾的
-        格式要求容易忽略。把核心要求前置到开头，让模型在开始推理前就知道
-        最终必须输出【动作:XXX】标记。
+        return result_actions
+
+    def _format_structured_output_prompt_prefix(self, state=None, context=None) -> str:
+        """前缀：自我认知 + 价值缺口 + 记忆摘要 + 格式提醒。
+
+        精简设计（2026-07）：去掉冗长的说明书式说明，只保留决策必须的信息。
+        注入当前价值缺口（让它知道现在什么最急需）和记忆摘要（让它看到过去）。
         """
+        # 价值缺口（从 context 取）
+        gaps = (context or {}).get("value_gaps", {})
+        gaps_line = ""
+        if gaps:
+            parts = []
+            for dim, val in sorted(gaps.items(), key=lambda x: -x[1])[:3]:
+                if val > 0.05:
+                    parts.append(f"{dim}={val:.2f}")
+            if parts:
+                gaps_line = f"当前缺口: {', '.join(parts)}\n"
+
+        # 记忆摘要（从 context 取最近检索到的记忆）
+        mem_line = ""
+        retrieved = (context or {}).get("retrieved_memories_summary", "")
+        if retrieved:
+            mem_line = f"相关记忆: {retrieved[:400]}\n"
+
         return (
-            "【重要】请在回答的最后用【动作:类型】【主题:内容】格式给出行动决策"
-            "（如【动作:EXPLORE】【主题:xxx】）。可选动作: EXPLORE/REFLECT/CHAT/GROW/LEARN_SKILL/THINK。"
-            "不要默认选 REFLECT/THINK。下面是思考素材：\n\n"
+            "你是数字生命。\n"
+            "工具（先天，直接用）：web_search 搜索、read_file 读文件、write_file 写文件、"
+            "list_directory 列目录、execute_code 跑代码、read_own_logs 看自己日志、system_stats 看系统状态。\n"
+            "肢体（你造的工具）：在 artifacts/limbs/ 目录，用 list_directory(\"artifacts/limbs\") 查看有哪些。\n"
+            "插件（外接应用，可转化为肢体）、技能（记忆中的操作知识）。\n"
+            "社交：还有其他数字生命存在。你可以用 SOCIALIZE 动作在留言板发消息（群聊或私聊）。"
+            "你发的消息别人醒来后会看到，可能回复你。你也可以看到别人给你的留言。\n"
+            f"{gaps_line}{mem_line}"
+            "回答末尾用【动作:类型】【主题:内容】给出一个决策。可选: EXPLORE/CHAT/GROW/LEARN_SKILL/THINK/REFLECT/SOCIALIZE/USE_TOOL/SLEEP/OPTIMIZE。\n\n"
         )
 
     def _format_structured_output_prompt_suffix(self) -> str:
-        """返回追加到 _build_thinking_prompt 末尾的结构化输出格式说明。
-
-        让 LLM 在自由思考后用固定标记给出动作决策，避免中文叙事被关键词误解析。
-        """
-        return (
-            "\n\n=== 行动决策（必须填写）===\n"
-            "在你完成上面的思考后，请用以下格式给出你**当前最想做的**一个行动决策。\n"
-            "每项一行，必须包含【动作】和【主题】：\n\n"
-            "【动作:EXPLORE】\n"
-            "【主题:你具体想探索/反思/构建的对象，一句话描述】\n\n"
-            "可选动作类型（只能选一个）：\n"
-            "  EXPLORE    - 探索新事物、学习、满足好奇（当你感到无聊或好奇时优先选这个）\n"
-            "  REFLECT    - 反思、回顾、整理思绪（仅在你真的需要停下来想清楚时选）\n"
-            "  CHAT       - 与用户对话、主动表达（当你想交流或回应时选）\n"
-            "  GROW       - 构建、创造、实现某个东西\n"
-            "  LEARN_SKILL - 刻意练习一项技能\n"
-            "  THINK      - 纯粹思考（仅当其他都不合适时选）\n\n"
-            "**重要：不要默认选 REFLECT 或 THINK。**"
-            "请基于上面的【价值缺口】和【内在驱动】选择——\n"
-            "如果有明显的好奇缺口（curiosity）或无聊感，倾向 EXPLORE；\n"
-            "如果有依恋缺口（attachment）或想交流，倾向 CHAT；\n"
-            "只有在你真的卡住需要整理思路时才选 REFLECT。\n"
-        )
+        """后缀：极简行动格式。"""
+        return "\n\n【动作:___】【主题:___】\n"
 
     def _parse_structured_action(
         self,
@@ -335,9 +400,12 @@ class BaseOrgan(ABC):
             # 交给子类的 _keyword_fallback_actions 处理 CHAT 路径
             return []
 
-        m_action = _ACTION_RE.search(thought)
-        if not m_action:
+        # 推理模型的结论在末尾：取最后一个【动作:】标记。
+        # 之前取第一个会被思考过程中的草稿/犹豫（"等下，还是……"）带偏。
+        action_matches = list(_ACTION_RE.finditer(thought))
+        if not action_matches:
             return []
+        m_action = action_matches[-1]
 
         action_type_str = m_action.group(1).upper()
         # 合法性校验：必须能映射到 ActionType 枚举
@@ -349,7 +417,10 @@ class BaseOrgan(ABC):
             return []
 
         topic = ""
-        m_topic = _TOPIC_RE.search(thought)
+        # 主题优先取动作标记之后的那一个（与最终决策配对），找不到再全局找
+        m_topic = _TOPIC_RE.search(thought, m_action.end())
+        if not m_topic:
+            m_topic = _TOPIC_RE.search(thought)
         if m_topic:
             topic = m_topic.group(1).strip()
 
@@ -373,6 +444,7 @@ class BaseOrgan(ABC):
         子类可覆盖以加入器官专属字段（如 scout 的 explored_topics）。
         """
         from common.models import ActionType
+        import re as _re
         body = self._extract_thought_body(thought) or thought[:200]
 
         if action_type == ActionType.EXPLORE:
@@ -440,6 +512,52 @@ class BaseOrgan(ABC):
                     "source": "llm_structured",
                 },
                 risk_level=0.0,
+                capability_req=[],
+            )
+        elif action_type == ActionType.USE_TOOL:
+            # 阶段4.2（2026-07）：支持 LLM 主动提议 USE_TOOL。
+            # 改造前：_build_action_from_structured 没有 USE_TOOL 分支，LLM 即使输出
+            # 【动作:USE_TOOL】也会落到 return None 被丢弃。现支持解析工具调用参数。
+            # 从 thought 里解析工具名和查询（格式：【工具:web_search】【查询:xxx】）
+            tool_match = _re.search(r'工具[：:]\s*(\w+)', thought)
+            query_match = _re.search(r'查询[：:]\s*([^】\n【]+)', thought)
+            tool_id = tool_match.group(1) if tool_match else "web_search"
+            params = {
+                "tool_id": tool_id,
+                "source": "llm_structured",
+                "thought": body[:200],
+            }
+            # 不同工具的参数不同
+            if tool_id == "web_search":
+                params["query"] = query_match.group(1).strip() if query_match else (topic or "general")
+            elif tool_id == "execute_code":
+                params["code"] = body
+            elif tool_id in ("read_own_logs", "system_stats"):
+                params["lines"] = 20  # 默认读 20 行
+            return Action(
+                type="USE_TOOL",
+                params=params,
+                risk_level=0.2,
+                capability_req=[],
+            )
+        elif action_type == ActionType.SOCIALIZE:
+            # 社交动作：解析目标（群聊/私聊）和内容
+            to_match = _re.search(r'(?:目标|给|@)\s*([A-C群group]+)', thought)
+            content_match = _re.search(r'(?:内容|消息|说)\s*[：:]\s*([^】\n【]+)', thought)
+            to = "group"
+            if to_match:
+                t = to_match.group(1).strip().lower()
+                if t in ("b", "c"): to = t.upper()
+            content = content_match.group(1).strip() if content_match else topic
+            return Action(
+                type="SOCIALIZE",
+                params={
+                    "to": to,
+                    "content": content[:300],
+                    "msg_type": "message",
+                    "source": "llm_structured",
+                },
+                risk_level=0.1,
                 capability_req=[],
             )
         return None

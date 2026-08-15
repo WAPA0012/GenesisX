@@ -385,26 +385,32 @@ class SemanticNoveltyCalculator:
     def _compute_embedding_sentence_transformers(self, text: str) -> np.ndarray:
         """使用sentence-transformers计算嵌入向量.
 
-        Args:
-            text: 输入文本
-
-        Returns:
-            嵌入向量
+        优先调本地的 embedding HTTP 服务（端口 8888），避免三个生命各加载一份模型。
+        服务不可用时 fallback 到自己加载模型。
         """
+        # 优先：调 embedding HTTP 服务（三个生命共用一个模型实例）
+        try:
+            import requests as _req
+            r = _req.post("http://127.0.0.1:8888/embed",
+                          json={"texts": [text]}, timeout=5)
+            if r.status_code == 200:
+                embeddings = r.json().get("embeddings", [])
+                if embeddings:
+                    return np.array(embeddings[0])
+        except Exception:
+            pass  # 服务不可用，fallback 到本地模型
+
+        # Fallback：自己加载模型
         model = self._get_st_model()
         if model is None:
-            # 回退到TF-IDF
             return self._compute_embedding_tfidf(text)
 
         st_config = self.config.st_config
-
-        # 生成嵌入
         embedding = model.encode(
             text,
             convert_to_numpy=True,
             show_progress_bar=st_config.show_progress
         )
-
         return embedding
 
     def _compute_embedding_api(self, text: str) -> np.ndarray:

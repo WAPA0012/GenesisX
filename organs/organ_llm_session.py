@@ -49,6 +49,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# P5-5: 统一记忆/思考字段的截断长度（原 summary 用 200、thought 用 500、个别用 100，不一致）
+SUMMARY_TRUNCATION = 200     # summary 字段截断（记忆存储用）
+THOUGHT_TRUNCATION = 500     # thought 字段截断（记忆存储用）
+
 
 @dataclass
 class SessionConfig:
@@ -854,7 +858,7 @@ class OrganMemoryWriter:
                         importance=float(result.get("importance", 0.5)),
                         category=result.get("category", "routine"),
                         reason=result.get("reason", ""),
-                        summary=result.get("summary", "")[:200],
+                        summary=result.get("summary", "")[:SUMMARY_TRUNCATION],
                     )
         except Exception as e:
             logger.warning(f"[OrganMemory] LLM judge failed: {e}, falling back to keywords")
@@ -900,7 +904,7 @@ class OrganMemoryWriter:
             importance=importance,
             category=matched_category,
             reason="关键词匹配" if importance > 0 else "未匹配重要关键词",
-            summary=thought[:100],
+            summary=thought[:SUMMARY_TRUNCATION],
         )
 
     def evaluate_thought(
@@ -970,7 +974,7 @@ class OrganMemoryWriter:
             from common.models import EpisodeRecord, Action, Outcome, CostVector
 
             # 使用 LLM 生成的摘要（如果有）
-            summary = evaluation.summary or thought[:200]
+            summary = evaluation.summary or thought[:SUMMARY_TRUNCATION]
 
             memory_entry = EpisodeRecord(
                 tick=tick,
@@ -980,7 +984,7 @@ class OrganMemoryWriter:
                     type="THINK",
                     params={
                         "organ": organ_name,
-                        "thought": thought[:500],
+                        "thought": thought[:THOUGHT_TRUNCATION],
                         "category": evaluation.category,
                         "summary": summary,
                     },

@@ -202,7 +202,7 @@ class CaretakerOrgan(BaseOrgan):
             actions.append(Action(
                 type="EXPLORE",
                 params={
-                    "topic": "relaxing_activity",
+                    "topic": "适合当前状态的轻松放松方式与趣味内容",
                     "depth": "light",
                     "purpose": "mental_health",
                     "source": "llm_thinking",

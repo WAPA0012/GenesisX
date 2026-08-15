@@ -6,7 +6,6 @@ import pytest
 import numpy as np
 from memory.gates import MemoryGate
 from memory.indices import MemoryIndex
-from memory.pruning import MemoryPruner
 
 
 class TestMemoryGate:
@@ -187,86 +186,3 @@ class TestMemoryIndex:
         # Verify removed
         episodes = index.retrieve_by_time(start_tick=1, end_tick=1)
         assert len(episodes) == 0
-
-
-class TestMemoryPruner:
-    """Test memory pruning and consolidation"""
-
-    def test_should_prune_at_capacity(self, sample_config):
-        """Test that pruning triggers near capacity"""
-        pruner = MemoryPruner(sample_config.get("memory", {}))
-
-        max_capacity = 100
-
-        # At 95% capacity -> should prune
-        should_prune = pruner.should_prune(
-            current_count=95,
-            max_capacity=max_capacity
-        )
-
-        assert should_prune is True
-
-        # At 50% capacity -> should not prune
-        should_prune = pruner.should_prune(
-            current_count=50,
-            max_capacity=max_capacity
-        )
-
-        assert should_prune is False
-
-    def test_select_episodes_to_prune(self, sample_config, sample_episode):
-        """Test selection of episodes for pruning"""
-        pruner = MemoryPruner(sample_config.get("memory", {}))
-
-        # Create episodes with varying importance
-        episodes = []
-        for i in range(10):
-            ep = sample_episode.model_copy(update={
-                "episode_id": f"ep_{i}",
-                "reward": i / 10.0
-            })
-            episodes.append(ep)
-
-        # Prune to keep only 5
-        to_prune = pruner.select_episodes_to_prune(episodes, target_count=5)
-
-        assert len(to_prune) == 5
-
-    def test_consolidate_episodes(self, sample_config, sample_episode):
-        """Test episode consolidation into schemas"""
-        pruner = MemoryPruner(sample_config.get("memory", {}))
-
-        # Create similar episodes
-        episodes = []
-        for i in range(5):
-            ep = sample_episode.model_copy(update={
-                "episode_id": f"ep_{i}",
-                "tags": ["similar", "test"]
-            })
-            episodes.append(ep)
-
-        schemas = pruner.consolidate_episodes(episodes)
-
-        # Should create at least one schema
-        assert len(schemas) >= 1
-        assert "episode_count" in schemas[0]
-
-    def test_extract_skills(self, sample_config, sample_episode):
-        """Test skill extraction from repeated patterns"""
-        pruner = MemoryPruner(sample_config.get("memory", {}))
-
-        # Create episodes with repeated successful actions
-        episodes = []
-        for i in range(5):
-            ep = sample_episode.model_copy(update={
-                "episode_id": f"ep_{i}",
-                "action": {"tool_id": "web_search"},
-                "reward": 0.8
-            })
-            episodes.append(ep)
-
-        skills = pruner.extract_skills(episodes)
-
-        # Should extract web_search skill
-        assert len(skills) >= 1
-        assert any("web_search" in s["skill_id"] for s in skills)

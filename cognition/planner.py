@@ -41,9 +41,13 @@ class Planner:
         """Initialize planner.
 
         Args:
-            llm: Universal LLM instance (optional)
-            timeout: LLM调用超时时间（秒），默认使用常量配置
-            max_retries: 最大重试次数
+            llm: Universal LLM instance (optional).
+                Note (P4-7): 历史上用于 propose_with_llm，但该方法已删除（零调用死代码）。
+                参数保留是为兼容 tools/blackboard.py 的 `Planner(llm=...)` 构造，但 llm
+                当前不会被使用——propose_plans 是纯规则版。如需重启 LLM 规划路径，
+                参见 git history 中 propose_with_llm 的实现。
+            timeout: LLM调用超时时间（秒），当前未使用（LLM 路径已删）。
+            max_retries: 最大重试次数，当前未使用（LLM 路径已删）。
         """
         self.llm = llm
         self.timeout = timeout or CognitionConstants.LLM_TIMEOUT
@@ -155,142 +159,3 @@ class Planner:
             }))
 
         return plans[:num_plans]
-
-    def propose_with_llm(
-        self,
-        goal: str,
-        context: Dict[str, Any],
-        available_tools: List[str],
-    ) -> List[Plan]:
-        """Propose plans using LLM (full version).
-
-        修复：添加超时控制和重试机制。
-
-        Args:
-            goal: Current goal
-            context: Context dict
-            available_tools: Available tools
-
-        Returns:
-            List of plans
-        """
-        if self.llm is None:
-            return self.propose_plans(goal, context, available_tools)
-
-        # Build prompt
-        prompt = self._build_prompt(goal, context, available_tools)
-
-        # 重试循环
-        for attempt in range(self.max_retries):
-            try:
-                # Call LLM with proper message format and timeout
-                messages = [{"role": "user", "content": prompt}]
-                result = self._call_llm_with_timeout(messages)
-
-                if not result.get("ok", False):
-                    if attempt < self.max_retries - 1:
-                        logger.warning(f"LLM call failed (attempt {attempt + 1}): {result.get('error')}")
-                        continue
-                    raise RuntimeError(result.get("error", "LLM call failed"))
-
-                response_text = result.get("text", "")
-
-                # Parse response into plans
-                plans = self._parse_llm_response(response_text)
-                return plans
-
-            except TimeoutError as e:
-                logger.warning(f"LLM call timeout (attempt {attempt + 1}/{self.max_retries}): {e}")
-                if attempt >= self.max_retries - 1:
-                    # 最后一次尝试仍然超时，回退到规则生成
-                    logger.error("LLM call timeout after all retries, falling back to rule-based")
-                    return self.propose_plans(goal, context, available_tools)
-
-            except Exception as e:
-                logger.warning(f"LLM call failed (attempt {attempt + 1}): {e}")
-                if attempt >= self.max_retries - 1:
-                    # 最后一次尝试仍然失败，回退到规则生成
-                    return self.propose_plans(goal, context, available_tools)
-
-        # 不应该到这里
-        return self.propose_plans(goal, context, available_tools)
-
-    def _call_llm_with_timeout(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        """使用超时控制调用 LLM
-
-        修复：添加超时控制，防止无限等待。
-
-        Args:
-            messages: 消息列表
-
-        Returns:
-            LLM响应字典
-
-        Raises:
-            TimeoutError: 如果调用超时
-        """
-        import signal
-        import concurrent.futures
-
-        def llm_call():
-            return self.llm.chat(messages)
-
-        # 使用线程池执行器实现超时
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(llm_call)
-            try:
-                result = future.result(timeout=self.timeout)
-                return result
-            except concurrent.futures.TimeoutError:
-                # 尝试取消任务
-                future.cancel()
-                raise TimeoutError(f"LLM call exceeded timeout of {self.timeout}s")
-
-    def _build_prompt(
-        self,
-        goal: str,
-        context: Dict[str, Any],
-        available_tools: List[str],
-    ) -> str:
-        """Build prompt for LLM.
-
-        Args:
-            goal: Current goal
-            context: Context dict
-            available_tools: Available tools
-
-        Returns:
-            Prompt string
-        """
-        state_summary = context.get("state", {})
-        energy = state_summary.get("energy", 0.5)
-        mood = state_summary.get("mood", 0.5)
-
-        prompt = f"""You are an autonomous agent with the following state:
-- Energy: {energy:.2f}
-- Mood: {mood:.2f}
-- Current Goal: {goal}
-
-Available actions: {', '.join(available_tools)}
-
-Generate 2-3 candidate plans to achieve the goal. Each plan should be a sequence of actions.
-Format your response as a list of plans with reasoning.
-"""
-        return prompt
-
-    def _parse_llm_response(self, response: str) -> List[Plan]:
-        """Parse LLM response into plans.
-
-        Args:
-            response: LLM response string
-
-        Returns:
-            List of plans
-        """
-        # Simplified parsing - just create one plan
-        return [Plan({
-            "actions": [Action(type="CHAT", params={"message": response[:100]}).model_dump()],
-            "reasoning": "LLM-generated response",
-            "estimated_reward": 0.5,
-            "estimated_cost": 100.0,
-        })]

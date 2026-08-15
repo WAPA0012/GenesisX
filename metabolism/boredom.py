@@ -25,13 +25,21 @@ class BoredomConfig:
     ETA_IDLE: float = 0.03
 
     # η_B^nov: 新颖度减少无聊的系数
-    ETA_NOV: float = 0.20
+    # 阶段1.1 调整（2026-07）：原 0.20 是 ETA_IDLE(0.03) 的 6.7 倍，导致只要 novelty > 0.15
+    # boredom 就不升反降（被 ETA_NOV·novelty 压制）。降到 0.05：novelty 高时仍能减少无聊，
+    # 但不会完全压制 ETA_IDLE 的累积。配合 LOW_NOVELTY_THRESHOLD=0.5，待机状态 novelty~0.43
+    # 时 boredom 能缓慢累积（+0.004/tick），约 50 tick 累积到 0.2 触发探索。
+    ETA_NOV: float = 0.05
 
     # η_B^soc: 社交参与减少无聊的量
     ETA_SOC: float = 0.05
 
     # 低新颖度阈值
-    LOW_NOVELTY_THRESHOLD: float = 0.2
+    # 阶段1.1 调整（2026-07）：原 0.2 太严格——novelty 要低于 0.2 才触发无聊累积，
+    # 但正常待机状态 novelty 多在 0.3-0.5（没新东西但也不算"完全无新意"），
+    # 导致系统永远不无聊、永远不探索。提到 0.5：novelty 低于中等就开始无聊，
+    # 符合"没新输入就该找事做"的直觉。ETA_IDLE=0.03 很小，不会无聊暴涨。
+    LOW_NOVELTY_THRESHOLD: float = 0.5
 
     @classmethod
     def from_dict(cls, config: Dict[str, Any]) -> 'BoredomConfig':

@@ -228,7 +228,7 @@ def test_goal_progress_all_types():
         ("rest_and_recover", {"energy": 0.7, "energy_setpoint": 0.7, "fatigue": 0.3, "fatigue_setpoint": 0.3}, (0.9, 1.0)),
         ("strengthen_bond", {"bond": 0.5}, (0.5, 0.5)),
         ("improve_skills", {"skill_count": 10}, (0.5, 0.5)),  # 10/20 = 0.5
-        ("explore_and_learn", {"novelty_explored": 0.6}, (0.6, 0.6)),
+        ("explore_and_learn", {"novelty": 0.6}, (0.6, 0.6)),  # 阶段3.4: 来源字段改为 fields.novelty
         ("reflect_and_consolidate", {"schemas_created_this_session": 2}, (0.4, 0.4)),  # 2/5 = 0.4
         ("optimize_resources", {"resource_waste": 0.2}, (0.8, 0.8)),  # 1 - 0.2
         ("maintain", {}, (1.0, 1.0)),

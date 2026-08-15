@@ -167,7 +167,8 @@ class SkillMemory:
 
         # Check for duplicates
         if skill.name in self._name_index:
-            logger.debug(f"Skill '{skill.name}' already exists, skipping")
+            # P3-11-B: 提升日志级别（原 debug 静默，运维不知道有 skill 被丢）
+            logger.info(f"Skill '{skill.name}' already exists, skipping (duplicate)")
             return
 
         # 修复 M8: 超出容量时淘汰最低成功率的 skill

@@ -76,24 +76,25 @@ class DockerLimb(BaseOrgan):
     def mount(self) -> Tuple[bool, str]:
         """挂载肢体（启动 Docker 容器）
 
+        P5-14: Docker 集成未实现。原代码"模拟挂载成功 + execute 恒失败"语义不一致，
+        会让未来调试者困惑（挂载成功了为什么执行失败？）。现统一返回未实现。
+
         Returns:
             (是否成功, 消息)
         """
         if self._is_mounted:
             return True, "肢体已挂载"
 
-        try:
-            # TODO: 实现 Docker 容器启动
-            # container_id = start_container(self.container_image)
-            # self._container_id = container_id
-            # self._is_mounted = True
-            self._is_mounted = True  # 模拟
-            return True, f"肢体 {self.name} 挂载成功（模拟）"
-        except Exception as e:
-            return False, f"挂载失败: {str(e)}"
+        # TODO: 实现 Docker 容器启动（P5-14 placeholder）
+        # container_id = start_container(self.container_image)
+        # self._container_id = container_id
+        # self._is_mounted = True
+        return False, f"Docker 集成未实现（P5-14 placeholder），肢体 {self.name} 无法挂载"
 
     def unmount(self) -> Tuple[bool, str]:
         """卸载肢体（停止 Docker 容器）
+
+        P5-14: 同 mount，Docker 集成未实现。
 
         Returns:
             (是否成功, 消息)
@@ -101,15 +102,12 @@ class DockerLimb(BaseOrgan):
         if not self._is_mounted:
             return True, "肢体未挂载"
 
-        try:
-            # TODO: 实现 Docker 容器停止
-            # stop_container(self._container_id)
-            # self._container_id = None
-            # self._is_mounted = False
-            self._is_mounted = False  # 模拟
-            return True, f"肢体 {self.name} 卸载成功（模拟）"
-        except Exception as e:
-            return False, f"卸载失败: {str(e)}"
+        # TODO: 实现 Docker 容器停止（P5-14 placeholder）
+        # stop_container(self._container_id)
+        # self._container_id = None
+        # self._is_mounted = False
+        self._is_mounted = False  # 状态清理（即便 Docker 未实现，也要保持状态一致）
+        return False, f"Docker 集成未实现（P5-14 placeholder），肢体 {self.name} 容器未真停止"
 
     def is_mounted(self) -> bool:
         """检查肢体是否已挂载"""

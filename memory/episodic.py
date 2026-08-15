@@ -1,28 +1,18 @@
 """Episodic Memory - event-sourcing view of episodes."""
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any, Optional, Iterator, TYPE_CHECKING
 from pathlib import Path
 from common.models import EpisodeRecord
-from common.jsonl import read_jsonl
+from common.jsonl import JSONLWriter, read_jsonl
 from common.logger import get_logger
 import bisect
 import shutil
 from collections import deque
-from datetime import datetime, timezone
 
 logger = get_logger(__name__)
 
 # 延迟导入联想记忆
 if TYPE_CHECKING:
     from .familiarity import AssociativeMemory
-
-
-# 尝试导入 orjson，如果不可用则使用标准库 json
-try:
-    import orjson
-    HAS_ORJSON = True
-except ImportError:
-    import json as orjson
-    HAS_ORJSON = False
 
 
 class EpisodicMemory:
@@ -45,7 +35,8 @@ class EpisodicMemory:
         self,
         episodes_path: Optional[Path] = None,
         max_cache_size: int = 50000,
-        enable_associative: bool = True
+        enable_associative: bool = True,
+        max_rebuild_episodes: int = 1000
     ):
         """Initialize episodic memory.
 
@@ -53,7 +44,11 @@ class EpisodicMemory:
             episodes_path: Path to episodes.jsonl (if None, in-memory only)
             max_cache_size: Maximum number of episodes to keep in cache
             enable_associative: Enable associative memory (联想记忆)
+            max_rebuild_episodes: P3-15 重启时重建联想网络的最大 episode 数（性能保护）。
+                默认 1000（避免 50000 条全重建的 50-250s 延迟）。重建优先选高 |delta|
+                的 episode（按 RPE 幅值排序），而非纯时间窗——这样保留高价值记忆的联想链接。
         """
+        self.max_rebuild_episodes = max_rebuild_episodes
         self.episodes_path = episodes_path
         self._cache: deque = deque()  # Ordered episodes for iteration/eviction
         self._by_tick: Dict[int, EpisodeRecord] = {}  # tick -> episode (O(1) lookup)
@@ -64,6 +59,14 @@ class EpisodicMemory:
         self.enable_associative = enable_associative
         self._associative_memory: Optional["AssociativeMemory"] = None
 
+        # P3-1/P3-2 修复：常驻 JSONLWriter（open 一次写多次），替代原每 tick 一次
+        # open/append/close 的手写 orjson/json 代码。序列化语义与原实现等价（同 orjson
+        # option），且额外获得 fsync 崩溃恢复保证。life_loop shutdown 时调 close()。
+        self._writer: Optional[JSONLWriter] = None
+        if episodes_path:
+            self._writer = JSONLWriter(episodes_path)
+            self._writer.open()
+
         if episodes_path and episodes_path.exists():
             self._load_from_disk()
 
@@ -73,7 +76,9 @@ class EpisodicMemory:
             try:
                 episode = EpisodeRecord(**record)
                 self._cache.append(episode)
-                self._by_tick[episode.tick] = episode
+                # 同 tick 多条记录先到先得（如 task_completed 固化总结与真实 episode 同 tick），
+                # 保证 get_by_tick 拿到的是真实经历而非派生总结
+                self._by_tick.setdefault(episode.tick, episode)
                 self._sorted_ticks.append(episode.tick)
             except Exception as e:
                 logger.warning(f"Failed to load episode: {e}")
@@ -83,11 +88,18 @@ class EpisodicMemory:
 
         # P3-15 修复：重建联想网络（原 import_state 是 pass，重启丢失全部联想链接）。
         # 路径：重放历史 episodes 重建联想图（复用 _add_to_associative 逻辑）。
-        # 性能保护：只重建最近的 episodes（最多 1000 条），避免 50000 条全重建。
+        # 性能保护：只重建有限的 episodes（默认 1000，可配 max_rebuild_episodes），避免
+        # 50000 条全重建的 50-250s 延迟。
+        # P3-15 改进：选择策略从"纯时间窗（最近 N 条）"改为"高价值优先"——按 |delta|
+        # （RPE 幅值）降序排序后取 top N，这样高冲击记忆的联想链接优先恢复，比纯时间窗
+        # 更有意义。时间相近性仍保留（同 tick 区间的共现关系仍能建立）。
         if self.enable_associative and len(self._cache) > 0:
             assoc = self._get_or_create_associative_memory()
             if assoc is not None:
-                episodes_to_rebuild = list(self._cache)[-1000:]  # 最近 1000 条
+                all_eps = list(self._cache)
+                # 按 |delta| 降序选 top N（高 RPE 幅值 = 高价值记忆）
+                all_eps_sorted = sorted(all_eps, key=lambda e: abs(getattr(e, 'delta', 0.0)), reverse=True)
+                episodes_to_rebuild = all_eps_sorted[:self.max_rebuild_episodes]
                 rebuilt = 0
                 for episode in episodes_to_rebuild:
                     try:
@@ -96,7 +108,7 @@ class EpisodicMemory:
                     except Exception:
                         pass  # 个别 episode 重建失败不阻断
                 if rebuilt > 0:
-                    logger.info(f"联想网络重建: {rebuilt} episodes → {len(assoc.network._nodes)} nodes")
+                    logger.info(f"联想网络重建: {rebuilt} episodes (按 |delta| 选 top {self.max_rebuild_episodes}) → {len(assoc.network._nodes)} nodes")
 
     def append(self, episode: EpisodeRecord):
         """Append new episode to memory and persist to disk (修复 H22).
@@ -105,7 +117,8 @@ class EpisodicMemory:
             episode: Episode to append
         """
         self._cache.append(episode)
-        self._by_tick[episode.tick] = episode
+        # 先到先得：工作记忆固化总结与同 tick 的真实 episode 共存时，真实经历保留索引位
+        self._by_tick.setdefault(episode.tick, episode)
 
         # Insert into sorted ticks list (maintain sorted order)
         bisect.insort(self._sorted_ticks, episode.tick)
@@ -123,33 +136,28 @@ class EpisodicMemory:
             self._evict_oldest()
 
     def _persist_episode(self, episode: EpisodeRecord):
-        """Persist a single episode to disk (append mode).
+        """Persist a single episode to disk via the resident JSONLWriter.
 
         Args:
             episode: Episode to persist
         """
-        if not self.episodes_path:
-            logger.error(f"episodes_path is None, cannot persist episode {episode.tick}")
+        if not self._writer:
+            logger.error(f"No writer, cannot persist episode {episode.tick}")
             return  # 没有设置路径，跳过持久化
 
         logger.debug(f"Persisting episode {episode.tick} to {self.episodes_path}")
         try:
-            episode_dict = episode.model_dump()
-            if HAS_ORJSON:
-                with open(self.episodes_path, 'ab') as f:
-                    json_bytes = orjson.dumps(
-                        episode_dict,
-                        option=orjson.OPT_APPEND_NEWLINE | orjson.OPT_SERIALIZE_NUMPY
-                    )
-                    f.write(json_bytes)
-            else:
-                import json
-                with open(self.episodes_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(episode_dict, ensure_ascii=False, default=str) + '\n')
+            self._writer.write(episode.model_dump())
             logger.debug(f"Successfully persisted episode {episode.tick}")
         except Exception as e:
             # 持久化失败不应该阻塞主循环，但需要记录
             logger.error(f"Failed to persist episode {episode.tick}: {e}", exc_info=True)
+
+    def close(self):
+        """Close the resident JSONLWriter. Called by life_loop.shutdown()."""
+        if self._writer:
+            self._writer.close()
+            self._writer = None
 
     def _evict_oldest(self):
         """Remove oldest episode from cache to maintain size limit. O(log n)."""
@@ -255,15 +263,23 @@ class EpisodicMemory:
         ]
         return matches[-limit:]
 
-    def query_high_salience(self, threshold: float = 0.7, limit: int = 20) -> List[EpisodeRecord]:
-        """Query episodes with high salience (based on |delta|).
+    def query_by_rpe_magnitude(self, threshold: float = 0.7, limit: int = 20) -> List[EpisodeRecord]:
+        """Query episodes by RPE magnitude (|delta|).
+
+        Note: This uses raw |delta| (RPE magnitude) as the filter, NOT the paper's
+        salience formula (memory/salience.py:compute_salience which combines
+        a_δ·|δ| + a_u·competence_gap + a_n·curiosity_gap with sigmoid normalization).
+        The two are different physical quantities.
+
+        Renamed from query_high_salience (P3-19): the old name implied it used the
+        paper Sal formula, which was misleading.
 
         Args:
-            threshold: Salience threshold
+            threshold: Minimum |delta| to keep
             limit: Maximum episodes to return
 
         Returns:
-            List of episodes
+            List of episodes sorted by |delta| descending
         """
         matches = [
             ep for ep in self._cache
@@ -304,20 +320,26 @@ class EpisodicMemory:
             return 0.0
         return self.episodes_path.stat().st_size / (1024 * 1024)
 
-    def prune_disk_by_salience(
+    def prune_disk_by_delta_magnitude(
         self,
-        salience_threshold: float = 0.3,
+        min_delta_to_keep: float = 0.3,
         keep_recent_ratio: float = 0.15,
         backup: bool = True
     ) -> Dict[str, int]:
-        """Prune disk file by removing low-salience episodes.
+        """Prune disk file by removing low-impact episodes (by |delta|, NOT paper Sal formula).
+
+        P3-12 命名澄清：原名 prune_disk_by_salience / 参数 salience_threshold 误导——
+        实际用的是原始 |delta|（RPE 幅值），与论文 §3.10.4 的 Sal 公式
+        （a_δ·|δ| + a_u·(1-Prog) + a_n·Novelty，sigmoid 归一化）无关。
+        两阶段用不同指标是合理设计（采样用 Sal 选高价值进 schema，剪枝用 |delta| 清
+        低冲击出磁盘），此处只是把命名改清楚。
 
         Keeps:
-        - Episodes with |delta| > salience_threshold
+        - Episodes with |delta| > min_delta_to_keep
         - Most recent keep_recent_ratio of episodes
 
         Args:
-            salience_threshold: Minimum |delta| to keep
+            min_delta_to_keep: Minimum |delta| (RPE magnitude) to keep
             keep_recent_ratio: Fraction of recent episodes to always keep
             backup: Whether to create backup before pruning
 
@@ -357,25 +379,17 @@ class EpisodicMemory:
 
             # Keep high-salience episodes
             delta = ep.get('delta', 0.0)
-            if abs(delta) > salience_threshold:
+            if abs(delta) > min_delta_to_keep:
                 kept.append(ep)
             else:
                 pruned += 1
 
-        # Write back kept episodes
-        if HAS_ORJSON:
-            with open(self.episodes_path, 'wb') as f:
-                for ep in kept:
-                    json_bytes = orjson.dumps(
-                        ep,
-                        option=orjson.OPT_APPEND_NEWLINE | orjson.OPT_SERIALIZE_NUMPY
-                    )
-                    f.write(json_bytes)
+        # Write back kept episodes via resident writer's rewrite (non-append mode)
+        if self._writer:
+            self._writer.rewrite(kept)
         else:
-            import json
-            with open(self.episodes_path, 'w', encoding='utf-8') as f:
-                for ep in kept:
-                    f.write(json.dumps(ep, ensure_ascii=False) + '\n')
+            # Fallback: 无常驻 writer（理论上不会发生，episodes_path 设了就有 writer）
+            logger.warning("No resident writer during prune; skipping disk rewrite")
 
         # Rebuild cache
         self._cache.clear()
@@ -385,75 +399,10 @@ class EpisodicMemory:
 
         return {"total": total, "kept": len(kept), "pruned": pruned}
 
-    def archive_old_episodes(
-        self,
-        archive_before_tick: int,
-        archive_path: Optional[Path] = None
-    ) -> int:
-        """Archive episodes older than a tick to a separate file.
-
-        Args:
-            archive_before_tick: Archive episodes with tick < this value
-            archive_path: Optional custom archive path (default: episodes_archive_TICK.jsonl)
-
-        Returns:
-            Number of episodes archived
-        """
-        if not self.episodes_path or not self.episodes_path.exists():
-            return 0
-
-        # Default archive path
-        if archive_path is None:
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            archive_path = self.episodes_path.parent / f"episodes_archive_{timestamp}_before_{archive_before_tick}.jsonl"
-
-        # Read and split episodes
-        to_keep = []
-        to_archive = []
-
-        for ep in read_jsonl(self.episodes_path):
-            if ep.get('tick', 0) < archive_before_tick:
-                to_archive.append(ep)
-            else:
-                to_keep.append(ep)
-
-        if not to_archive:
-            return 0
-
-        # Write archive
-        if HAS_ORJSON:
-            with open(archive_path, 'wb') as f:
-                for ep in to_archive:
-                    json_bytes = orjson.dumps(
-                        ep,
-                        option=orjson.OPT_APPEND_NEWLINE | orjson.OPT_SERIALIZE_NUMPY
-                    )
-                    f.write(json_bytes)
-
-            # Rewrite main file with kept episodes
-            with open(self.episodes_path, 'wb') as f:
-                for ep in to_keep:
-                    json_bytes = orjson.dumps(
-                        ep,
-                        option=orjson.OPT_APPEND_NEWLINE | orjson.OPT_SERIALIZE_NUMPY
-                    )
-                    f.write(json_bytes)
-        else:
-            import json
-            with open(archive_path, 'w', encoding='utf-8') as f:
-                for ep in to_archive:
-                    f.write(json.dumps(ep, ensure_ascii=False) + '\n')
-            with open(self.episodes_path, 'w', encoding='utf-8') as f:
-                for ep in to_keep:
-                    f.write(json.dumps(ep, ensure_ascii=False) + '\n')
-
-        # Rebuild cache
-        self._cache.clear()
-        self._by_tick.clear()
-        self._sorted_ticks.clear()
-        self._load_from_disk()
-
-        return len(to_archive)
+    # P3-12: 向后兼容别名（原方法名误导，已改名。保留别名防外部调用方）
+    def prune_disk_by_salience(self, salience_threshold: float = 0.3, **kwargs):
+        """Deprecated alias for prune_disk_by_delta_magnitude (P3-12 rename)."""
+        return self.prune_disk_by_delta_magnitude(min_delta_to_keep=salience_threshold, **kwargs)
 
     # =============================================================================
     # Associative Memory Integration (联想记忆集成)

@@ -496,11 +496,11 @@ def _register_default_tools(registry: DynamicToolRegistry):
 
     registry.register(
         name="web_search",
-        description="网络搜索，获取最新信息",
+        description="联网搜索（DuckDuckGo 真实搜索）。用于获取实时信息、最新新闻、事实核查、超出你知识截止日期的内容。返回多个结果（标题/URL/摘要）。",
         parameters={
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "搜索查询"}
+                "query": {"type": "string", "description": "搜索关键词，建议简洁明确"}
             },
             "required": ["query"]
         },

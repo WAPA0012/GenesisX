@@ -454,34 +454,43 @@ class LLMToolExecutor:
             return f"错误: {str(e)}（路径: {path}）"
 
     def _web_search(self, query: str) -> str:
-        """网络搜索（使用通义千问的联网能力）"""
+        """网络搜索 - 真实联网搜索（ddgs/DuckDuckGo）。
+
+        历史说明: 原实现让 LLM "假装搜索"（同一个 chat 接口发"请用联网功能"），
+        stepfun step_plan 套餐端点的 chat 接口并不自带联网，所以原实现拿不到实时信息。
+        现改用 ddgs 库真实调用 DuckDuckGo，返回结构化结果（title/url/摘要）。
+
+        失败时降级为旧逻辑（LLM 凭记忆回答），保证工具不报错。
+        """
+        # 1. 优先：ddgs 真搜索
         try:
-            from .llm_client import LLMClient
+            from ddgs import DDGS
 
-            # 创建专门的搜索客户端
-            client = LLMClient()
+            with DDGS() as ddgs:
+                # max_results=5 平衡信息量与 token 成本
+                results = list(ddgs.text(query, max_results=5))
 
-            # 构建搜索消息
-            search_messages = [
-                {"role": "system", "content": "你是一个搜索助手。请根据用户的搜索查询，使用联网搜索功能获取最新信息，并简洁地总结搜索结果。请只返回搜索结果的核心信息，不要添加额外评论。"},
-                {"role": "user", "content": f"搜索：{query}"}
-            ]
-
-            # 使用 chat 方法进行联网搜索
-            result = client.chat(
-                messages=search_messages,
-                temperature=0.3  # 降低温度以获得更准确的搜索结果
-            )
-
-            if result.get("ok") and result.get("text"):
-                return result["text"]
+            if results:
+                formatted = []
+                for i, r in enumerate(results, 1):
+                    title = r.get("title", "")
+                    url = r.get("href") or r.get("url") or r.get("link", "")
+                    body = r.get("body") or r.get("snippet") or r.get("description", "")
+                    formatted.append(f"[{i}] {title}\nURL: {url}\n摘要: {body}")
+                return "\n\n".join(formatted)
             else:
-                error = result.get("error", "未知错误")
-                return f"搜索失败: {error}"
-
+                return f"搜索 '{query}' 没有返回结果。"
+        except ImportError:
+            # ddgs 未安装：明确报错，不用 LLM 编造结果（防止幻觉进入记忆库）
+            from common.logger import get_logger
+            get_logger(__name__).warning("[web_search] ddgs 未安装，搜索不可用")
+            return "搜索失败: ddgs 库未安装，无法联网搜索。"
         except Exception as e:
-            # 如果联网搜索失败，回退到提示信息
-            return f"搜索暂时不可用: {str(e)}"
+            # 搜索失败（网络/限流等）：明确报错。宁可信源缺失，不让模型凭训练记忆
+            # 伪造"搜索结果"——探索所得的假知识会直接污染情景记忆。
+            from common.logger import get_logger
+            get_logger(__name__).warning(f"[web_search] ddgs 搜索失败: {e}")
+            return f"搜索失败: {e}。这是真实的失败而非搜索结果，不要把本条当成信息来学习或记忆。"
 
     def _execute_code(self, code: str) -> str:
         """执行 Python 代码

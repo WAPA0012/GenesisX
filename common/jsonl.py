@@ -70,6 +70,21 @@ class JSONLWriter:
             self._file.close()
             self._file = None
 
+    def rewrite(self, records):
+        """Rewrite the entire file (non-append). Used for prune/archive scenarios.
+
+        Closes any current fd, reopens with 'wb' (truncate), writes all records,
+        and keeps the file open for subsequent append writes.
+
+        Args:
+            records: Iterable of Dict records to write as JSON lines
+        """
+        if self._file is not None:
+            self._file.close()
+        self._file = open(self.filepath, "wb")  # Truncate + write binary
+        for record in records:
+            self.write(record)  # reuse write() serialization
+
     def __enter__(self):
         self.open()
         return self

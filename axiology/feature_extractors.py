@@ -25,7 +25,7 @@ import math
 # ============================================================================
 
 DEFAULT_SETPOINTS = {
-    ValueDimension.HOMEOSTASIS: 0.85,  # f^{homeo*} 默认 0.85
+    ValueDimension.HOMEOSTASIS: 0.70,  # f^{homeo*} 默认 0.70（与 axiology_config / state.py / yaml 统一）
     ValueDimension.ATTACHMENT: 0.70,
     ValueDimension.CURIOSITY: 0.60,
     ValueDimension.COMPETENCE: 0.75,
@@ -228,9 +228,15 @@ def extract_curiosity(
         if observation and recent_memories:
             novelty = _compute_semantic_novelty(observation, recent_memories)
         else:
-            # 最后回退: boredom 反向代理
+            # 阶段1.4 修复（2026-07）：原公式 `novelty = 1.0 - boredom` 逻辑反了——
+            # 无聊时（boredom 高）说明没新东西，novelty 应该低，不是高。
+            # 改为 `novelty = (1.0 - boredom) * 0.3`：无聊时 novelty 低（接近 0），
+            # 不无聊时 novelty 较高（最多 0.3）。乘 0.3 是因为 boredom 只是 novelty 的
+            # 弱代理（真实 novelty 应来自记忆检索相似度，见 memory/semantic_novelty.py）。
+            # 注意：这是最后的 fallback，生产路径 novelty 主要由 life_loop._last_novelty
+            # 提供（来自 curiosity gap），不依赖此分支。
             boredom = state.get("boredom", 0.0)
-            novelty = 1.0 - boredom
+            novelty = (1.0 - boredom) * 0.3
 
     novelty = max(0.0, min(1.0, novelty))
 

@@ -594,19 +594,22 @@ class AssociativeMemory:
         self._embedding_fn = fn
 
     def _get_embedding(self, text: str) -> np.ndarray:
-        """获取文本嵌入"""
+        """获取文本嵌入。
+
+        P3-7/P3-16 修复：删除原 md5-seed 伪嵌入 else 分支（无语义噪声）。
+        必须通过 create_associative_memory() 工厂注入真嵌入（semantic_novelty backend）；
+        直接构造 AssociativeMemory() 会立即报错，避免静默退化为伪嵌入。
+        """
         if text in self._embed_cache:
             return self._embed_cache[text]
 
-        if self._embedding_fn is not None:
-            embedding = self._embedding_fn(text)
-        else:
-            # 默认: 基于哈希的伪嵌入
-            import hashlib
-            hash_val = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
-            np.random.seed(hash_val % (2**32))
-            embedding = np.random.randn(self.embedding_dim)
-            embedding = embedding / (np.linalg.norm(embedding) + 1e-10)
+        if self._embedding_fn is None:
+            raise RuntimeError(
+                "AssociativeMemory._embedding_fn not set; use create_associative_memory() "
+                "factory to inject a real embedding (semantic_novelty backend). "
+                "Direct construction without injection is no longer supported (P3-7/P3-16)."
+            )
+        embedding = self._embedding_fn(text)
 
         self._embed_cache[text] = embedding
         return embedding

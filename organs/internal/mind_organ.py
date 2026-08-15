@@ -164,9 +164,42 @@ class MindOrgan(BaseOrgan):
 
 【我的最近关注】
 {self.current_focus or "无"}
+"""
+
+        # 上次被否决的决策——让 mind 看见系统边界（否决不可见则永远学不会）
+        veto_note = context.get("last_veto_note")
+        if veto_note:
+            prompt += f"\n【上次决策被系统否决】\n{veto_note}\n下次遇到类似情况请换一种方式达成目的。\n"
+
+        # 其他器官的建议（mind 作为决策器官能看到）
+        organ_suggestions = context.get("organ_suggestions", [])
+        if organ_suggestions:
+            prompt += "\n【其他器官的建议】\n"
+            for s in organ_suggestions:
+                prompt += f"- {s}\n"
+
+        # 社交消息（其他生命的留言、新闻）
+        social_feed = context.get("social_feed", [])
+        if social_feed:
+            prompt += "\n【外部消息】\n"
+            for s in social_feed:
+                prompt += f"- {s}\n"
+
+        # 工作记忆（当前正在做的任务的进度）
+        wm = context.get("working_memory", {})
+        if wm and wm.get("task"):
+            prompt += f"\n【正在进行的任务】\n{wm['task']}\n"
+            if wm.get("steps_summary"):
+                prompt += f"已完成步骤:\n{wm['steps_summary']}\n"
+            if wm.get("related_memories"):
+                prompt += f"相关记忆: {wm['related_memories']}\n"
+            prompt += "你正在做这件事。继续下一步，还是已经完成了该做别的了？\n"
+        else:
+            prompt += """
+你是意识中心，做最终决策。综合以上所有信息，你现在最该做的一件事是什么？
 
 请回答以下问题：
-1. 基于我的状态，我现在最想做什么？（不是应该做什么，而是想做什么）
+1. 基于我的状态和其他器官的建议，我现在最想做什么？
 2. 为什么我想做这件事？
 3. 我打算怎么开始？
 
@@ -579,11 +612,16 @@ class MindOrgan(BaseOrgan):
     def _should_use_exploratory_planning(
         self, boredom: float, energy: float, cognitive_load: float
     ) -> bool:
-        """Determine if exploratory planning is appropriate."""
+        """Determine if exploratory planning is appropriate.
+
+        阶段2.5 调整（2026-07）：原阈值 boredom>0.5 过高——配合阶段1 的 novelty 衰减，
+        boredom 累积较慢（约 20 tick 到 0.2），0.5 阈值要 50+ tick 才触发。
+        降到 0.2：boredom 刚开始累积就能触发探索性规划。同时放宽 cognitive_load 限制。
+        """
         return (
-            boredom > 0.5 and
-            energy > 0.4 and
-            cognitive_load < self.MODERATE_COGNITIVE_LOAD
+            boredom > 0.2 and
+            energy > 0.3 and
+            cognitive_load < self.HIGH_COGNITIVE_LOAD
         )
 
     def _plan_exploratively(

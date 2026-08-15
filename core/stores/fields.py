@@ -67,6 +67,8 @@ class FieldStore:
     - Bond_t
     - Trust_t
     - Boredom_t
+    - Curiosity_t
+    - Novelty_t (1 - familiarity, 来自记忆检索相似度)
 
     All fields are automatically clipped on write.
     """
@@ -82,6 +84,7 @@ class FieldStore:
             "trust": Prob(0.5),
             "boredom": Prob(0.0),
             "curiosity": Prob(0.5),  # 好奇心字段
+            "novelty": Prob(0.4),  # 阶段1.1: 新颖度字段（novelty = 1 - familiarity）。初始略低于中等，让 boredom 能启动累积
         }
 
     def get(self, name: str, default: float = None) -> float:

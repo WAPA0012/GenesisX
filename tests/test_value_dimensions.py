@@ -205,9 +205,9 @@ class TestCuriosityDimension:
         context = {}
         feature = extract_curiosity(state, context)
 
-        # 回退: novelty = 1 - boredom = 0.3
-        # EMA 默认 0.5
-        expected = 0.7 * 0.3 + 0.3 * 0.5  # = 0.21 + 0.15 = 0.36
+        # 回退（阶段1.4）: novelty = (1 - boredom) * 0.3，boredom 是 novelty 的弱反向代理
+        # novelty = (1 - 0.7) * 0.3 = 0.09；EMA 默认 0.5
+        expected = 0.7 * 0.09 + 0.3 * 0.5  # = 0.063 + 0.15 = 0.213
         assert feature == pytest.approx(expected, abs=0.1), \
             f"Expected ~{expected}, got {feature}"
 
@@ -336,7 +336,7 @@ class TestSetpoints:
         """Test that setpoints match paper Appendix A.4."""
         # 论文 Appendix A.4 默认设定点
         expected = {
-            ValueDimension.HOMEOSTASIS: 0.85,
+            ValueDimension.HOMEOSTASIS: 0.70,
             ValueDimension.ATTACHMENT: 0.70,
             ValueDimension.CURIOSITY: 0.60,
             ValueDimension.COMPETENCE: 0.75,
@@ -395,7 +395,7 @@ class TestDriveGaps:
     def test_gap_formula(self):
         """Test paper formula: d^{(i)}_t = max(0, f^{(i)*} - f^{(i)}(S_t))"""
         features = {
-            ValueDimension.HOMEOSTASIS: 0.5,  # 低于设定点 0.85
+            ValueDimension.HOMEOSTASIS: 0.5,  # 低于设定点 0.70
             ValueDimension.ATTACHMENT: 0.7,    # 等于设定点
             ValueDimension.CURIOSITY: 0.8,    # 高于设定点 0.6
         }
@@ -403,8 +403,8 @@ class TestDriveGaps:
 
         gaps = compute_drive_gaps(features, setpoints)
 
-        # Homeostasis: gap = 0.85 - 0.5 = 0.35
-        assert gaps[ValueDimension.HOMEOSTASIS] == pytest.approx(0.35, abs=0.01)
+        # Homeostasis: gap = 0.70 - 0.5 = 0.20
+        assert gaps[ValueDimension.HOMEOSTASIS] == pytest.approx(0.20, abs=0.01)
 
         # Attachment: gap = 0.7 - 0.7 = 0.0
         assert gaps[ValueDimension.ATTACHMENT] == pytest.approx(0.0, abs=0.01)

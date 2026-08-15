@@ -12,21 +12,10 @@ from datetime import datetime, timezone
 from common.models import ValueDimension
 
 
-# Import configuration loader
-try:
-    from .axiology_config import get_axiology_config, DEFAULT_IDLE_BIAS, DEFAULT_IDLE_EPSILON, DEFAULT_TAU
-    _CONFIG_AVAILABLE = True
-except ImportError:
-    _CONFIG_AVAILABLE = False
-    DEFAULT_IDLE_BIAS = {
-        ValueDimension.HOMEOSTASIS: 0.10,
-        ValueDimension.ATTACHMENT: 0.15,
-        ValueDimension.CURIOSITY: 0.40,
-        ValueDimension.COMPETENCE: 0.20,
-        ValueDimension.SAFETY: 0.15,
-    }
-    DEFAULT_IDLE_EPSILON = 0.02
-    DEFAULT_TAU = 4.0
+# 配置来源：axiology_config（value_setpoints.yaml → AxiologyConfig 单例）
+# 注：DEFAULT_IDLE_BIAS / DEFAULT_IDLE_EPSILON / DEFAULT_TAU 在本文件 L79-89 处有
+# 无条件覆盖定义（论文 Section 3.5.1 空闲偏置 + Section 3.6 epsilon），故此处不再
+# 重复 try/except fallback——axiology_config 是项目内必存在的配置层。
 
 
 @dataclass

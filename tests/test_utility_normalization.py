@@ -1,251 +1,253 @@
-"""Test utility normalization (P2-8).
+"""Test utility normalization (论文 Section 3.5.2).
 
-验证所有效用函数的输出范围确实在 [-1, 1] 或 [0, 1]。
+验证所有 5 维核心效用函数的输出范围确实在 [-1, 1]，并校验关键方向性不变量。
 
-论文 Section 3.5.2 要求:
-"推荐将每个 u^(i) 限制在 [-1, 1] 或 [0, 1] 区间"
+历史：此文件原测 axiology/__init__.py 的 fallback `UtilityCalculator`/`StateSnapshot`
+类（utility.py 删除后保留的兼容层），但 fallback 的 5 维公式与论文 v15 的
+utilities_unified.py 完全不一致（homeostasis 用旧 energy/stress/fatigue、attachment
+拆 bond/trust、curiosity 丢 insight、competence 无失败惩罚、safety 用
+personality_drift 当代理），旧断言只验证 clip 范围恒成立而无法验证公式正确性。
+
+2026-07-21 重写：fallback 已删（CODE_MAP P2-1），本文件改为直接验证
+utilities_unified 的 5 维纯函数 + 补论文不变量断言。
 """
 
-import pytest
+import math
 import random
-from axiology import (
-    UtilityCalculator,
-    UtilityConfig,
-    StateSnapshot,
+
+import pytest
+
+from axiology.utilities_unified import (
+    compute_utilities,
+    utility_attachment,
+    utility_competence,
+    utility_curiosity,
+    utility_homeostasis,
+    utility_safety,
+    verify_utility_normalization,
 )
-from axiology.utilities_unified import compute_utilities, verify_utility_normalization
 from common.models import ValueDimension
 
 
-def test_homeostasis_normalization():
-    """测试 Homeostasis 效用归一化到 [-1, 1]."""
-    calc = UtilityCalculator()
+# 论文 Section 3.5.2(1): 数字原生 homeostasis setpoint（子分量）
+HOMEOSTASIS_SETPOINTS = {"compute": 0.8, "memory": 0.8, "stress": 0.2}
 
-    # 生成随机状态测试
-    for _ in range(100):
-        state_t = StateSnapshot(
-            energy=random.random(),
-            stress=random.random(),
-            fatigue=random.random(),
+
+class TestHomeostasisUtility:
+    """论文 Section 3.5.2(1): u^homeo = (||H_t - H*||_1 - ||H_{t+1} - H*||_1) / D_max, H=(Compute,Memory,1-Stress)."""
+
+    def test_range_normalized(self):
+        """随机 100 次采样，所有输出 ∈ [-1, 1]."""
+        for _ in range(100):
+            u = utility_homeostasis(
+                compute_current=random.random(),
+                compute_next=random.random(),
+                memory_current=random.random(),
+                memory_next=random.random(),
+                stress_current=random.random(),
+                stress_next=random.random(),
+                setpoints=HOMEOSTASIS_SETPOINTS,
+            )
+            assert -1.0 <= u <= 1.0, f"Homeostasis utility {u} out of range"
+
+    def test_improvement_is_positive(self):
+        """t→t+1 向 setpoint 靠近时，效用为正（论文方向性）."""
+        # t 远离 setpoint，t+1 精确命中 setpoint → 距离缩小 → u > 0
+        u = utility_homeostasis(
+            compute_current=0.2,   # 远离 0.8
+            compute_next=0.8,      # 命中
+            memory_current=0.2,
+            memory_next=0.8,
+            stress_current=0.9,    # 远离 0.2
+            stress_next=0.2,
+            setpoints=HOMEOSTASIS_SETPOINTS,
         )
-        state_t1 = StateSnapshot(
-            energy=random.random(),
-            stress=random.random(),
-            fatigue=random.random(),
+        assert u > 0.0, f"Improvement should yield positive utility, got {u}"
+
+    def test_deterioration_is_negative(self):
+        """t→t+1 远离 setpoint 时，效用为负."""
+        u = utility_homeostasis(
+            compute_current=0.8,
+            compute_next=0.2,
+            memory_current=0.8,
+            memory_next=0.2,
+            stress_current=0.2,
+            stress_next=0.9,
+            setpoints=HOMEOSTASIS_SETPOINTS,
         )
-
-        utility = calc.compute_homeostasis(state_t, state_t1)
-
-        # 验证范围
-        assert -1.0 <= utility <= 1.0, f"Homeostasis utility {utility} out of range [-1, 1]"
+        assert u < 0.0, f"Deterioration should yield negative utility, got {u}"
 
 
-def test_integrity_normalization():
-    """测试 Integrity 效用归一化到 [-1, 1] (P2-8)."""
-    calc = UtilityCalculator()
+class TestAttachmentUtility:
+    """论文 Section 3.5.2(2)(3): u^attach = α·ΔRelationship - γ·Neglect(Δt), Neglect 半衰期 T_half=24h."""
 
-    for _ in range(100):
-        state_t = StateSnapshot(
-            personality_drift=random.random(),
-            error_count=random.randint(0, 10),
+    def test_range_normalized(self):
+        for _ in range(100):
+            u = utility_attachment(
+                relationship_current=random.random(),
+                relationship_next=random.random(),
+                time_since_interaction=random.random() * 100000,
+            )
+            assert -1.0 <= u <= 1.0, f"Attachment utility {u} out of range"
+
+    def test_neglect_half_life_invariant(self):
+        """论文不变量：t_half=24h, dt=24h → neglect=0.5；dt=0 → neglect=0.
+
+        通过控制 relationship_current == relationship_next（ΔRelationship=0）让
+        utility 完全由 -γ·Neglect 主导，验证 Neglect 的半衰期公式。
+        """
+        # dt = t_half → neglect = 0.5
+        t_half = 24.0 * 3600.0
+        u_at_halflife = utility_attachment(
+            relationship_current=0.5,
+            relationship_next=0.5,   # Δ=0
+            time_since_interaction=t_half,
+            t_half=t_half,
+            alpha=0.5,
+            gamma=0.15,
         )
-        state_t1 = StateSnapshot(
-            personality_drift=random.random(),
-            error_count=random.randint(0, 10),
+        # u = 0 - γ·0.5 = -0.075
+        assert u_at_halflife == pytest.approx(-0.15 * 0.5, abs=1e-9), \
+            f"At half-life, neglect should be 0.5; got u={u_at_halflife}"
+
+        # dt = 0 → neglect = 0
+        u_at_zero = utility_attachment(
+            relationship_current=0.5,
+            relationship_next=0.5,
+            time_since_interaction=0.0,
+            t_half=t_half,
+            alpha=0.5,
+            gamma=0.15,
         )
+        assert u_at_zero == pytest.approx(0.0, abs=1e-9), \
+            f"At dt=0, neglect should be 0; got u={u_at_zero}"
 
-        utility = calc.compute_integrity(state_t, state_t1)
+    def test_default_t_half_is_24h(self):
+        """utility_attachment 默认参数 t_half=24*3600s（论文 Section 3.5.2）."""
+        import inspect
+        sig = inspect.signature(utility_attachment)
+        assert sig.parameters["t_half"].default == 24.0 * 3600.0
 
-        # 验证范围
-        assert -1.0 <= utility <= 1.0, f"Integrity utility {utility} out of range [-1, 1]"
 
+class TestCompetenceUtility:
+    """论文 Section 3.5.2(4): u^comp = η1·Success + η2·Q + κ·ΔCover - η3·(1-Success)."""
 
-def test_attachment_normalization():
-    """测试 Attachment 效用归一化到 [-1, 1] (P2-8)."""
-    calc = UtilityCalculator()
+    def test_range_normalized(self):
+        for _ in range(100):
+            u = utility_competence(
+                success=random.choice([True, False]),
+                quality=random.random(),
+                skill_coverage_delta=random.uniform(-1, 1),
+            )
+            assert -1.0 <= u <= 1.0, f"Competence utility {u} out of range"
 
-    for _ in range(100):
-        state_t = StateSnapshot(
-            bond=random.random(),
-            trust=random.random(),
-            dt_since_user=random.random() * 100000,
+    def test_failure_is_negative(self):
+        """失败时 η3·(1-Success) 触发惩罚，低质量失败 u<0（论文 M2）."""
+        u = utility_competence(
+            success=False,
+            quality=0.0,
+            skill_coverage_delta=0.0,
         )
-        state_t1 = StateSnapshot(
-            bond=random.random(),
-            trust=random.random(),
-            dt_since_user=random.random() * 100000,
+        assert u < 0.0, f"Failure should yield negative utility (η3 penalty), got {u}"
+
+    def test_high_quality_success_is_positive(self):
+        """高质量成功 u>0."""
+        u = utility_competence(
+            success=True,
+            quality=1.0,
+            skill_coverage_delta=0.0,
         )
-
-        utility = calc.compute_attachment(state_t, state_t1)
-
-        # 验证范围
-        assert -1.0 <= utility <= 1.0, f"Attachment utility {utility} out of range [-1, 1]"
+        assert u > 0.0, f"High-quality success should yield positive utility, got {u}"
 
 
-def test_contract_normalization():
-    """测试 Contract 效用归一化到 [-1, 1] (P2-8)."""
-    calc = UtilityCalculator()
+class TestCuriosityUtility:
+    """论文 Section 3.5.2(3): u^curio = ΔNovelty + α_insight·Q·1(insight), Meaning 已并入."""
 
-    for _ in range(100):
-        state_t = StateSnapshot(
-            has_active_command=True,
-            command_progress=random.random(),
+    def test_range_normalized(self):
+        for _ in range(100):
+            u = utility_curiosity(
+                novelty_current=random.random(),
+                novelty_next=random.random(),
+                insight_quality=random.random(),
+                insight_formed=random.choice([True, False]),
+            )
+            assert -1.0 <= u <= 1.0, f"Curiosity utility {u} out of range"
+
+    def test_insight_bonus_strictly_positive(self):
+        """形成洞察比无洞察效用更高（论文 Meaning 并入 Curiosity 的奖励项）."""
+        base = utility_curiosity(
+            novelty_current=0.5,
+            novelty_next=0.5,
+            insight_quality=0.0,
+            insight_formed=False,
         )
-        state_t1 = StateSnapshot(
-            has_active_command=True,
-            command_progress=random.random(),
+        with_insight = utility_curiosity(
+            novelty_current=0.5,
+            novelty_next=0.5,
+            insight_quality=0.8,
+            insight_formed=True,
         )
-
-        utility = calc.compute_contract(state_t, state_t1)
-
-        # 验证范围
-        assert -1.0 <= utility <= 1.0, f"Contract utility {utility} out of range [-1, 1]"
+        assert with_insight > base, \
+            f"Insight should add bonus; base={base}, with_insight={with_insight}"
 
 
-def test_competence_normalization():
-    """测试 Competence 效用归一化到 [-1, 1] (P2-8)."""
-    calc = UtilityCalculator()
+class TestSafetyUtility:
+    """论文 Section 3.5.2(5): u^safety = f^safe(S_{t+1}) - f^safe(S_t), f^safe=1-RiskScore."""
 
-    for _ in range(100):
-        state_t = StateSnapshot(
-            success_rate=random.random(),
-            quality_score=random.random(),
-            skill_coverage=random.random(),
+    def test_range_normalized(self):
+        for _ in range(100):
+            u = utility_safety(
+                risk_score_current=random.random(),
+                risk_score_next=random.random(),
+            )
+            assert -1.0 <= u <= 1.0, f"Safety utility {u} out of range"
+
+    def test_risk_reduction_is_positive(self):
+        """风险下降（t+1 风险更低）→ 安全效用为正."""
+        u = utility_safety(
+            risk_score_current=0.9,
+            risk_score_next=0.1,
         )
-        state_t1 = StateSnapshot(
-            success_rate=random.random(),
-            quality_score=random.random(),
-            skill_coverage=random.random(),
-        )
-
-        utility = calc.compute_competence(state_t, state_t1)
-
-        # 验证范围
-        assert -1.0 <= utility <= 1.0, f"Competence utility {utility} out of range [-1, 1]"
+        assert u > 0.0, f"Risk reduction should yield positive utility, got {u}"
 
 
-def test_curiosity_normalization():
-    """测试 Curiosity 效用归一化到 [-1, 1] (P2-8)."""
-    calc = UtilityCalculator()
+class TestVerifyUtilityNormalization:
+    """测试 verify_utility_normalization 工具函数本身（已删除 calculator 自指分支）."""
 
-    for _ in range(100):
-        state_t = StateSnapshot(novelty=random.random())
-        state_t1 = StateSnapshot(novelty=random.random())
+    def test_returns_tuple_for_utilities_dict(self):
+        """新版签名：直接接受 utilities dict，返回 (bool, report) 元组."""
+        utilities = {
+            ValueDimension.HOMEOSTASIS: 0.3,
+            ValueDimension.SAFETY: -0.2,
+        }
+        result = verify_utility_normalization(utilities)
+        # 必须返回 (bool, dict) 元组
+        assert isinstance(result, tuple) and len(result) == 2
+        ok, report = result
+        assert ok is True
+        assert report["all_normalized"] is True
+        assert report["count"] == 0
 
-        utility = calc.compute_curiosity(state_t, state_t1)
-
-        # 验证范围
-        assert -1.0 <= utility <= 1.0, f"Curiosity utility {utility} out of range [-1, 1]"
-
-
-def test_meaning_normalization():
-    """测试 Meaning 效用在 [0, 1]."""
-    calc = UtilityCalculator()
-
-    # insight_formed = False
-    utility = calc.compute_meaning(
-        StateSnapshot(insight_formed=False),
-        StateSnapshot(insight_formed=False),
-    )
-    assert utility == 0.0, "Meaning utility should be 0 when no insight formed"
-
-    # insight_formed = True
-    utility = calc.compute_meaning(
-        StateSnapshot(insight_formed=False),
-        StateSnapshot(insight_formed=True, insight_quality=random.random()),
-    )
-    assert 0.0 <= utility <= 1.0, f"Meaning utility {utility} out of range [0, 1]"
+    def test_detects_violation(self):
+        """超出范围的 utility 应被检出."""
+        utilities = {ValueDimension.HOMEOSTASIS: 1.5}
+        ok, report = verify_utility_normalization(utilities, u_max=1.0)
+        assert ok is False
+        assert report["count"] == 1
+        assert "homeostasis" in report["violations"]
 
 
-def test_efficiency_normalization():
-    """测试 Efficiency 效用归一化到 [-1, 0] (P2-8)."""
-    calc = UtilityCalculator()
-    from common.models import CostVector
+class TestLegacyComputeUtilities:
+    """legacy compute_utilities 是 -|feature-setpoint| 的简单代理，保留向后兼容."""
 
-    for _ in range(100):
-        cost = CostVector(
-            cpu_tokens=random.randint(0, 5000),
-            io_tokens=random.randint(0, 1000),
-            net_bytes=random.randint(0, 1000000),
-            time_ms=random.randint(0, 10000),
-        )
-
-        utility = calc.compute_efficiency(cost)
-
-        # 验证范围 [-1, 0]
-        assert -1.0 <= utility <= 0.0, f"Efficiency utility {utility} out of range [-1, 0]"
-
-    # 无成本时应该返回 0
-    utility = calc.compute_efficiency(None)
-    assert utility == 0.0, "Efficiency utility should be 0 when no cost"
-
-
-def test_all_utilities_normalization():
-    """测试所有效用函数同时归一化 (P2-8)."""
-    calc = UtilityCalculator()
-
-    results = verify_utility_normalization(calc, num_samples=500)
-
-    assert results["all_normalized"], f"Utility normalization violations found: {results['violations']}"
-
-    # 打印范围信息
-    print("\nUtility ranges:")
-    for dim, (min_val, max_val) in results["ranges"].items():
-        print(f"  {dim}: [{min_val:.4f}, {max_val:.4f}]")
-
-
-def test_legacy_utility_normalization():
-    """测试 legacy compute_utilities 函数归一化 (P2-8)."""
-    features = {dim: random.random() for dim in ValueDimension}
-    setpoints = {dim: random.random() for dim in ValueDimension}
-
-    utilities = compute_utilities(features, setpoints)
-
-    for dim, utility in utilities.items():
-        assert -1.0 <= utility <= 1.0, f"Legacy utility for {dim} is {utility}, out of range [-1, 1]"
-
-
-def test_utility_config_from_global_config():
-    """测试从全局配置创建 UtilityConfig (P2-10)."""
-    global_config = {
-        "axiology": {
-            "attachment": {
-                "alpha": 1.5,
-                "beta": 0.9,
-                "gamma": 0.3,
-                "t_half_hours": 12.0,
-            },
-            "competence": {
-                "eta_success": 0.7,
-                "eta_quality": 0.3,
-                "kappa_skill": 0.4,
-            },
-            "integrity": {
-                "max_drift_penalty": 0.8,
-                "max_error_penalty": 0.3,
-            },
-        },
-        "tool_costs": {
-            "tokens_cap": 8000,
-        },
-    }
-
-    config = UtilityConfig.from_global_config(global_config)
-
-    # 验证参数被正确读取
-    assert config.alpha_bond == 1.5
-    assert config.beta_trust == 0.9
-    assert config.gamma_neglect == 0.3
-    assert config.t_half_neglect == 12.0 * 3600.0
-    assert config.eta_success == 0.7
-    assert config.eta_quality == 0.3
-    assert config.kappa_skill == 0.4
-    assert config.max_drift_penalty == 0.8
-    assert config.max_error_penalty == 0.3
-    assert config.cost_normalization_factor == 8000.0
+    def test_range_normalized(self):
+        features = {dim: random.random() for dim in ValueDimension}
+        setpoints = {dim: random.random() for dim in ValueDimension}
+        utilities = compute_utilities(features, setpoints)
+        for dim, u in utilities.items():
+            assert -1.0 <= u <= 1.0, f"Legacy utility for {dim} is {u}, out of range"
 
 
 if __name__ == "__main__":
-    print("Testing utility normalization (P2-8)...")
-    test_all_utilities_normalization()
-    print("\n✓ All utility normalization tests passed!")
+    print("Testing utility normalization (论文 Section 3.5.2)...")
+    pytest.main([__file__, "-v", "--tb=short"])

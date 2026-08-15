@@ -8,6 +8,14 @@ from common.models import ValueDimension, Goal, PriorityLevel
 from dataclasses import dataclass, field
 
 
+# P4-5: 提取魔术数到模块常量（原内联硬编码）
+MIN_GAP_THRESHOLD = 0.15      # 候选生成时跳过小于此值的 gap
+TOP_K_CANDIDATES = 5          # 候选目标选择时考虑的前 K 个
+COST_PENALTY_FACTOR = 0.01    # 资源成本惩罚系数
+RESOURCE_CONFLICT_THRESHOLD = 0.1  # 两维度资源消耗均超此值视为冲突
+EPSILON_PRIORITY = 0.1        # 优先级差异容忍阈值（小于此值视为优先级相同）
+
+
 @dataclass
 class GoalProgressConfig:
     """Configuration for goal progress computation (P2-9: 进度计算完整性).
@@ -37,7 +45,10 @@ class GoalProgressConfig:
 
     # explore_and_learn 进度参数
     novelty_target: float = 1.0  # 目标新奇度
-    novelty_source: str = "novelty_explored"  # 新奇度来源字段
+    # 阶段3.4 修复（2026-07）：原 "novelty_explored" 字段从未被任何代码写入（grep 全库 0 命中），
+    # 导致 explore_and_learn 目标进度永远是 0。现改为 "novelty"——这是阶段1.1 新增的字段
+    #（fields.novelty），由 life_loop._update_body 持续更新（衰减 + EXPLORE 重置）。
+    novelty_source: str = "novelty"  # 新奇度来源字段
 
     # reflect_and_consolidate 进度参数
     schema_target: int = 5  # 目标schema数量（可配置）
@@ -195,7 +206,7 @@ class GoalCompiler:
         candidates = []
 
         for dim, gap in gaps.items():
-            if gap < 0.15:  # Skip small gaps
+            if gap < MIN_GAP_THRESHOLD:  # Skip small gaps
                 continue
 
             template = self.goal_templates.get(dim)
@@ -254,7 +265,7 @@ class GoalCompiler:
 
         # Stage 1: Coarse filtering by weighted gap score
         # Score = base_priority * gap * weight (already computed in priority)
-        TOP_K = min(5, len(candidates))  # 考虑前5个候选
+        TOP_K = min(TOP_K_CANDIDATES, len(candidates))  # 考虑前 K 个候选
         top_k_candidates = sorted(candidates, key=lambda g: g.priority, reverse=True)[:TOP_K]
 
         # Stage 2: Evaluate expected return for Top-K candidates
@@ -279,7 +290,7 @@ class GoalCompiler:
 
             # 资源成本: 越低越好
             resource_cost = goal.context.get("resource_cost", {})
-            cost_penalty = sum(abs(v) for v in resource_cost.values()) * 0.01
+            cost_penalty = sum(abs(v) for v in resource_cost.values()) * COST_PENALTY_FACTOR
 
             # 期望回报 = 优先级 * 缺口紧迫性 * 权重 - 成本惩罚
             expected_value = goal.priority * (1.0 + gap_urgency) * (1.0 + weight) - cost_penalty
@@ -351,6 +362,10 @@ class GoalCompiler:
 
         Enhanced: Covers all 8 goal types with milestone support.
         P2-9: 使用可配置的参数而非硬编码阈值.
+
+        Note (P4-2): 此方法当前未被 life_loop 接入（goal.progress 停在编译时初值 0.0）。
+        保留是为测试覆盖（tests/test_p2_9_p1_8.py）和未来 PHASE 6+ 反馈循环接线。
+        要启用进度跟踪，需在 life_loop tick 末尾对 active_goals 调用此方法并回写 progress。
 
         Args:
             goal: Goal object
@@ -523,7 +538,7 @@ class GoalCompiler:
             v1 = abs(cost1.get(resource, 0.0))
             v2 = abs(cost2.get(resource, 0.0))
             # If both use significant amount of same resource
-            if v1 > 0.1 and v2 > 0.1:
+            if v1 > RESOURCE_CONFLICT_THRESHOLD and v2 > RESOURCE_CONFLICT_THRESHOLD:
                 overlap_sum += min(v1, v2) / max(v1, v2)
 
         return min(1.0, overlap_sum / len(all_resources))
@@ -601,7 +616,7 @@ class GoalCompiler:
         - Conflicting: select highest priority
         - Compatible: parallel execution
         """
-        epsilon_priority = 0.1
+        epsilon_priority = EPSILON_PRIORITY
 
         if compatibility.status == "compatible":
             return CoordinationStrategy(

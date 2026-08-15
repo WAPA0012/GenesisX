@@ -587,7 +587,12 @@ class DreamConsolidator:
             # Only consider positive experiences
             if avg_reward > 0.3:
                 # Generate insight claim
-                insight_claim = f"Goal '{goal}' typically yields reward ~{avg_reward:.2f}"
+                # P3-4 修复：reward 量化到 0.1 步进的桶，避免 avg_reward 微变（0.45 vs 0.46）
+                # 产生不同 schema_id 撑爆容量。原 :.2f 高精度浮点让本应合并的"同 goal 规律"
+                # 被当成新 schema 累加。注意：不做通用文字归一化（lowercase/去标点）——
+                # claim 是自然语言，真语义差异需要保留区分能力。
+                reward_bucket = round(avg_reward * 10) / 10  # 0.1 步进：0.4, 0.5, 0.6...
+                insight_claim = f"Goal '{goal}' typically yields reward ~{reward_bucket:.1f}"
 
                 # Evaluate quality using semantic novelty
                 quality = self.quality_evaluator.evaluate(
@@ -669,9 +674,20 @@ class DreamConsolidator:
                 if not representative_ep.action:
                     continue
 
+                # P3-11-B 修复：skill name 含 goal，避免不同 goal 的同类型 skill 被错误合并。
+                # 原 name 固定 skill_{type} + SkillMemory.add 按 name 去重 → 不同场景的同类型
+                # skill 静默丢失。现用 goal 上下文区分：同 goal 同 type 仍去重（合理），
+                # 不同 goal 的同类型 skill 各自保留。
+                goal_context = getattr(representative_ep, 'current_goal', None) or 'general'
+                # goal 可能很长，取前 24 字符 + 短 hash 防撞名
+                import hashlib
+                goal_hash = hashlib.md5(goal_context.encode()).hexdigest()[:6]
+                goal_brief = goal_context[:24].replace(' ', '_')
+                skill_name = f"skill_{action_type.lower()}_{goal_brief}_{goal_hash}"
+
                 skill = SkillEntry(
-                    name=f"skill_{action_type.lower()}",
-                    description=f"Execute {action_type} action",
+                    name=skill_name,
+                    description=f"Execute {action_type} action for goal: {goal_context}",
                     action_sequence=[representative_ep.action],
                     success_criteria="reward > 0.5",
                     estimated_cost=representative_ep.cost,
@@ -702,7 +718,8 @@ class DreamConsolidator:
             Number of episodes pruned
         """
         try:
-            # Use episodic memory's prune_disk_by_salience method
+            # Use episodic memory's prune method (P3-12: renamed from prune_disk_by_salience;
+            # this uses raw |delta|, NOT paper Sal formula — see method docstring)
             # Calculate keep_recent_ratio from keep_recent count
             total_episodes = len(self.episodic._cache)
             if total_episodes == 0:
@@ -710,9 +727,9 @@ class DreamConsolidator:
 
             keep_recent_ratio = min(1.0, keep_recent / max(1, total_episodes))
 
-            # Prune with salience threshold of 0.3 (moderate significance)
-            result = self.episodic.prune_disk_by_salience(
-                salience_threshold=0.3,
+            # Prune with |delta| threshold of 0.3 (moderate impact)
+            result = self.episodic.prune_disk_by_delta_magnitude(
+                min_delta_to_keep=0.3,
                 keep_recent_ratio=keep_recent_ratio,
                 backup=True
             )
