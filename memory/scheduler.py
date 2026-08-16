@@ -1,0 +1,202 @@
+"""读侧记忆调度器（实验性，2026-08）—— Level 1。
+
+来源：讨论"OrganMemoryWriter 能否变成主动记忆调度器"。它的判断回路
+（这段经历值得记吗？）翻转方向复用（此刻该想起什么？）。
+
+两级演进的第一级：
+1. 多角度查询（零 LLM）：从当前任务/工作记忆/社交消息派生查询变体，
+   各做一次语义检索，合并去重。——蓝本基准证明"agent 查询改写是召回
+   第一功臣"（33%→100%），Level 1 用语境现成文本当变体，省一次 LLM。
+2. LLM 相关性裁决（每 tick ≤1 次调用）：给候选记忆 + 当 tick 语境，
+   让模型挑出真正决策相关的（≤3 条）并给一句理由。
+3. 保底原则（只加不删）：近因 + 高显著记忆永远保送。裁决失误的
+   最坏情况退化为现状，不会更糟。
+
+门控：GENESISX_MEMORY_SCHEDULER=1 启用，默认关。
+输出经 context["scheduled_memories"] 进入 mind 提示词的【相关记忆】区块。
+"""
+import os
+import re
+from typing import Any, Dict, List, Optional, Tuple
+
+from common.logger import get_logger
+
+logger = get_logger(__name__)
+
+# LLM 裁决的行式输出解析："0. 理由" / "1、理由"（序号前允许有元思考文字）
+_JUDGE_LINE_RE = re.compile(r"(\d+)[.、)．]\s*(.+)$")
+
+
+def _episode_digest(ep) -> str:
+    """一行记忆摘要：t<tick> 动作 简述 => 结果。"""
+    try:
+        obs = ep.observation
+        obs_text = str(getattr(obs, "payload", "") or "")[:70] if obs else ""
+        act = ep.action.type.value if ep.action else "?"
+        status = str(ep.outcome.status or "")[:50] if ep.outcome else ""
+        return f"t{ep.tick} {act} {obs_text} => {status}".strip()
+    except Exception:
+        return f"t{getattr(ep, 'tick', '?')}"
+
+
+class MemoryScheduler:
+    """读侧记忆调度器：mind 决策前主动调度相关记忆。"""
+
+    def __init__(self, retrieval, episodic, llm_client=None):
+        self.retrieval = retrieval
+        self.episodic = episodic
+        self.llm = llm_client
+        self.stats = {
+            "dispatches": 0,
+            "query_angles": 0,
+            "llm_judgments": 0,
+            "llm_failures": 0,
+            "memories_surfaced": 0,
+        }
+
+    # ---- 1. 查询角度（零 LLM）----
+
+    def _query_angles(self, context: Dict[str, Any]) -> List[str]:
+        """从当 tick 语境派生查询变体：任务/工作记忆/社交消息。"""
+        angles: List[str] = []
+
+        def _add(text: str):
+            text = str(text or "").strip()
+            if len(text) >= 4 and text[:80] not in angles:
+                angles.append(text[:80])
+
+        for key in ("task", "goal"):
+            _add((context or {}).get(key))
+        wm = (context or {}).get("working_memory") or {}
+        _add(wm.get("task"))
+        for s in ((context or {}).get("social_feed") or [])[:2]:
+            # "B: 消息内容" / "新闻: 标题" → 取冒号后的正文
+            body = str(s).split(":", 1)[-1].strip()
+            if len(body) >= 6:
+                _add(body)
+        return angles[:3]
+
+    # ---- 2. 保底集（只加不删的底线）----
+
+    def _floor_memories(self, tick: int, n_recent: int = 2, n_salient: int = 2) -> list:
+        """近因 + 高显著（|delta|）记忆，不经 LLM 直接保送。"""
+        out = []
+        try:
+            out.extend(self.episodic.query_recent(n_recent))
+        except Exception:
+            pass
+        try:
+            for ep in self.episodic.query_by_rpe_magnitude(limit=n_recent * 3):
+                if all(getattr(ep, "tick", None) != getattr(o, "tick", None) for o in out):
+                    out.append(ep)
+                if len(out) >= n_recent + n_salient:
+                    break
+        except Exception:
+            pass
+        return out
+
+    # ---- 3. LLM 相关性裁决 ----
+
+    def _judge(self, candidates: list, context: Dict[str, Any]) -> List[Tuple[Any, str]]:
+        """让 LLM 从候选中挑真正决策相关的（≤3 条），附一句理由。
+
+        行式输出而非 JSON——step_plan 端点的推理残留会破坏 JSON，
+        行式 + 正则解析更鲁棒。
+        """
+        if not self.llm or not candidates:
+            return []
+
+        ctx_parts = []
+        for key, label in (("task", "当前任务"), ("goal", "目标")):
+            v = str((context or {}).get(key) or "").strip()
+            if v:
+                ctx_parts.append(f"{label}: {v[:60]}")
+        feed = (context or {}).get("social_feed") or []
+        if feed:
+            ctx_parts.append("最近消息: " + " / ".join(str(s)[:40] for s in feed[:2]))
+        ctx_text = "；".join(ctx_parts) if ctx_parts else "常规决策时刻"
+
+        cand_lines = "\n".join(f"[{i}] {_episode_digest(ep)}" for i, ep in enumerate(candidates))
+
+        prompt = (
+            f"一个数字生命马上要做本 tick 的决策。当前处境：{ctx_text}。\n"
+            f"候选记忆（它过去的经历）：\n{cand_lines}\n\n"
+            f"从候选里挑出【对当前处境真正有用】的记忆，最多 3 条，一条都不到位就都不选。\n"
+            f"输出格式（每行一条，不要多余解释）：序号. 为什么此刻该想起它"
+        )
+        try:
+            result = self.llm.chat(messages=[{"role": "user", "content": prompt}],
+                                   temperature=0.2, max_tokens=300)
+        except Exception as e:
+            self.stats["llm_failures"] += 1
+            logger.debug(f"[SCHEDULER] 裁决调用失败: {e}")
+            return []
+
+        if not (result and result.get("ok") and result.get("text")):
+            self.stats["llm_failures"] += 1
+            return []
+
+        self.stats["llm_judgments"] += 1
+        picked: List[Tuple[Any, str]] = []
+        for line in result["text"].splitlines():
+            # search 而非 match：推理模型常在序号前垫一句元思考（"首先看看。1. …"）
+            m = _JUDGE_LINE_RE.search(line.strip())
+            if not m:
+                continue
+            idx = int(m.group(1))
+            reason = m.group(2).strip()[:60]
+            if 0 <= idx < len(candidates) and idx not in (i for i, _ in picked):
+                picked.append((candidates[idx], reason))
+            if len(picked) >= 3:
+                break
+        return picked
+
+    # ---- 主入口 ----
+
+    def dispatch(self, context: Dict[str, Any], tick: int) -> List[Tuple[Any, str, str]]:
+        """调度本 tick 的相关记忆。返回 (episode, 理由, 一行摘要) 列表。"""
+        self.stats["dispatches"] += 1
+
+        # 多角度语义检索（零 LLM）
+        angles = self._query_angles(context)
+        self.stats["query_angles"] += len(angles)
+        pool: List[Any] = []
+        seen_ticks = set()
+        for q in angles:
+            try:
+                hits = self.retrieval.retrieve_by_semantic_similarity(
+                    q, current_tick=tick, limit=5, min_similarity=0.05)
+            except Exception as e:
+                logger.debug(f"[SCHEDULER] 角度检索失败（非致命）: {e}")
+                continue
+            for ep in hits or []:
+                t = getattr(ep, "tick", None)
+                if t not in seen_ticks:
+                    seen_ticks.add(t)
+                    pool.append(ep)
+        pool = pool[:8]
+
+        # LLM 裁决（有候选且有角度才值得花这一次调用）
+        judged = self._judge(pool, context) if pool else []
+
+        # 合成：裁决选中的在前（带理由），保底集补位（不删任何保底）
+        result: List[Tuple[Any, str, str]] = []
+        taken = set()
+        for ep, reason in judged:
+            t = getattr(ep, "tick", None)
+            if t not in taken:
+                taken.add(t)
+                result.append((ep, reason, _episode_digest(ep)))
+        for ep in self._floor_memories(tick):
+            t = getattr(ep, "tick", None)
+            if t not in taken:
+                taken.add(t)
+                result.append((ep, "近因/高显著保底", _episode_digest(ep)))
+
+        result = result[:6]
+        self.stats["memories_surfaced"] += len(result)
+        if result:
+            logger.info(f"[SCHEDULER] t{tick} 调度 {len(result)} 条记忆 "
+                        f"(角度{len(angles)} 裁决{len(judged)}): "
+                        + " | ".join(r[2][:40] for r in result[:3]))
+        return result

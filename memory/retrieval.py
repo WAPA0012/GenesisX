@@ -147,6 +147,8 @@ class MemoryRetrieval:
         query_text: Optional[str] = None,
         enable_associative: bool = True,
         associative_weight: float = 0.15,
+        current_mood: Optional[float] = None,
+        current_stress: Optional[float] = None,
     ) -> List[EpisodeRecord]:
         """Retrieve relevant episodes.
 
@@ -179,8 +181,26 @@ class MemoryRetrieval:
                 logger.warning(f"Invalid limit: {limit}, using default 10")
                 limit = 10
 
-            # Get candidates
-            candidates = self.episodic.query_by_tags(query_tags, limit=limit * 2)
+            # === 2026-08 修复：语义候选种子 ===
+            # 旧逻辑只靠 query_by_tags 预筛候选——中文输入 split()[:3] 的 tag
+            # 基本不命中，检索退化为"最近记忆"。现在有 query_text 时先做向量
+            # 召回并与 tag 命中合并（去重），语义/联想分数在真实候选集上生效。
+            candidates = list(self.episodic.query_by_tags(query_tags, limit=limit * 2)) if query_tags else []
+            if query_text:
+                try:
+                    sem_hits = self.retrieve_by_semantic_similarity(
+                        query_text=query_text,
+                        current_tick=current_tick,
+                        limit=limit * 2,
+                        min_similarity=0.05,
+                    )
+                    seen_ids = {id(c) for c in candidates}
+                    for ep in sem_hits or []:
+                        if id(ep) not in seen_ids:
+                            candidates.append(ep)
+                            seen_ids.add(id(ep))
+                except Exception as e:
+                    logger.debug(f"语义候选种子失败（非致命）: {e}")
 
             if not candidates:
                 logger.debug(f"No episodes found for tags {query_tags}, falling back to recent")
@@ -190,13 +210,8 @@ class MemoryRetrieval:
             associative_results = {}
             if enable_associative and query_text:
                 try:
-                    # 获取当前情绪上下文（用于普鲁斯特效应）
-                    from core.stores.fields import FieldStore
-                    # 尝试从全局状态获取情绪
-                    current_mood = None
-                    current_stress = None
-
-                    # 通过联想检索获取相关记忆
+                    # 普鲁斯特效应接线（2026-08 修复）：此前写死 None，
+                    # 情绪匹配加成永远为 0。现在由调用方传入真实 mood/stress。
                     assoc_results = self.episodic.retrieve_by_association(
                         query=query_text,
                         top_k=limit * 2,

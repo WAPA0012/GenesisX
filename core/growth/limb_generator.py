@@ -301,8 +301,18 @@ class LimbGenerator:
             generation_type = self._determine_generation_type(requirement, code)
 
             # 6. 创建 GeneratedLimb
+            # 命名清洗（2026-08 修复）：此前 mind 的思考原文直接当目录名，
+            # 磁盘上长出一堆 "1__我想构建_实现的东西_我想构建一个_…" 式的
+            # CoT 长句目录，肢体清单无法被感知利用。
+            from tools.cot_cleaner import clean_text
+            import re as _re_name
+            import hashlib as _hl
+            clean_name = clean_text(str(requirement.name or ""), max_len=40)
+            clean_name = _re_name.sub(r'[\\/:*?"<>| \t]+', "_", clean_name).strip("_")[:40]
+            if len(clean_name) < 3:
+                clean_name = "limb_" + _hl.md5(str(requirement.name).encode()).hexdigest()[:6]
             limb = GeneratedLimb(
-                name=requirement.name,
+                name=clean_name,
                 description=requirement.description,
                 generation_type=generation_type,
                 code=code,
@@ -311,7 +321,7 @@ class LimbGenerator:
                 requirements=requirements,
             )
 
-            logger.info(f"LLM 生成肢体成功: {requirement.name}, 代码长度: {len(code)}")
+            logger.info(f"LLM 生成肢体成功: {clean_name}, 代码长度: {len(code)}")
             return limb
 
         except Exception as e:

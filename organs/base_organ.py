@@ -344,6 +344,21 @@ class BaseOrgan(ABC):
 
         return result_actions
 
+    def perception_report(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
+        """器官感知报告（2026-08 重构：器官从决策者降级为感知模块）。
+
+        器官不再各自调 LLM 提案——那会把一个模型的智能切成 6 次小上下文
+        调用并稀释掉。器官现在做它擅长的事：把本领域的计算型状态汇报给
+        mind，由 mind 单点深决策。
+
+        默认实现输出价值维度缺口一行信号；子类覆写以输出领域感知。
+        不调 LLM——感知应当廉价、即时、可计算。
+        """
+        dim = getattr(self.value_dimension, "value", self.value_dimension)
+        gaps = (context or {}).get("value_gaps", {})
+        gap = gaps.get(dim, 0.0) if isinstance(gaps, dict) else 0.0
+        return f"{dim} 缺口 {gap:.2f}"
+
     def _format_structured_output_prompt_prefix(self, state=None, context=None) -> str:
         """前缀：自我认知 + 价值缺口 + 记忆摘要 + 格式提醒。
 
@@ -548,12 +563,23 @@ class BaseOrgan(ABC):
             if to_match:
                 t = to_match.group(1).strip().lower()
                 if t in ("b", "c"): to = t.upper()
-            content = content_match.group(1).strip() if content_match else topic
+            if content_match:
+                # 引号提取 + 清理（2026-08）：mind 直填的 content 可能是
+                # "消息"，尾缀意图描述 的混合形态，取实际发言部分
+                from tools.cot_cleaner import extract_message
+                content = extract_message(content_match.group(1), max_len=300) or content_match.group(1).strip()[:300]
+            else:
+                content = ""
+            # mind 的【主题】是意图（如"查看留言板寻找趣味内容"）而非发言本身——
+            # 直接发出去会是任务式文本而非社交消息。意图降级为生成引导，
+            # 由执行层 LLM 结合社交上下文生成真实发言。
+            intent = topic if not content else ""
             return Action(
                 type="SOCIALIZE",
                 params={
                     "to": to,
                     "content": content[:300],
+                    "intent": intent[:200],
                     "msg_type": "message",
                     "source": "llm_structured",
                 },

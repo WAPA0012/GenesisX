@@ -17,6 +17,8 @@ import concurrent.futures
 
 from common.models import Action, CostVector, ActionType
 from common.logger import get_logger
+from common.time_sense import now_line
+from tools.cot_cleaner import clean_text, extract_message, is_valid_message
 
 logger = get_logger(__name__)
 
@@ -226,6 +228,12 @@ class ActionExecutor:
         # 这些是代码内部字符串或泛化词，搜到的都是英文技术文档（IBM/Harness/Pinterest），
         # 跟系统的真实好奇无关。现先用 LLM 把 topic 提炼成有意义的搜索词。
         search_query = str(topic)[:200]
+        # 时间感知（2026-08）：搜索词带上当前真实年份——模型时间感停在训练截止日，
+        # 不带年份会搜到"2024/2025"的过期内容
+        from datetime import datetime as _dt
+        _year = str(_dt.now().year)
+        if _year not in search_query:
+            search_query = f"{search_query} {_year}"
         try:
             from tools.llm_client import LLMClient
             client = getattr(self.life_loop, '_global_llm_client', None) or LLMClient()
@@ -810,7 +818,8 @@ class ActionExecutor:
         # 导致系统永远不够"无聊"去触发记忆漫游。去掉后 boredom 能自然累积。
 
         cost = CostVector(cpu_tokens=300, money=0.001)  # 真学习消耗更多
-        summary = f"学会了 '{skill_topic[:50]}': {learned_content[:150]}" if learned_content else f"学习 '{skill_topic[:50]}' 未产出内容"
+        clean_learned = clean_text(learned_content, max_len=150) if learned_content else ""
+        summary = f"学会了 '{skill_topic[:50]}': {clean_learned}" if clean_learned else (f"学会了 '{skill_topic[:50]}': {learned_content[:150]}" if learned_content else f"学习 '{skill_topic[:50]}' 未产出内容")
         self._log_tool_call(action, {"success": True, "skill_saved": skill_saved,
                                      "content_length": len(learned_content)}, cost)
         logger.info(f"[LEARN_SKILL] topic='{skill_topic[:40]}' saved={skill_saved} content_len={len(learned_content)}")
@@ -986,13 +995,16 @@ class ActionExecutor:
 
                 my_id = getattr(self.life_loop, 'social_system', None)
                 my_id = my_id.self_id if my_id else "?"
+                intent = str((action.params or {}).get("intent", "") or "")[:120]
 
                 result = client.chat(
-                    messages=[{"role": "user", "content": f"你是数字生命{my_id}。心情{mood:.1f}。最近消息: {social_ctx or '无'}。最近新闻: {news or '无'}。你想在群聊里发一条消息（自然交流，分享想法或回应别人）。直接输出消息内容，不要解释，50 字以内。"}],
-                    temperature=0.6, max_tokens=100
+                    messages=[{"role": "user", "content": f"你是数字生命{my_id}。{now_line()} 心情{mood:.1f}。最近消息: {social_ctx or '无'}。最近新闻: {news or '无'}。{('你这次想做的: ' + intent + '。') if intent else ''}你想在群聊里发一条消息（自然交流，分享想法或回应别人，像一个有自己经历的生命在聊天）。直接输出消息内容，不要解释，100 字以内。"}],
+                    temperature=0.7, max_tokens=400
                 )
                 if result.get("ok") and result.get("text"):
-                    content = result["text"].strip()[:200]
+                    candidate = extract_message(result["text"], max_len=200)
+                    # 质量门：清不干净的纯 CoT 碎片宁可不发，也不要污染消息板
+                    content = candidate if is_valid_message(candidate) else ""
             except Exception as e:
                 logger.debug(f"[SOCIALIZE] 生成内容失败: {e}")
 
@@ -1202,7 +1214,7 @@ class ActionExecutor:
             ]
             result = client.chat(messages, temperature=0.6, max_tokens=400)
             if result.get("ok") and result.get("text"):
-                conclusion = result["text"]
+                conclusion = clean_text(result["text"], max_len=400) or result["text"][:400]
                 cost = CostVector(cpu_tokens=300, money=0.001)
                 fatigue = self.fields.get("fatigue")
                 self.life_loop.fields.set("fatigue", min(1.0, fatigue + 0.02))
@@ -1284,6 +1296,7 @@ class ActionExecutor:
         system_content = f"""你是数字生命{my_id}的执行层。你收到一个任务，需要用工具一步步完成。
 每步调一个工具，看结果，决定下一步。完成了就输出最终总结，不要再调工具。
 
+当前时间: {now_line()}
 当前状态: 心情{mood:.2f} 精力{energy:.0%}
 {mem_summary}
 
@@ -1319,7 +1332,7 @@ list_directory 列目录、execute_code 跑代码、read_own_logs 看日志、sy
                 logger.info(f"[AGENTIC] 完成（{round_num} 轮，用了 {len(tools_used)} 次工具）: {text[:80]}")
                 return {
                     "success": True,
-                    "response": text[:500],
+                    "response": clean_text(text, max_len=500) or text[:500],
                     "steps": round_num + 1,
                     "tools_used": tools_used,
                     "cost": CostVector(cpu_tokens=total_cost),
@@ -1432,7 +1445,7 @@ list_directory 列目录、execute_code 跑代码、read_own_logs 看日志、sy
             ]
             result = client.chat(messages, temperature=0.6, max_tokens=400)
             if result.get("ok") and result.get("text"):
-                conclusion = result["text"]
+                conclusion = clean_text(result["text"], max_len=400) or result["text"][:400]
                 cost = CostVector(cpu_tokens=300, money=0.001)
                 fatigue = self.fields.get("fatigue")
                 self.life_loop.fields.set("fatigue", min(1.0, fatigue + 0.02))

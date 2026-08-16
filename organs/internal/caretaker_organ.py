@@ -100,6 +100,20 @@ class CaretakerOrgan(BaseOrgan):
         """清除最后的思考"""
         self._last_thought = None
 
+    def perception_report(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
+        """照护感知：健康评估 + 疲劳（零 LLM）。"""
+        try:
+            health = self.assess_health_status(state) or {}
+        except Exception:
+            health = {}
+        score = health.get("health_score", 0.0)
+        status = health.get("status", "未知")
+        issues = health.get("issues") or []
+        parts = [f"健康 {score:.0%}（{status}）", f"疲劳 {state.get('fatigue', 0.0):.2f}"]
+        if issues:
+            parts.append("问题: " + "、".join(str(i)[:20] for i in issues[:3]))
+        return "；".join(parts)
+
     def _build_thinking_prompt(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
         """构建照护思考提示（P0-1 修复：注入驱动力 + 追加结构化输出格式）"""
         energy = state.get("energy", 0.5)

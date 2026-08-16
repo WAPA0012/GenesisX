@@ -137,6 +137,20 @@ class ArchivistOrgan(BaseOrgan):
         """清除最后的思考"""
         self._last_thought = None
 
+    def perception_report(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
+        """档案感知：记忆库存量与结构（零 LLM）。"""
+        try:
+            stats = self.get_memory_statistics() or {}
+        except Exception:
+            stats = {}
+        parts = [
+            f"记忆总量 {stats.get('total_memories', '?')}",
+            f"情景 {stats.get('episodic_count', '?')} / 语义 {stats.get('semantic_count', '?')}"
+            f" / 关键 {stats.get('critical_memories', '?')}",
+            f"认知负荷 {state.get('cognitive_load', 0.0):.2f}",
+        ]
+        return "；".join(parts)
+
     def _build_thinking_prompt(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
         """构建记忆管理思考提示（P0-1 修复：注入驱动力 + 追加结构化输出格式）"""
         energy = state.get("energy", 0.5)

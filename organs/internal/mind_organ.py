@@ -166,23 +166,62 @@ class MindOrgan(BaseOrgan):
 {self.current_focus or "无"}
 """
 
+        # 时间感知（2026-08）：模型时间感停在训练截止日，真实时钟是感知的一部分
+        tp = context.get("time_perception")
+        if tp:
+            prompt += f"\n【时间感知】{tp}\n"
+
         # 上次被否决的决策——让 mind 看见系统边界（否决不可见则永远学不会）
         veto_note = context.get("last_veto_note")
         if veto_note:
             prompt += f"\n【上次决策被系统否决】\n{veto_note}\n下次遇到类似情况请换一种方式达成目的。\n"
 
-        # 其他器官的建议（mind 作为决策器官能看到）
+        # 器官感知报告（2026-08 重构：器官降级为感知模块，计算型报告不再经 LLM 转述）
+        perception = context.get("organ_perception", [])
+        if perception:
+            prompt += "\n【器官感知】(各器官实时状态，是你身体的一部分，感知它)\n"
+            for s in perception:
+                prompt += f"- {s}\n"
+
+        # 可用肢体提议（生成肢体动态贡献的能力）
         organ_suggestions = context.get("organ_suggestions", [])
         if organ_suggestions:
-            prompt += "\n【其他器官的建议】\n"
+            prompt += "\n【可用肢体提议】\n"
             for s in organ_suggestions:
                 prompt += f"- {s}\n"
+
+        # 资源预算与近期异常——决策者应当知道的边界
+        bt = context.get("budget_tokens")
+        bm = context.get("budget_money")
+        if bt is not None or bm is not None:
+            prompt += f"\n【资源预算】tokens 剩余 {bt}，money 剩余 {bm}\n"
+        errs = context.get("recent_errors")
+        if errs:
+            prompt += "\n【近期异常】\n" + "\n".join(f"- {e}" for e in errs[:3]) + "\n"
 
         # 社交消息（其他生命的留言、新闻）
         social_feed = context.get("social_feed", [])
         if social_feed:
             prompt += "\n【外部消息】\n"
             for s in social_feed:
+                prompt += f"- {s}\n"
+
+        # 社交新鲜度（孤独感是身体信号——感知多久没互动，回不回、发不发由你决定）
+        rec = context.get("social_recency") or {}
+        rec_parts = []
+        if rec.get("board_last_minutes") is not None:
+            rec_parts.append(
+                f"群聊最后一条消息是 {rec['board_last_minutes']} 分钟前（来自 {rec.get('board_last_from', '?')}）")
+        if rec.get("my_last_minutes") is not None:
+            rec_parts.append(f"你自己已经 {rec['my_last_minutes']} 分钟没发言")
+        if rec_parts:
+            prompt += "\n【社交感知】" + "；".join(rec_parts) + "\n"
+
+        # 调度记忆（实验）：记忆调度器按当前处境主动找来的相关经历
+        sched = context.get("scheduled_memories", [])
+        if sched:
+            prompt += "\n【相关记忆】(调度器按你当前处境找来的经历，括号内是它认为你该想起来的理由)\n"
+            for s in sched:
                 prompt += f"- {s}\n"
 
         # 工作记忆（当前正在做的任务的进度）

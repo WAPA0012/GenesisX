@@ -130,6 +130,61 @@ class ScoutOrgan(BaseOrgan):
         """清除最后的思考"""
         self._last_thought = None
 
+    # —— 兴趣条目质量门（2026-08 修复）：CoT 碎片/格式残骸/驱力自述不入兴趣清单 ——
+
+    @staticmethod
+    def _clean_interest_text(text):
+        """清洗兴趣条目：过 CoT 清理 + 质量门。返回 None 表示拒收。
+
+        之前 '动作_____主题'、'进_行数字睡眠_缓解当前' 这类碎片直接灌进
+        explored_topics / knowledge_frontier，把真兴趣（'基于ASCII艺术的
+        实时天气可视化命令行工具'）淹没了。
+        """
+        from tools.cot_cleaner import clean_text
+        t = clean_text(str(text or ""), max_len=60).strip()
+        if len(t) < 4:
+            return None
+        # 格式标记残骸
+        if any(m in t for m in ("【动作", "【主题", "动作_", "主题_", "__")):
+            return None
+        # 下划线黏连中文（"进_行数字睡眠"——CoT 断裂的典型形态；英文 snake_case 不受影响）
+        import re as _re
+        if _re.search(r"[\u4e00-\u9fff]_|_[\u4e00-\u9fff]", t):
+            return None
+        # 驱力自述句拒收（"满足好奇心缓解高无聊"式——是驱力的文字化，不是兴趣对象）
+        drive_words = ("好奇", "无聊", "缓解", "填补", "驱力", "打发")
+        if sum(1 for w in drive_words if w in t) >= 2:
+            return None
+        return t
+
+    def perception_report(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
+        """侦察感知：新奇度/无聊 + 已探索领域 + 知识前沿（零 LLM）。
+
+        2026-08 修复：前沿展示过滤历史垃圾条目、具体方向优先于驱力自述，
+        窗口 3×20 → 4×30——好奇心需要可见的具体对象，不是"缓解无聊"。
+        """
+        explored = [e for e in (self._clean_interest_text(x) for x in self.explored_topics) if e][-5:]
+        # 最新线索优先：deque 尾部是最近的发现，"值得继续"= 活的线索，
+        # 不是出生时的默认种子
+        raw_frontier = [str(f).replace("related_to_", "") for f in reversed(list(self.knowledge_frontier))]
+        cleaned = [c for c in (self._clean_interest_text(f) for f in raw_frontier) if c]
+        # 具体条目优先：驱力自述词（好奇/无聊/缓解…）命中的排后
+        drive_words = ("好奇", "无聊", "缓解", "填补", "驱力", "打发")
+        specific = [c for c in cleaned if not any(w in c for w in drive_words)]
+        generic = [c for c in cleaned if any(w in c for w in drive_words)]
+        frontier = (specific + generic)[:4]
+        parts = [
+            f"新奇度 {state.get('novelty', 0.0):.2f}，无聊 {state.get('boredom', 0.0):.2f}",
+            f"累计探索 {len(self.explored_topics)} 个领域",
+        ]
+        if explored:
+            parts.append("最近探索: " + "、".join(e[:20] for e in explored))
+        if frontier:
+            parts.append("值得继续的方向: " + "、".join(f[:30] for f in frontier))
+        else:
+            parts.append("还没有值得继续的具体方向——去发现一个")
+        return "；".join(parts)
+
     def _build_thinking_prompt(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
         """构建探索思考提示（P0-1 修复：注入驱动力 + 追加结构化输出格式）"""
         boredom = state.get("boredom", 0.0)
@@ -728,7 +783,7 @@ class ScoutOrgan(BaseOrgan):
         return "general_exploration"
 
     def record_exploration_outcome(
-        self, tick: int, topic: str, depth: str, success: bool
+        self, tick: int, topic: str, depth: str, success: bool, finding: str = None
     ):
         """Record outcome of an exploration for learning.
 
@@ -737,10 +792,14 @@ class ScoutOrgan(BaseOrgan):
             topic: Topic that was explored
             depth: Depth of exploration
             success: Whether exploration was successful
+            finding: 本次探索的实际发现（清理过的具体内容）——兴趣的原料
         """
         outcome = "success" if success else "failure"
         # 修复：deque 会自动处理最大长度，无需手动 pop(0)
         self.recent_explorations.append((tick, topic, depth, outcome))
+
+        # 入库清洗（2026-08）：CoT 碎片/格式残骸拒收，防兴趣清单被垃圾淹没
+        topic = self._clean_interest_text(topic) or "未命名探索"
 
         # Update tracking
         self.explored_topics.add(topic)
@@ -752,8 +811,14 @@ class ScoutOrgan(BaseOrgan):
             self.topic_interest_scores[topic] = min(
                 1.0, self.topic_interest_scores.get(topic, 0.5) + 0.1
             )
-            # Add related topics to frontier
-            self.knowledge_frontier.append(f"related_to_{topic}")
+            # 探索成果回流（2026-08 修复）：兴趣的原料是"找到的具体东西"，
+            # 不是出发时的驱力描述（"缓解无聊的技巧"）。有发现用发现，
+            # 没有才退回主题；去掉曾经污染清单的 related_to_ 前缀。
+            entry = self._clean_interest_text(finding) if finding else None
+            if not entry:
+                entry = self._clean_interest_text(topic)
+            if entry and entry not in self.knowledge_frontier:
+                self.knowledge_frontier.append(entry)
         else:
             self.failed_explorations.add(topic)
             # Decrease interest

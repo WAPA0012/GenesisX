@@ -125,6 +125,19 @@ class BuilderOrgan(BaseOrgan):
         """清除最后的思考"""
         self._last_thought = None
 
+    def perception_report(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
+        """构建感知：在建/已交付项目 + 精力压力（零 LLM）。"""
+        active = [p.get("goal", "?") for p in getattr(self, "active_projects", {}).values()
+                  if p.get("status") in (self.STATUS_IN_PROGRESS, self.STATUS_PLANNING)]
+        completed = len(getattr(self, "completed_projects", []) or [])
+        parts = [
+            f"精力 {state.get('energy', 0.5):.0%}，压力 {state.get('stress', 0.0):.2f}",
+            f"在建 {len(active)} 个 / 已交付 {completed} 个",
+        ]
+        if active:
+            parts.append("在建: " + "、".join(str(a)[:25] for a in active[:3]))
+        return "；".join(parts)
+
     def _build_thinking_prompt(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
         """构建构建思考提示（P0-1 修复：注入驱动力 + 追加结构化输出格式）"""
         energy = state.get("energy", 0.5)

@@ -638,6 +638,36 @@ class LifeLoop(GapDetectorMixin):
             if self.growth_manager.limb_generator.llm_client is None:
                 self.growth_manager.limb_generator.llm_client = global_llm_client
                 logger.debug("[GROWTH] 事后注入 llm_client 到 limb_generator")
+        # 肢体重启恢复（2026-08）：artifacts/limbs/ 下的已生成肢体重新装载注册。
+        # 此前重启即失忆——生成的工具沦为磁盘死文件（load_limb 零调用方）。
+        try:
+            if self.unified_organ_manager and self.growth_manager:
+                from pathlib import Path as _P
+                limbs_dir = _P("artifacts/limbs")
+                restored = 0
+                if limbs_dir.exists():
+                    for code_file in sorted(limbs_dir.glob("*/__init__.py")):
+                        try:
+                            import json as _json
+                            meta_f = code_file.parent / "metadata.json"
+                            meta = _json.loads(meta_f.read_text(encoding="utf-8")) if meta_f.exists() else {}
+                            from organs import Limb as _Limb, OrganType as _OT
+                            self.unified_organ_manager.add_limb(_Limb(
+                                name=meta.get("name") or code_file.parent.name,
+                                code=code_file.read_text(encoding="utf-8"),
+                                capabilities=meta.get("capabilities", []) or [],
+                                description=meta.get("description", ""),
+                                generation_prompt="restored_from_disk",
+                                organ_type=_OT.INTERNAL,
+                            ))
+                            restored += 1
+                        except Exception as _e:
+                            logger.debug(f"肢体恢复失败 {code_file.parent.name}: {_e}")
+                if restored:
+                    logger.info(f"[GROWTH] 重启恢复 {restored} 个已生成肢体")
+        except Exception as e:
+            logger.debug(f"肢体重启恢复失败（非致命）: {e}")
+
         self.growth_enabled = growth_config.get("enabled", True)
         if self.growth_enabled:
             logger.info("GrowthManager enabled")
@@ -1085,7 +1115,12 @@ class LifeLoop(GapDetectorMixin):
                     salience_weight=retrieval_config["salience_weight"],
                     keyword_weight=retrieval_config["keyword_weight"],
                     semantic_weight=retrieval_config["semantic_weight"],
-                    query_text=user_message if retrieval_config["use_semantic"] else None,
+                    # 原文始终提供——候选种子需要它（中文 tag 预筛基本不命中）；
+                    # 检索档位只控制打分权重
+                    query_text=user_message,
+                    # 普鲁斯特效应：情绪状态参与联想检索
+                    current_mood=self.fields.get("mood"),
+                    current_stress=self.fields.get("stress"),
                 )
 
             # Schema检索
@@ -1327,118 +1362,38 @@ class LifeLoop(GapDetectorMixin):
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import threading
 
-        # 辅助函数：处理单个器官
-        def process_organ(organ_name: str):
-            """处理单个器官，返回 (organ_name, actions, thought)"""
+        # === 2026-08 大重构：器官从决策者降级为感知模块 ===
+        # 5 个非 mind 器官不再各自调 LLM 提案——此前每 tick 6+1 次 LLM 调用、
+        # tick 拖到 3-7 分钟，且 80 字摘要式"建议"稀释了模型智能，格式解析
+        # 失败还会掉进 fallback 链导致行为与模型脱钩。
+        # 器官现在产出计算型感知报告（零 LLM、即时），mind 在 PHASE 7.5
+        # 一次调用看到全部感知 + 全量上下文做单点深决策。
+        # 器官的 propose_actions（LLM 链路）保留但不在主路径调用，
+        # 单元测试与离线兜底仍可用。
+        perception_reports = []
+        for organ_name in expressed_organs:
+            if organ_name == "mind":
+                continue
             organ = self.organs.get(organ_name)
             if not organ or not organ.enabled:
-                return (organ_name, [], None)
-
+                continue
             try:
-                actions = organ.propose_actions(field_snapshot, context)
-                thought = None
-                if hasattr(organ, 'get_last_thought'):
-                    thought = organ.get_last_thought()
-                return (organ_name, actions, thought)
+                report = organ.perception_report(field_snapshot, context)
+                if report:
+                    perception_reports.append(f"[{organ_name}] {report}")
             except Exception as e:
-                logger.error(f"Organ {organ_name} error: {e}")
-                return (organ_name, [], None)
-
-        # 辅助函数：保存器官思考到记忆
-        def save_organ_thought(organ_name: str, thought):
-            if thought and self._organ_memory_writer:
-                self._save_organ_thought_to_memory(
-                    organ_name=organ_name,
-                    thought=thought,
-                    state=field_snapshot,
-                    context=context,
-                )
-            organ = self.organs.get(organ_name)
-            if organ and hasattr(organ, 'clear_last_thought'):
-                organ.clear_last_thought()
-
-        # 按价值驱动优先级排序器官
-        sorted_organs = sorted(
-            expressed_organs,
-            key=organ_priority_by_value,
-            reverse=True
-        )
-
-        if organ_parallel_mode == "serial":
-            # === 串行模式 ===
-            # 逐个处理，最稳定
-            for organ_name in sorted_organs:
-                organ_name, actions, thought = process_organ(organ_name)
-                proposed_actions.extend(actions)
-                save_organ_thought(organ_name, thought)
-
-        elif organ_parallel_mode == "parallel":
-            # === 全并行模式 ===
-            # 所有器官同时处理，最快
-            actions_lock = threading.Lock()
-
-            with ThreadPoolExecutor(max_workers=len(sorted_organs)) as executor:
-                futures = {executor.submit(process_organ, o): o for o in sorted_organs}
-                # 修复（2026-07）：给 as_completed 加超时，防止单个器官的 LLM 调用挂住
-                # 导致整个 PHASE 7 永久卡死。超时的器官跳过（返回空 actions）。
-                # 超时设 180 秒（单器官正常 10-20 秒，3 倍余量）。
-                ORGAN_TIMEOUT = 180
-                done_keys = set()
-                try:
-                    for future in as_completed(futures, timeout=ORGAN_TIMEOUT):
-                        done_keys.add(future)
-                        organ_name, actions, thought = future.result()
-                        with actions_lock:
-                            proposed_actions.extend(actions)
-                        save_organ_thought(organ_name, thought)
-                except TimeoutError:
-                    # 超时的 future 跳过（它们的器官会返回空 actions）
-                    timed_out = [futures[f] for f in futures if f not in done_keys]
-                    logger.warning(f"PHASE 7: 器官超时被跳过: {timed_out}")
-                    for f in futures:
-                        if f not in done_keys:
-                            f.cancel()
-
-        else:  # "mixed" (默认)
-            # === 混合并行模式 ===
-            # 按依赖关系分三组执行，组内并行，组间串行
-            ORGAN_GROUPS = [
-                ["scout", "builder", "archivist"],  # 组1: 观察存储
-                ["mind", "caretaker"],               # 组2: 思考维护
-                ["immune"],                          # 组3: 免疫检查
-            ]
-
-            actions_lock = threading.Lock()
-
-            for group_idx, organ_group in enumerate(ORGAN_GROUPS):
-                organs_to_process = [o for o in organ_group if o in expressed_organs]
-
-                if not organs_to_process:
-                    continue
-
-                if len(organs_to_process) == 1:
-                    organ_name, actions, thought = process_organ(organs_to_process[0])
-                    with actions_lock:
-                        proposed_actions.extend(actions)
-                    save_organ_thought(organ_name, thought)
-                else:
-                    with ThreadPoolExecutor(max_workers=len(organs_to_process)) as executor:
-                        futures = {executor.submit(process_organ, o): o for o in organs_to_process}
-                        ORGAN_TIMEOUT = 180
-                        done_keys = set()
-                        try:
-                            for future in as_completed(futures, timeout=ORGAN_TIMEOUT):
-                                done_keys.add(future)
-                                organ_name, actions, thought = future.result()
-                                with actions_lock:
-                                    proposed_actions.extend(actions)
-                                save_organ_thought(organ_name, thought)
-                        except TimeoutError:
-                            timed_out = [futures[f] for f in futures if f not in done_keys]
-                            logger.warning(f"PHASE 7 (mixed): 器官超时被跳过: {timed_out}")
-                            for f in futures:
-                                if f not in done_keys:
-                                    f.cancel()
+                logger.debug(f"器官 {organ_name} 感知报告失败: {e}")
+        # 身体资产感知（2026-08）：肢体使用统计——整理与否是它的决定，先让它看见
+        try:
+            if self.unified_organ_manager:
+                body = self.unified_organ_manager.limb_asset_stats()
+                if body:
+                    perception_reports.append(f"[body] {body}")
+        except Exception:
+            pass
+        if perception_reports:
+            context["organ_perception"] = perception_reports
+            logger.debug(f"[PHASE7] 器官感知: {' | '.join(perception_reports)[:200]}")
 
         # 阶段2.2（2026-07）：纳入成长系统生成的肢体（limb）和插件的动作提议。
         # 改造前：GROW 生成的肢体注册到 unified_organ_manager，但 PHASE 7 只读
@@ -2115,7 +2070,8 @@ class LifeLoop(GapDetectorMixin):
                 temperature=0.3, max_tokens=80
             )
             if result.get("ok") and result.get("text"):
-                summary = result["text"].strip()[:200]
+                from tools.cot_cleaner import clean_text
+                summary = clean_text(result["text"], max_len=200) or result["text"].strip()[:200]
         except Exception:
             pass
 
@@ -2218,23 +2174,41 @@ class LifeLoop(GapDetectorMixin):
 
         return None
 
+    def _ensure_memory_scheduler(self):
+        """惰性初始化记忆调度器（实验开关 GENESISX_MEMORY_SCHEDULER=1）。
+
+        读侧调度：多角度检索 + LLM 相关性裁决 + 近因/高显著保底。
+        默认关——A/B/C 不受影响，试验生命 D 开启。
+        """
+        if getattr(self, "_scheduler_inited", False):
+            return
+        self._scheduler_inited = True
+        self.memory_scheduler = None
+        import os as _os
+        if _os.environ.get("GENESISX_MEMORY_SCHEDULER", "0") == "1":
+            try:
+                from memory.scheduler import MemoryScheduler
+                self.memory_scheduler = MemoryScheduler(
+                    retrieval=self.retrieval,
+                    episodic=self.episodic,
+                    llm_client=getattr(self, "_global_llm_client", None),
+                )
+                logger.info("[SCHEDULER] 记忆调度器已启用（实验）")
+            except Exception as e:
+                logger.warning(f"[SCHEDULER] 初始化失败（忽略）: {e}")
+
     def _run_decision_center(self, proposed_actions, state_snapshot, context, observations, tick):
         """PHASE 7.5: mind 器官做最终决策。
 
-        其他 5 个器官各自思考完毕、产出了提议。mind 作为决策器官，
-        看到所有器官的建议后做最终裁决。
-
-        mind 跟其他器官一样有 LLM session，但它的 prompt 里多了
-        "其他器官的建议"——这让 mind 从全局视角决策，而不是只看自己的专业领域。
+        mind 看到：器官感知报告（PHASE 7 注入 context["organ_perception"]）、
+        可用肢体提议、社交消息、记忆、状态、否决记录。器官不再直接提案——
+        那会把这个模型的智能切成 6 次小上下文调用。
         """
-        if not proposed_actions:
-            return None
-
         mind = self.organs.get("mind")
         if not mind or not mind.enabled:
             return None
 
-        # 把其他器官的提议注入 context，让 mind 的 prompt 能看到
+        # 肢体提议（unified_organ_manager 贡献的动态能力）注入 context
         suggestions = []
         for a in proposed_actions[:10]:
             p = a.params or {}
@@ -2257,13 +2231,49 @@ class LifeLoop(GapDetectorMixin):
                 payload = getattr(obs, "payload", {}) if not isinstance(obs, dict) else obs.get("payload", {})
                 if obs_type == "world_news":
                     headlines = payload.get("headlines", [])
-                    if headlines:
-                        social_parts.append(f"新闻: {headlines[0][:200]}")
+                    for h in headlines[:2]:
+                        social_parts.append(f"新闻: {str(h)[:200]}")
                 elif obs_type in ("social_group", "social_private"):
                     msgs = payload.get("messages", [])
-                    for m in msgs[:2]:
+                    for m in msgs[:4]:
                         social_parts.append(f"{m.get('from', '?')}: {str(m.get('content', ''))[:200]}")
         context["social_feed"] = social_parts
+
+        # 社交新鲜度感知——"多久没互动了"是身体信号（孤独感），
+        # 器官提案制废除后这个信号一度失去通道，现在作为纯感知交还 mind
+        try:
+            if getattr(self, "social_system", None):
+                context["social_recency"] = self.social_system.social_recency_minutes()
+        except Exception:
+            pass
+
+        # 时间感知（2026-08）：模型的时间感停在训练截止日——给它真实时钟
+        try:
+            from common.time_sense import now_line, age_line
+            tp = now_line()
+            try:
+                eps = self.episodic.get_all() if hasattr(self.episodic, "get_all") else []
+                if eps:
+                    age = age_line(getattr(eps[0], "timestamp", None))
+                    if age:
+                        tp += f"；{age}"
+            except Exception:
+                pass
+            context["time_perception"] = tp
+        except Exception:
+            pass
+
+        # 记忆调度器（实验）：mind 决策前主动调度相关记忆。
+        # 多角度语义检索（零 LLM）+ LLM 相关性裁决 + 保底不删。
+        self._ensure_memory_scheduler()
+        if getattr(self, "memory_scheduler", None):
+            try:
+                scheduled = self.memory_scheduler.dispatch(context, tick)
+                if scheduled:
+                    context["scheduled_memories"] = [
+                        f"{digest}（{reason}）" for _, reason, digest in scheduled]
+            except Exception as e:
+                logger.debug(f"[SCHEDULER] 调度失败（非致命）: {e}")
 
         # 让 mind 重新思考（这次它能看到其他器官的建议）
         try:
@@ -2279,11 +2289,12 @@ class LifeLoop(GapDetectorMixin):
                         # 去掉常见 CoT 开头
                         import re as _re
                         val = _re.sub(r'^[\d.]+\s*', '', val)  # "1. " 开头
+                        val = _re.sub(r'^[#＃\s]+', '', val)  # markdown 标题残留（"### 思考过程"）
+                        val = _re.sub(r'(?<=[\u4e00-\u9fff])_|_(?=[\u4e00-\u9fff])', '', val)  # 下划线断裂（"做_的是"）
                         val = _re.sub(r'^(我现在最想|我还是|哦对|等下|首先|然后|所以|最终)[，。：\s]*', '', val)
                         val = val.strip("。.，,；;")
-                        # 清理后太短或仍残留动作标记才置空。
-                        # 宽松化（之前 "等下/哦对" 出现在正常句子里也会整段置空，误杀正文）
-                        if len(val) < 3 or "【动作" in val:
+                        # 清理后太短、仍残留动作标记、或是通用标题词，视为无效
+                        if len(val) < 3 or "【动作" in val or val in ("思考过程", "我的思考", "思考", "分析过程"):
                             val = ""
                         p[key] = val[:400]
                 # SOCIALIZE 如果 content 为空，让 mind 用 agentic loop 生成
@@ -2327,7 +2338,13 @@ class LifeLoop(GapDetectorMixin):
                 params = getattr(action, "params", {}) or {}
                 topic = params.get("topic", goal_desc)
                 depth = params.get("depth", "shallow")
-                self.organs["scout"].record_exploration_outcome(t, topic, depth, success)
+                # 探索成果回流：把实际发现（EXPLORE 消化出的学习总结，
+                # 已过 CoT 清理）交给 scout 做兴趣种子——好奇心从数字变对象
+                raw_finding = ""
+                if isinstance(outcome, dict):
+                    raw_finding = str(outcome.get("status") or outcome.get("response") or "")
+                self.organs["scout"].record_exploration_outcome(
+                    t, topic, depth, success, finding=raw_finding or None)
 
             # 5. Builder: 记录工作 session（构建/优化/工具类动作）
             if action_type in ("GROW", "OPTIMIZE", "USE_TOOL"):

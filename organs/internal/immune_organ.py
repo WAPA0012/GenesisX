@@ -148,6 +148,19 @@ class ImmuneOrgan(BaseOrgan):
         """清除最后的思考"""
         self._last_thought = None
 
+    def perception_report(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
+        """免疫感知：安全模式/警戒/威胁计数（零 LLM）。"""
+        try:
+            st = self.get_immune_status() or {}
+        except Exception:
+            st = {}
+        parts = [
+            f"安全模式 {st.get('safety_mode', '?')}，警戒 {st.get('alert_level', '?')}",
+            f"威胁 {st.get('threat_count', 0)} 起 / 近期事件 {st.get('recent_incidents', 0)} 次",
+            f"压力 {state.get('stress', 0.0):.2f}",
+        ]
+        return "；".join(parts)
+
     def _build_thinking_prompt(self, state: Dict[str, Any], context: Dict[str, Any]) -> str:
         """构建安全思考提示（P0-1 修复：注入驱动力 + 追加结构化输出格式）"""
         stress = state.get("stress", 0.0)

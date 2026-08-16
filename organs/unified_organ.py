@@ -447,6 +447,8 @@ class UnifiedOrganManager:
     def __init__(self):
         self._organs: Dict[str, UnifiedOrgan] = {}
         self._capability_index: Dict[str, str] = {}  # capability -> organ_name
+        # 肢体使用统计（2026-08）：自我整理的前提是看见自己身体的使用状况
+        self._limb_usage: Dict[str, Dict] = {}
 
     # ==================== 添加器官 ====================
 
@@ -465,6 +467,7 @@ class UnifiedOrganManager:
         if organ.name in self._organs:
             logger.warning(f"器官 {organ.name} 已存在")
             return False
+        organ.source = OrganSource.LIMB
         self._register_organ(organ)
         logger.info(f"添加肢体: {organ.name}")
         return True
@@ -545,7 +548,37 @@ class UnifiedOrganManager:
                 success=False,
                 error=f"No organ provides capability: {capability}"
             )
+        # 肢体使用统计（2026-08）：记录调用与成败——身体资产的原始数据
+        if getattr(organ, "source", None) == OrganSource.LIMB:
+            u = self._limb_usage.setdefault(organ.name, {"calls": 0, "ok": 0})
+            u["calls"] += 1
+            result = organ.execute_capability(capability, **kwargs)
+            if getattr(result, "success", False):
+                u["ok"] += 1
+            return result
         return organ.execute_capability(capability, **kwargs)
+
+    def limb_asset_stats(self) -> str:
+        """身体资产感知：肢体总量/使用状况一行报告（零 LLM）。
+
+        让生命看见自己的身体——合并/淘汰/重建是它的决定，
+        但前提是它知道哪些肢体在用、哪些在吃灰。
+        """
+        limbs = [o for o in self._organs.values()
+                 if getattr(o, "source", None) == OrganSource.LIMB]
+        total = len(limbs)
+        if total == 0:
+            return ""
+        used = sum(1 for o in limbs if self._limb_usage.get(o.name, {}).get("calls", 0) > 0)
+        never = total - used
+        top = sorted(self._limb_usage.items(), key=lambda kv: -kv[1]["calls"])[:3]
+        top_s = "、".join(f"{n[:20]}({v['calls']}次)" for n, v in top if v["calls"] > 0)
+        parts = [f"肢体 {total} 个，用过 {used} 个，从未用过 {never} 个"]
+        if top_s:
+            parts.append(f"最常用: {top_s}")
+        if never > total * 0.6:
+            parts.append("大量肢体从未使用——是否整理（合并/删除/重建）由你自己决定，你用 execute_code/write_file 就能动手")
+        return "；".join(parts)
 
     def propose_all_actions(
         self,

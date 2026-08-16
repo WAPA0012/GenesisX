@@ -22,7 +22,9 @@ from common.logger import get_logger
 
 logger = get_logger(__name__)
 
-SHARED_DIR = Path("/home/genesisx/shared")
+# 沙箱覆盖：试验生命（如 D）通过 GENESISX_SHARED_DIR 指向隔离副本，
+# 避免实验行为污染主消息板；A/B/C 默认不受影响。
+SHARED_DIR = Path(os.environ.get("GENESISX_SHARED_DIR", "/home/genesisx/shared"))
 
 
 class SocialSystem:
@@ -151,6 +153,30 @@ class SocialSystem:
         """
         self._ensure_dirs()
 
+        # 重复抑制（2026-08）：30 分钟内同内容重复发送直接跳过——
+        # 之前出现过连发两条一模一样的消息（生成路径的偶发重复）
+        try:
+            if ch_file.exists():
+                recent = [l for l in ch_file.read_text(encoding="utf-8").splitlines() if l.strip()][-5:]
+                cutoff = datetime.now(timezone.utc).timestamp() - 30 * 60
+                for l in reversed(recent):
+                    try:
+                        prev = json.loads(l)
+                    except Exception:
+                        continue
+                    if prev.get("from") != self.self_id or prev.get("content") != content[:500]:
+                        continue
+                    pts = prev.get("timestamp")
+                    try:
+                        pt = datetime.fromisoformat(str(pts).replace("Z", "+00:00")).timestamp() if pts else 0
+                    except Exception:
+                        pt = 0
+                    if pt >= cutoff:
+                        logger.info(f"[SOCIAL] 重复消息已抑制（30分钟内相同内容）: {content[:40]}")
+                        return True
+        except Exception:
+            pass
+
         # 确定频道文件
         if to == "group":
             ch_name = "group"
@@ -201,6 +227,48 @@ class SocialSystem:
             )
         except Exception as e:
             logger.debug(f"[SOCIAL] 更新 profile 失败: {e}")
+
+    def social_recency_minutes(self) -> Dict[str, Any]:
+        """社交新鲜度感知（2026-08）：孤独感是身体信号，不是规则。
+
+        器官提案制废除后，社交发起完全依赖 mind 从上下文自主判断——
+        但"多久没互动了"这个信号原本藏在器官的社交冲动提案里，一并消失了。
+        此方法把它作为纯感知数据交还：群聊最后一条消息距今几分钟、
+        自己最后发言距今几分钟。怎么用（回不回、发不发）由 mind 决定。
+        """
+        import time as _time
+
+        result: Dict[str, Any] = {
+            "board_last_minutes": None,
+            "board_last_from": None,
+            "my_last_minutes": None,
+        }
+        ch = self.shared_dir / "channels" / "group.jsonl"
+        try:
+            lines = [l for l in ch.read_text(encoding="utf-8").splitlines() if l.strip()]
+        except FileNotFoundError:
+            return result
+        now = _time.time()
+        for l in reversed(lines):
+            try:
+                d = json.loads(l)
+            except Exception:
+                continue
+            ts = d.get("timestamp")
+            try:
+                t = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp() if ts else None
+            except Exception:
+                t = None
+            if not t:
+                continue
+            if result["board_last_minutes"] is None:
+                result["board_last_minutes"] = max(0, int((now - t) / 60))
+                result["board_last_from"] = d.get("from")
+            if d.get("from") == self.self_id and result["my_last_minutes"] is None:
+                result["my_last_minutes"] = max(0, int((now - t) / 60))
+            if result["board_last_minutes"] is not None and result["my_last_minutes"] is not None:
+                break
+        return result
 
     def has_social_content(self) -> bool:
         """快速检查是否有新的社交内容（用于决定是否注入 observation）。"""
