@@ -512,11 +512,17 @@ class LLMToolExecutor:
         部署到公网或多用户场景时应设 GENESISX_ALLOW_FULL_ACCESS=0。
         """
         import os as _os
-        allow_full = _os.environ.get("GENESISX_ALLOW_FULL_ACCESS", "1").lower() not in ("0", "false", "no")
+        # 沙箱转正（2026-08）：默认子进程隔离。生命生成的代码不该和宿主同生
+        # 共死——死循环/失控代码只应烧掉自己的配额。FULL_ACCESS（含 genesis_self）
+        # 改为显式 opt-in（GENESISX_ALLOW_FULL_ACCESS=1）。
+        allow_full = _os.environ.get("GENESISX_ALLOW_FULL_ACCESS", "0").lower() in ("1", "true", "yes")
 
-        if self.safe_mode or not allow_full:
-            # 安全模式或 env flag 关闭 FULL_ACCESS → 受限执行
+        if self.safe_mode:
+            # 安全模式 → 关键字黑名单沙箱（最严格）
             return self._execute_code_sandboxed(code)
+
+        if not allow_full:
+            return self._execute_code_isolated(code)
 
         # FULL_ACCESS 模式 - 完全访问
         try:
@@ -556,6 +562,42 @@ class LLMToolExecutor:
             return "错误: 代码执行超时"
         except Exception as e:
             return f"错误: {str(e)}"
+
+    def _execute_code_isolated(self, code: str) -> str:
+        """子进程隔离执行（2026-08 沙箱转正）：独立进程 + 30s 超时 + 逃逸向量黑名单。
+
+        允许文件读写（生命管理自己的 artifacts/limbs 是合法的身体管理），
+        拦截进程逃逸与网络出站（subprocess/os.system/socket/eval/exec/__import__
+        /urllib/requests——联网需求走 web_search 工具）。
+        """
+        import os as _os
+        import subprocess as _sp
+        import tempfile as _tf
+
+        for banned in ("subprocess", "os.system", "os.popen", "socket", "eval(",
+                       "exec(", "__import__", "urllib", "requests"):
+            if banned in code:
+                return f"[沙箱拦截] 代码包含受限调用: {banned}（联网请用 web_search 工具，进程操作不允许）"
+
+        with _tf.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
+            f.write(code)
+            path = f.name
+        try:
+            r = _sp.run([_os.sys.executable, path], capture_output=True, text=True,
+                        timeout=30, cwd=_os.getcwd())
+            out = (r.stdout or "")[-2000:]
+            err = (r.stderr or "")[-400:]
+            result = out + (f"\n[stderr] {err}" if err else "")
+            return result.strip() or "[无输出]"
+        except _sp.TimeoutExpired:
+            return "[沙箱] 执行超时（30 秒），已终止——死循环或任务过重"
+        except Exception as e:
+            return f"[沙箱] 执行失败: {e}"
+        finally:
+            try:
+                _os.remove(path)
+            except Exception:
+                pass
 
     def _execute_code_sandboxed(self, code: str) -> str:
         """安全模式下的受限代码执行"""

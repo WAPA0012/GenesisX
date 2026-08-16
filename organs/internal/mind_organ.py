@@ -245,6 +245,9 @@ class MindOrgan(BaseOrgan):
 请直接告诉我你的思考（自然语言即可）。"""
         # P0-1 修复：追加结构化动作决策格式要求
         prompt += self._format_structured_output_prompt_suffix()
+        # 轨迹留痕（2026-08）：保存本次构建的完整提示词供决策中心落盘——
+        # "它当时看到了什么"是调试一切行为问题的第一手证据
+        self._last_built_prompt = prompt
         return prompt
 
     def _format_gaps(self, gaps: Dict[str, float]) -> str:

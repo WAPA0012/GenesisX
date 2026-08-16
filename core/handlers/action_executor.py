@@ -849,6 +849,22 @@ class ActionExecutor:
             unified_mgr = getattr(self.life_loop, 'unified_organ_manager', None)
             if unified_mgr and unified_mgr.has_capability(tool_id):
                 return self._execute_via_unified_organ(action, tool_id, start_time, unified_mgr)
+            # 注册表最小统一（2026-08）：再回退动态注册表（CHAT agentic 路径
+            # 注册的工具/技能包装——此前 USE_TOOL 路径看不到它们）
+            dyn = getattr(self.life_loop, 'dynamic_tool_registry', None)
+            if dyn is not None:
+                try:
+                    dyn_spec = dyn.get(tool_id) if hasattr(dyn, "get") else None
+                except Exception:
+                    dyn_spec = None
+                if dyn_spec is not None:
+                    try:
+                        result = dyn.execute(tool_id, dict(action.params or {}))
+                        return {"success": True, "ok": True, "response": str(result)[:2000],
+                                "cost": CostVector(cpu_tokens=100)}
+                    except Exception as e:
+                        return {"success": False, "ok": False, "error": f"动态工具执行失败: {e}",
+                                "cost": CostVector(cpu_tokens=50)}
             logger.warning(f"Unknown tool: {tool_id}")
             self._log_tool_call(action, {"success": False, "error": "unknown_tool"}, CostVector())
             return {"success": False, "cost": CostVector(), "reason": f"unknown_tool: {tool_id}"}

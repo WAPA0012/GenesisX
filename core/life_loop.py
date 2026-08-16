@@ -1106,6 +1106,20 @@ class LifeLoop(GapDetectorMixin):
 
             # 执行检索
             retrieved_episodes = []
+            # 自主 tick 语义种子（2026-08）：无用户消息时用当 tick 最强语境信号
+            # （新闻标题/社交消息）做检索查询——此前自主决策的记忆召回完全靠 tag
+            if not user_message:
+                for obs in observations:
+                    pl = getattr(obs, "payload", None) or {}
+                    if isinstance(pl, dict):
+                        if obs.type == "world_news" and pl.get("headlines"):
+                            user_message = str(pl["headlines"][0])[:80]
+                            break
+                        if obs.type in ("social_group", "social_private"):
+                            msgs = pl.get("messages") or []
+                            if msgs:
+                                user_message = str(msgs[0].get("content", ""))[:80]
+                                break
             if retrieval_tags:
                 retrieved_episodes = self.retrieval.retrieve_episodes(
                     query_tags=retrieval_tags,
@@ -1283,6 +1297,24 @@ class LifeLoop(GapDetectorMixin):
         )
         # 主目标（最高优先级）
         goal = multi_goals[0] if multi_goals else self.goal_compiler._create_idle_goal()
+        # 目标落地（2026-08 修复）：目标不再是永恒的模板句——把当前真实落点
+        # （进行中任务优先，其次知识前沿最新方向）写进描述。goal_type 不动，
+        # 进度计算照旧。
+        try:
+            focus = ""
+            if self._working_memory and self._working_memory.get("status") == "active":
+                focus = str(self._working_memory.get("task", ""))[:60]
+            if not focus:
+                scout = self.organs.get("scout")
+                if scout and hasattr(scout, "knowledge_frontier"):
+                    items = [scout._clean_interest_text(f) for f in reversed(list(scout.knowledge_frontier))]
+                    items = [i for i in items if i]
+                    if items:
+                        focus = items[0][:60]
+            if focus:
+                goal.description = f"{goal.description} —— 当前落点：{focus}"
+        except Exception:
+            pass
         self.slots.set("current_goal", goal)
         self.slots.set("active_goals", multi_goals)  # 存储所有活跃目标
         # Convert goal to string for JSON serialization
@@ -1591,6 +1623,26 @@ class LifeLoop(GapDetectorMixin):
                     f"你上次选的 {selected_action.type.value} 风险评分过高（{risk_score:.2f}），被安全评估否决",
                 )
                 selected_action = Action(type=ActionType.REFLECT, params={"purpose": "risk_avoidance"})
+
+        # 9c+. 免疫器官否决（2026-08 接线：veto 能力首次接入执行链，且可见化）
+        try:
+            immune = self.organs.get("immune")
+            if immune and immune.enabled and hasattr(immune, "veto_risky_action"):
+                veto_state = {
+                    "stress": self.fields.get("stress"),
+                    "energy": self.fields.get("energy"),
+                    "tick": self.state.tick,
+                }
+                if immune.veto_risky_action(selected_action, veto_state):
+                    logger.warning("Action vetoed by immune organ")
+                    self._last_veto_note = (
+                        self.state.tick,
+                        f"你上次选的 {selected_action.type.value} 被免疫器官否决"
+                        f"（安全模式 {getattr(immune, 'current_safety_mode', '?')}），系统改为反思",
+                    )
+                    selected_action = Action(type=ActionType.REFLECT, params={"purpose": "immune_veto"})
+        except Exception as e:
+            logger.debug(f"immune veto 检查失败（非致命）: {e}")
 
         # 9d. 预算检查 (修复 H8: check_budget 从未调用)
         if selected_action.type not in (ActionType.SLEEP, ActionType.REFLECT):
@@ -2302,6 +2354,28 @@ class LifeLoop(GapDetectorMixin):
                     p["content"] = ""  # _execute_socialize 会处理空 content
                 desc = p.get("topic") or p.get("task") or p.get("skill") or p.get("thought") or p.get("content") or ""
                 logger.info(f"[MIND] 决策: {final.type} | {str(desc)[:50]}")
+
+                # 轨迹留痕（2026-08）：mind 每次决策的完整上下文与产出落盘
+                try:
+                    import json as _json
+                    import time as _time
+                    from pathlib import Path as _P
+                    traj_file = _P("artifacts") / "trajectory.jsonl"
+                    if traj_file.exists() and traj_file.stat().st_size > 100 * 1024 * 1024:
+                        traj_file.rename(traj_file.with_suffix(".jsonl.old"))
+                    prompt_txt = getattr(mind, "_last_built_prompt", "") or ""
+                    thought_txt = mind.get_last_thought() if hasattr(mind, "get_last_thought") else ""
+                    with traj_file.open("a", encoding="utf-8") as tf:
+                        tf.write(_json.dumps({
+                            "tick": tick,
+                            "ts": _time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "prompt": prompt_txt[:8000],
+                            "thought": str(thought_txt)[:3000],
+                            "action": final.type.value,
+                            "params": {k: str(v)[:100] for k, v in (final.params or {}).items()},
+                        }, ensure_ascii=False) + "\n")
+                except Exception as e:
+                    logger.debug(f"轨迹留痕失败（非致命）: {e}")
                 return final
         except Exception as e:
             logger.warning(f"mind 决策失败: {e}")
