@@ -255,6 +255,10 @@ class LLMToolExecutor:
             "read_own_logs": "read_own_logs",
             "get_recent_errors": "get_recent_errors",
             "system_stats": "system_stats",
+            "refresh_limbs": "refresh_limbs",
+            "system_manage": "system_manage",
+            "memory_recall": "memory_recall",
+            "memory_grep": "memory_grep",
         }
 
         function_name = tool_mapping.get(tool_id, tool_id)
@@ -340,6 +344,21 @@ class LLMToolExecutor:
 
         elif function_name == "execute_code":
             return self._execute_code(arguments.get("code", ""))
+
+        elif function_name == "refresh_limbs":
+            return self._refresh_limbs()
+
+        elif function_name == "system_manage":
+            return self._system_manage(
+                action=str(arguments.get("action", "gc")),
+                name=str(arguments.get("name", "")),
+            )
+
+        elif function_name == "memory_recall":
+            return self._memory_recall(str(arguments.get("query", "")))
+
+        elif function_name == "memory_grep":
+            return self._memory_grep(str(arguments.get("pattern", "")))
 
         # P4-31 修复：self_perception 工具接入（原注册未分发，LLM 选了静默失败）
         elif function_name in ("read_own_logs", "get_recent_errors"):
@@ -562,6 +581,116 @@ class LLMToolExecutor:
             return "错误: 代码执行超时"
         except Exception as e:
             return f"错误: {str(e)}"
+
+    def _system_manage(self, action: str = "gc", name: str = "", **kwargs) -> str:
+        """真实资源管理（2026-08 身体现实化）：它优化的是真的资源。
+
+        gc / trim_cache / suspend_limb(name) / resume_limbs
+        """
+        ll = getattr(self, "life_loop", None)
+        if action == "gc":
+            import gc as _gc
+            collected = _gc.collect()
+            return f"gc 完成：回收 {collected} 个对象（真实内存释放）"
+        if action == "trim_cache" and ll is not None:
+            try:
+                old = ll.episodic.max_cache_size
+                ll.episodic.max_cache_size = max(1000, old // 2)
+                freed = 0
+                while len(ll.episodic._cache) > ll.episodic.max_cache_size:
+                    ll.episodic._evict_oldest()
+                    freed += 1
+                return (f"记忆缓存瘦身：上限 {old}→{ll.episodic.max_cache_size}，"
+                        f"逐出 {freed} 条（磁盘记忆完整保留，需要时重新加载）")
+            except Exception as e:
+                return f"trim_cache 失败: {e}"
+        if action == "suspend_limb" and ll is not None:
+            mgr = getattr(ll, "unified_organ_manager", None)
+            if mgr is not None and name:
+                if not hasattr(mgr, "_suspended_limbs"):
+                    mgr._suspended_limbs = set()
+                mgr._suspended_limbs.add(name)
+                mgr.remove_organ(name)
+                return f"肢体 '{name}' 已挂起（文件保留，resume_limbs 可恢复）"
+            return "需要 name 参数指定要挂起的肢体"
+        if action == "resume_limbs" and ll is not None:
+            mgr = getattr(ll, "unified_organ_manager", None)
+            if mgr is not None and getattr(mgr, "_suspended_limbs", None):
+                n = len(mgr._suspended_limbs)
+                mgr._suspended_limbs.clear()
+                ll._rescan_limbs()
+                return f"恢复 {n} 个挂起肢体"
+            return "当前无挂起肢体"
+        return f"未知操作: {action}（可选 gc / trim_cache / suspend_limb / resume_limbs）"
+
+    def _memory_recall(self, query: str) -> str:
+        """主动回忆：语义搜索记忆（外部服务优先，本地回退）。"""
+        if not query:
+            return "需要 query 参数"
+        # 外部记忆服务优先
+        ext = getattr(getattr(self, "life_loop", None), "_ext_memory", None)
+        if ext:
+            rows = ext.recall(query, top_k=5)
+            if rows:
+                return "\n".join(f"- {r['summary']}" for r in rows)
+            rows = ext.grep(query, top_k=5)
+            if rows:
+                return "\n".join(f"- {r['summary']}" for r in rows)
+        # 本地回退
+        ll = getattr(self, "life_loop", None)
+        if ll and hasattr(ll, "retrieval"):
+            try:
+                eps = ll.retrieval.retrieve_by_semantic_similarity(
+                    query, current_tick=ll.state.tick, limit=5, min_similarity=0.1)
+                if eps:
+                    return "\n".join(
+                        f"- t{e.tick} {e.action.type.value if e.action else '?'}: "
+                        f"{str(e.outcome.status or '')[:80] if e.outcome else ''}"
+                        for e in eps)
+            except Exception:
+                pass
+        return f"没有找到与 '{query}' 相关的记忆"
+
+    def _memory_grep(self, pattern: str) -> str:
+        """精确文本搜索记忆。"""
+        if not pattern:
+            return "需要 pattern 参数"
+        ext = getattr(getattr(self, "life_loop", None), "_ext_memory", None)
+        if ext:
+            rows = ext.grep(pattern, top_k=8)
+            if rows:
+                return "\n".join(f"- {r['summary']}" for r in rows)
+        # 本地回退：遍历最近记忆做子串匹配
+        ll = getattr(self, "life_loop", None)
+        if ll and hasattr(ll, "episodic"):
+            try:
+                matches = []
+                for ep in ll.episodic.query_recent(100):
+                    st = str(ep.outcome.status or "") if ep.outcome else ""
+                    if pattern.lower() in st.lower():
+                        matches.append(f"- t{ep.tick} {st[:80]}")
+                    if len(matches) >= 5:
+                        break
+                if matches:
+                    return "\n".join(matches)
+            except Exception:
+                pass
+        return f"没有精确匹配 '{pattern}' 的记忆"
+
+    def _refresh_limbs(self, **kwargs) -> str:
+        """重扫 artifacts/limbs/ 使整理（删除/合并）后的身体状态立即生效。
+
+        生命的闭环：盘点(list_directory/read_file) → 动手整理(execute_code/
+        write_file) → refresh_limbs 立即生效——不必等重启。
+        """
+        ll = getattr(self, "life_loop", None)
+        if ll is None or not hasattr(ll, "_rescan_limbs"):
+            return "[refresh_limbs] 当前执行器未绑定生命循环，不可用"
+        try:
+            n = ll._rescan_limbs()
+            return f"肢体注册表已刷新：当前装载 {n} 个肢体"
+        except Exception as e:
+            return f"[refresh_limbs] 刷新失败: {e}"
 
     def _execute_code_isolated(self, code: str) -> str:
         """子进程隔离执行（2026-08 沙箱转正）：独立进程 + 30s 超时 + 逃逸向量黑名单。

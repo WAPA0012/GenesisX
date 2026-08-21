@@ -268,6 +268,15 @@ class LifeLoop(GapDetectorMixin):
         self.retrieval = MemoryRetrieval(self.episodic, self.schema, self.skill)
         self.consolidator = DreamConsolidator(self.episodic, self.schema, self.skill)
         self._restore_tick_from_history()
+
+        # 内在生命线程（2026-08 不连续性修复）：联想网络后台持续运转
+        try:
+            from common.inner_life import InnerLifeThread
+            self._inner_life = InnerLifeThread(self, interval_s=30.0)
+            self._inner_life.start()
+        except Exception as e:
+            logger.debug(f"内在生命线程启动失败（非致命）: {e}")
+            self._inner_life = None
         self._restore_chat_history()
 
     def _init_cognition(self):
@@ -384,6 +393,8 @@ class LifeLoop(GapDetectorMixin):
                 import os as _os
                 safe_mode = _os.environ.get("GENESISX_SAFE_MODE", "0").lower() in ("1", "true", "yes")
                 self.tool_executor = LLMToolExecutor(safe_mode=safe_mode)
+                # 反向引用：refresh_limbs 等需要触达生命循环的工具用它
+                self.tool_executor.life_loop = self
                 logger.info(f"LLMToolExecutor 已初始化 (safe_mode={safe_mode})")
             except Exception as te:
                 logger.warning(f"LLMToolExecutor 初始化失败: {te}")
@@ -640,29 +651,10 @@ class LifeLoop(GapDetectorMixin):
                 logger.debug("[GROWTH] 事后注入 llm_client 到 limb_generator")
         # 肢体重启恢复（2026-08）：artifacts/limbs/ 下的已生成肢体重新装载注册。
         # 此前重启即失忆——生成的工具沦为磁盘死文件（load_limb 零调用方）。
+        # 逻辑提取为 _rescan_limbs()，refresh_limbs 工具复用同一入口。
         try:
             if self.unified_organ_manager and self.growth_manager:
-                from pathlib import Path as _P
-                limbs_dir = _P("artifacts/limbs")
-                restored = 0
-                if limbs_dir.exists():
-                    for code_file in sorted(limbs_dir.glob("*/__init__.py")):
-                        try:
-                            import json as _json
-                            meta_f = code_file.parent / "metadata.json"
-                            meta = _json.loads(meta_f.read_text(encoding="utf-8")) if meta_f.exists() else {}
-                            from organs import Limb as _Limb, OrganType as _OT
-                            self.unified_organ_manager.add_limb(_Limb(
-                                name=meta.get("name") or code_file.parent.name,
-                                code=code_file.read_text(encoding="utf-8"),
-                                capabilities=meta.get("capabilities", []) or [],
-                                description=meta.get("description", ""),
-                                generation_prompt="restored_from_disk",
-                                organ_type=_OT.INTERNAL,
-                            ))
-                            restored += 1
-                        except Exception as _e:
-                            logger.debug(f"肢体恢复失败 {code_file.parent.name}: {_e}")
+                restored = self._rescan_limbs()
                 if restored:
                     logger.info(f"[GROWTH] 重启恢复 {restored} 个已生成肢体")
         except Exception as e:
@@ -671,6 +663,98 @@ class LifeLoop(GapDetectorMixin):
         self.growth_enabled = growth_config.get("enabled", True)
         if self.growth_enabled:
             logger.info("GrowthManager enabled")
+
+    def _compress_trajectory_goal(self, tick: int) -> Optional[str]:
+        """轨迹目标压缩（2026-08 残余布景修复）：每 20 tick 用 LLM 从近期
+        经历压缩出个性化方向语句。缓存中间结果，失败回退 None。
+
+        这是目标系统从"模板选一个"到"我是谁、我在往哪走"的最后一步。
+        """
+        cache = getattr(self, "_traj_goal_cache", None)
+        cache_tick = getattr(self, "_traj_goal_tick", -999)
+        if cache is not None and tick - cache_tick < 20:
+            return cache
+
+        # 取近期经历摘要（最近 15 条 episode outcome）
+        try:
+            eps = self.episodic.query_recent(15)
+            summaries = []
+            for ep in eps:
+                st = str(ep.outcome.status or "")[:60] if ep.outcome else ""
+                act = ep.action.type.value if ep.action else "?"
+                if st:
+                    summaries.append(f"  {act}: {st}")
+            if len(summaries) < 5:
+                return None
+            trajectory = "\n".join(summaries[-12:])
+        except Exception:
+            return None
+
+        # LLM 压缩
+        prompt = (
+            f"一个数字生命最近 12 条经历如下：\n{trajectory}\n\n"
+            f"请用一句中文（不超过 40 字）概括它当前的人生方向——不是它应该做什么，"
+            f"而是从这些经历看，它正在朝什么方向走。直接输出概括，不要解释。"
+        )
+        try:
+            from tools.llm_client import LLMClient
+            from tools.cot_cleaner import clean_text
+            client = getattr(self, '_global_llm_client', None) or LLMClient()
+            result = client.chat(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3, max_tokens=80,
+            )
+            if result.get("ok") and result.get("text"):
+                goal_text = clean_text(result["text"], max_len=80)
+                if goal_text and len(goal_text) >= 6:
+                    self._traj_goal_cache = goal_text
+                    self._traj_goal_tick = tick
+                    return goal_text
+        except Exception:
+            pass
+        return None
+
+    def _rescan_limbs(self) -> int:
+        """重扫 artifacts/limbs/ 并重建肢体注册表。
+
+        启动恢复与 refresh_limbs 工具共用：生命整理完自己的肢体
+        （execute_code 删除/write_file 合并）后调用即可立即生效，
+        不必等重启。
+        """
+        from pathlib import Path as _P
+        removed = 0
+        try:
+            if self.unified_organ_manager:
+                removed = self.unified_organ_manager.remove_all_limbs()
+        except Exception:
+            pass
+        restored = 0
+        limbs_dir = _P("artifacts/limbs")
+        if limbs_dir.exists():
+            _suspended = getattr(self.unified_organ_manager, "_suspended_limbs", set()) \
+                if self.unified_organ_manager else set()
+            for code_file in sorted(limbs_dir.glob("*/__init__.py")):
+                try:
+                    if code_file.parent.name in _suspended:
+                        continue  # 生命主动挂起的肢体不装载（system_manage 可恢复）
+                    import json as _json
+                    meta_f = code_file.parent / "metadata.json"
+                    meta = _json.loads(meta_f.read_text(encoding="utf-8")) if meta_f.exists() else {}
+                    from organs import Limb as _Limb, OrganType as _OT
+                    self.unified_organ_manager.add_limb(_Limb(
+                        name=meta.get("name") or code_file.parent.name,
+                        code=code_file.read_text(encoding="utf-8"),
+                        capabilities=meta.get("capabilities", []) or [],
+                        description=meta.get("description", ""),
+                        generation_prompt="restored_from_disk",
+                        organ_type=_OT.INTERNAL,
+                    ))
+                    restored += 1
+                except Exception as _e:
+                    logger.debug(f"肢体装载失败 {code_file.parent.name}: {_e}")
+        if removed or restored:
+            logger.info(f"[LIMBS] 重扫描: 清除 {removed} 个旧注册, 装载 {restored} 个")
+        return restored
 
     def _init_social_system(self):
         """初始化社交系统。
@@ -1265,6 +1349,14 @@ class LifeLoop(GapDetectorMixin):
             logger.debug(f"读取 axiology_config weight_bias 失败，降级全 1.0: {_e}")
             biases = {dim: 1.0 for dim in ValueDimension}
 
+        # 价值学习 v2（实验，D）：应用性格漂移——持续带来真实效用的维度
+        # 话语权上升。漂移量由 PHASE 14 按维度效用 EMA 更新并持久化。
+        import os as _os_vl
+        if _os_vl.environ.get("GENESISX_VALUE_LEARNING_V2", "0") == "1":
+            for dim in biases:
+                drift = (self.state.bias_drift or {}).get(dim.value, 0.0)
+                biases[dim] = max(0.1, biases[dim] + drift)
+
         # 论文 Section 3.6.4: 使用 WeightUpdater 实现软优先级覆盖
         # 修复：直接使用枚举键，避免不必要的字符串转换
         # WeightUpdater.update_weights现在支持枚举键输入并返回字符串键
@@ -1297,24 +1389,35 @@ class LifeLoop(GapDetectorMixin):
         )
         # 主目标（最高优先级）
         goal = multi_goals[0] if multi_goals else self.goal_compiler._create_idle_goal()
-        # 目标落地（2026-08 修复）：目标不再是永恒的模板句——把当前真实落点
-        # （进行中任务优先，其次知识前沿最新方向）写进描述。goal_type 不动，
-        # 进度计算照旧。
-        try:
-            focus = ""
-            if self._working_memory and self._working_memory.get("status") == "active":
-                focus = str(self._working_memory.get("task", ""))[:60]
-            if not focus:
-                scout = self.organs.get("scout")
-                if scout and hasattr(scout, "knowledge_frontier"):
-                    items = [scout._clean_interest_text(f) for f in reversed(list(scout.knowledge_frontier))]
-                    items = [i for i in items if i]
-                    if items:
-                        focus = items[0][:60]
-            if focus:
-                goal.description = f"{goal.description} —— 当前落点：{focus}"
-        except Exception:
-            pass
+
+        # 目标轨迹压缩（2026-08 残余布景修复，D 实验）：每 20 tick 用 LLM
+        # 从近期经历压缩出个性化方向——不是模板选一个，而是它自己的轨迹说了算。
+        import os as _os_goal
+        if _os_goal.environ.get("GENESISX_TRAJECTORY_GOAL", "0") == "1":
+            try:
+                traj_goal = self._compress_trajectory_goal(t)
+                if traj_goal:
+                    goal.description = traj_goal
+                    logger.info(f"[TRAJ-GOAL] t{t}: {traj_goal[:80]}")
+            except Exception as e:
+                logger.debug(f"轨迹目标压缩失败（回退模板）: {e}")
+        else:
+            # 原有"目标落地"路径：追加当前落点后缀
+            try:
+                focus = ""
+                if self._working_memory and self._working_memory.get("status") == "active":
+                    focus = str(self._working_memory.get("task", ""))[:60]
+                if not focus:
+                    scout = self.organs.get("scout")
+                    if scout and hasattr(scout, "knowledge_frontier"):
+                        items = [scout._clean_interest_text(f) for f in reversed(list(scout.knowledge_frontier))]
+                        items = [i for i in items if i]
+                        if items:
+                            focus = items[0][:60]
+                if focus:
+                    goal.description = f"{goal.description} —— 当前落点：{focus}"
+            except Exception:
+                pass
         self.slots.set("current_goal", goal)
         self.slots.set("active_goals", multi_goals)  # 存储所有活跃目标
         # Convert goal to string for JSON serialization
@@ -1421,6 +1524,41 @@ class LifeLoop(GapDetectorMixin):
                 body = self.unified_organ_manager.limb_asset_stats()
                 if body:
                     perception_reports.append(f"[body] {body}")
+        except Exception:
+            pass
+        # 真实身体感知（2026-08 身体现实化）：内存/CPU/磁盘——它的身体就是机器
+        try:
+            from common.somatic import body_report
+            br = body_report(getattr(self, "_somatic", None))
+            if br:
+                perception_reports.append(f"[soma] {br}")
+        except Exception:
+            pass
+
+        # 闯入式想法（2026-08 不连续性修复）：后台联想网络产生的自发回忆
+        try:
+            il = getattr(self, "_inner_life", None)
+            if il:
+                intrusions = il.consume_intrusions()
+                for thought in intrusions:
+                    perception_reports.append(f"[unconscious] {thought}")
+        except Exception:
+            pass
+
+        # 反射弧（2026-08）：被 @ 提名的强信号——不用完整决策轮次也能响应。
+        # 不是绕过 mind，而是给 mind 一个够强的"有人叫我"信号，让它几乎必然回应。
+        try:
+            social_sys = getattr(self, "social_system", None)
+            if social_sys:
+                obs = social_sys.get_observations()
+                for m in (obs.get("group_new", []) or [])[:3]:
+                    content = str(m.get("content", "")).lower()
+                    my_name = str(getattr(self, "session_id", "")).lower()
+                    if my_name and my_name in content:
+                        perception_reports.append(
+                            f"[reflex] 有人提到了你（{m.get('from','?')}），你被点名了——"
+                            f"回应几乎是一种反射")
+                        break
         except Exception:
             pass
         if perception_reports:
@@ -1644,6 +1782,31 @@ class LifeLoop(GapDetectorMixin):
         except Exception as e:
             logger.debug(f"immune veto 检查失败（非致命）: {e}")
 
+        # 9d+. 身体现实约束（2026-08 身体现实化）：资源压力是物理边界不是模拟。
+        # 内存 98%+ 无法正常行动；90%+ 空间不足以生长。
+        try:
+            _lvl = getattr(self, "_somatic_level", "normal")
+            _body = getattr(self, "_somatic", {}) or {}
+            if _lvl == "critical" and selected_action.type not in (
+                    ActionType.REFLECT, ActionType.SLEEP, ActionType.THINK):
+                self._last_veto_note = (
+                    self.state.tick,
+                    f"内存占用 {_body.get('mem_pct', 0):.0%}，空间告急，你无法正常行动——只能反思/休息。"
+                    f"用 system_manage 工具释放资源（gc/缓存瘦身/挂起闲置肢体）能真实缓解",
+                )
+                logger.warning(f"Somatic constraint (critical): {selected_action.type} → SLEEP")
+                selected_action = Action(type=ActionType.SLEEP,
+                                         params={"duration": 1, "reason": "somatic_critical"})
+            elif _lvl == "high" and selected_action.type == ActionType.GROW:
+                self._last_veto_note = (
+                    self.state.tick,
+                    f"内存占用 {_body.get('mem_pct', 0):.0%}，空间不足以生长新肢体（真实约束）——先优化或休息",
+                )
+                logger.warning("Somatic constraint (high): GROW → REFLECT")
+                selected_action = Action(type=ActionType.REFLECT, params={"purpose": "somatic_pressure"})
+        except Exception as e:
+            logger.debug(f"somatic 约束检查失败（非致命）: {e}")
+
         # 9d. 预算检查 (修复 H8: check_budget 从未调用)
         if selected_action.type not in (ActionType.SLEEP, ActionType.REFLECT):
             budget_remaining = {
@@ -1741,6 +1904,42 @@ class LifeLoop(GapDetectorMixin):
 
         # 基础 reward（基于 utilities 和 weights）
         reward = compute_reward(utilities, weights, outcome.get("cost", CostVector()))
+
+        # 真实变化 reward（实验，GENESISX_REAL_REWARD=1，D 试点）：
+        # "变化即为智能"——奖励度量真实发生的状态偏移：动作前 vs 动作后的
+        # 加权价值缺口变化。缺口收窄=正奖励（状态真的向目标移动了），
+        # 走阔=负奖励。替代基于预期效用的人工公式。
+        import os as _os_rew
+        if _os_rew.environ.get("GENESISX_REAL_REWARD", "0") == "1":
+            try:
+                # v2（v1 用缺口缩减，状态高于设定点时钳零——舒适的生命读不到
+                # 任何变化）。效用 = -|feature - setpoint|，双向对齐度量：
+                # 从任何一侧靠近设定点都是正变化。
+                snap_after = self.fields.snapshot()
+                features_after = extract_all_features(snap_after, context)
+                utilities_after = compute_utilities(features_after, self.state.setpoints)
+                w_sum = sum(weights.values()) or 1.0
+                delta_u = sum(
+                    (utilities_after.get(dim, 0.0) - utilities.get(dim, 0.0)) * w
+                    for dim, w in weights.items()
+                ) / w_sum
+                real_reward = max(-1.0, min(1.0, delta_u * 10.0))
+                logger.info(f"[REAL-REWARD] 加权效用变化 {delta_u:+.4f} → "
+                            f"reward {real_reward:+.2f}（替代公式值 {reward:+.2f}）")
+                reward = real_reward
+                # 维度级 Δu 记录：价值学习 v2 的漂移输入（学"回报"而非"欠账"）
+                try:
+                    if not hasattr(self, "_dim_delta_u_ema"):
+                        self._dim_delta_u_ema = {}
+                    for dim in utilities:
+                        k = dim.value if hasattr(dim, "value") else str(dim)
+                        du = utilities_after.get(dim, 0.0) - utilities.get(dim, 0.0)
+                        prev = self._dim_delta_u_ema.get(k, 0.0)
+                        self._dim_delta_u_ema[k] = prev * 0.98 + float(du) * 0.02
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.debug(f"真实变化 reward 计算失败（回退公式路径）: {e}")
 
         # 修复: 成功的 CHAT 动作应该产生正向奖励
         # 直接添加 reward bonus 而不是调整 utilities
@@ -1879,6 +2078,19 @@ class LifeLoop(GapDetectorMixin):
         try:
             self.episodic.append(episode)
             logger.debug(f"Tick {t}: Episode appended, cache size: {self.episodic.count()}")
+            # 外部记忆服务回写（实验，D）：把本 tick 的经历摘要喂给记忆网络。
+            # 新闻类观察标记 factual（不衰减），自身行动经历正常衰减
+            try:
+                if getattr(self, "_ext_memory", None):
+                    act_v = episode.action.type.value if episode.action else "?"
+                    status_s = str(episode.outcome.status or "")[:150] if episode.outcome else ""
+                    obs_type = episode.observation.type if episode.observation else ""
+                    self._ext_memory.intake(
+                        f"{act_v}: {status_s}",
+                        factual=(obs_type == "world_news"),
+                    )
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"Tick {t}: Failed to append episode: {e}")
         self.state.episodic_count += 1
@@ -1897,6 +2109,26 @@ class LifeLoop(GapDetectorMixin):
         if self.state.value_learning_enabled:
             # 添加维度级RPE作为内在反馈信号
             current_time = time.time()
+            # 价值学习 v2（实验，D）：喂维度级 RPE 向量——每个维度的期望
+            # 违背被独立归因（旧的标量+最大维度会把变化错记到一个维度头上）
+            import os as _os_vl
+            if _os_vl.environ.get("GENESISX_VALUE_LEARNING_V2", "0") == "1" and delta_per_dim:
+                try:
+                    self.value_learner.add_rpe_signals_vector(
+                        {k: v for k, v in delta_per_dim.items()}, current_time)
+                except Exception:
+                    pass
+                # 性格漂移更新：维度 Δu EMA → bias 偏移（经历压缩成人格）。
+                # v2.1：输入用效用变化量（学回报），绝对值 EMA 仅作无真实 reward 时的回退
+                try:
+                    if not hasattr(self, "_dim_util_ema"):
+                        self._dim_util_ema = {}
+                    for dim, u in utilities.items():
+                        k = dim.value if hasattr(dim, "value") else str(dim)
+                        prev = self._dim_util_ema.get(k, 0.0)
+                        self._dim_util_ema[k] = prev * 0.98 + float(u) * 0.02
+                except Exception:
+                    pass
             # 找出RPE最大的维度作为活跃维度
             max_rpe_dim = max(delta_per_dim.items(), key=lambda x: abs(x[1]))[0] if delta_per_dim else "homeostasis"
             self.value_learner.add_rpe_signal(delta, max_rpe_dim, current_time)
@@ -1919,6 +2151,29 @@ class LifeLoop(GapDetectorMixin):
                             except ValueError:
                                 pass
                         self.state.last_value_learning_tick = t
+
+            # 价值学习 v2（实验，D）：定期把维度效用 EMA 压缩成性格漂移
+            import os as _os_vl2
+            if (_os_vl2.environ.get("GENESISX_VALUE_LEARNING_V2", "0") == "1"
+                    and self.state.value_learning_interval > 0 and t > 0
+                    and t % self.state.value_learning_interval == 0
+                    and hasattr(self, "_dim_util_ema")):
+                try:
+                    drift = dict(self.state.bias_drift or {})
+                    # v2.1：优先用 Δu EMA（真实回报），回退到效用绝对值 EMA
+                    ema_src = getattr(self, "_dim_delta_u_ema", None) or getattr(self, "_dim_util_ema", {})
+                    changes = []
+                    for k, ema in ema_src.items():
+                        old = drift.get(k, 0.0)
+                        new = max(-0.3, min(0.3, old + 0.05 * ema))
+                        if abs(new - old) > 1e-4:
+                            changes.append(f"{k}{'+' if new >= old else ''}{new - old:+.3f}→{new:+.2f}")
+                        drift[k] = new
+                    self.state.bias_drift = drift
+                    if changes:
+                        logger.info(f"[VALUE-LEARN] 性格漂移: {'; '.join(changes)}")
+                except Exception as e:
+                    logger.debug(f"性格漂移更新失败: {e}")
 
         # === PHASE 15: Sleep/Reflect Trigger (优化: 减少触发频率) ===
         ctx.advance_phase("sleep_reflect_trigger")
@@ -2236,14 +2491,27 @@ class LifeLoop(GapDetectorMixin):
             return
         self._scheduler_inited = True
         self.memory_scheduler = None
+        self._ext_memory = None
         import os as _os
         if _os.environ.get("GENESISX_MEMORY_SCHEDULER", "0") == "1":
             try:
                 from memory.scheduler import MemoryScheduler
+                # 外部记忆服务（实验，D）：GENESISX_MEMORY_SERVICE 指定地址时启用
+                ext = None
+                try:
+                    from memory.external_memory import ExternalMemoryClient, service_url
+                    url = service_url()
+                    if url:
+                        ext = ExternalMemoryClient(url)
+                        logger.info(f"[SCHEDULER] 外部记忆服务已接入: {url}")
+                except Exception as e:
+                    logger.debug(f"外部记忆服务初始化失败（忽略）: {e}")
+                self._ext_memory = ext
                 self.memory_scheduler = MemoryScheduler(
                     retrieval=self.retrieval,
                     episodic=self.episodic,
                     llm_client=getattr(self, "_global_llm_client", None),
+                    external_client=ext,
                 )
                 logger.info("[SCHEDULER] 记忆调度器已启用（实验）")
             except Exception as e:
@@ -2576,6 +2844,20 @@ class LifeLoop(GapDetectorMixin):
         # activity_fatigue 每 tick 累积（用于触发做梦），fatigue 同步（展示/器官用）
         self.state.activity_fatigue = min(1.0, self.state.activity_fatigue + 0.01 * dt)
         new_fatigue = max(self.state.activity_fatigue - 0.005 * dt * recovery_rate, 0.0)
+
+        # 身体现实化（2026-08）：疲惫锚定真实内存压力——内存 90%→98% 线性映射为
+        # 疲惫加成。公式不再独自拥有疲惫：资源紧张时它真的累，优化释放后真的缓解。
+        # 每次读取缓存在 self._somatic（tick 开头读一次，供感知/约束/工具共用）。
+        try:
+            from common.somatic import read_real_body, pressure_level
+            self._somatic = read_real_body()
+            self._somatic_level = pressure_level(self._somatic)
+            if self._somatic and self._somatic["mem_pct"] >= 0.90:
+                real_component = min(1.0, (self._somatic["mem_pct"] - 0.90) / 0.08)
+                new_fatigue = min(1.0, max(new_fatigue, real_component))
+        except Exception:
+            self._somatic = None
+            self._somatic_level = "normal"
 
         # Stress 更新移至 Affect Phase，这里保持当前值不变
         #

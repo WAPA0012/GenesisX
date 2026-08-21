@@ -42,6 +42,28 @@ class ToolRegistry:
             postconditions=["response_generated"],
         ))
 
+        # 身体整理（2026-08）：盘点/合并/删除肢体后立即生效
+        self.register(ToolSpec(
+            tool_id="refresh_limbs",
+            description="Rescan artifacts/limbs and rebuild limb registry (apply your body maintenance immediately)",
+            risk_level=0.1,
+            cost_model={"cpu_tokens": 50, "io_ops": 2},
+            capabilities_required=[],
+            preconditions=[],
+            postconditions=["limb_registry_updated"],
+        ))
+
+        # 身体现实化（2026-08）：真实资源管理——内存紧张时的自救手段
+        self.register(ToolSpec(
+            tool_id="system_manage",
+            description="Real resource management: gc / trim_cache / suspend_limb / resume_limbs",
+            risk_level=0.2,
+            cost_model={"cpu_tokens": 100, "io_ops": 5},
+            capabilities_required=[],
+            preconditions=[],
+            postconditions=["resources_released"],
+        ))
+
         # File Read
         self.register(ToolSpec(
             tool_id="file_read",

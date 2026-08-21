@@ -558,6 +558,31 @@ class UnifiedOrganManager:
             return result
         return organ.execute_capability(capability, **kwargs)
 
+    def remove_all_limbs(self) -> int:
+        """清空已注册的肢体（重扫描前用）。返回清掉的数量。"""
+        limb_names = [n for n, o in self._organs.items()
+                      if getattr(o, "source", None) == OrganSource.LIMB]
+        for n in limb_names:
+            self.remove_organ(n)
+        return len(limb_names)
+
+    @staticmethod
+    def _cluster_limbs_by_theme(names, min_prefix: int = 4, max_groups: int = 4):
+        """按名字公共前缀聚类，找疑似同主题的重复组（零 LLM）。
+
+        人类盘点是"边看边比较"——生命需要同样的感知材料：
+        不是 87 个孤立条目，而是"天气工具×5、模板统计×12"这样的组。
+        """
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for n in names:
+            # 清理后的肢体名大多是"动词短语"，取前 min_prefix 字做主题键
+            key = str(n)[:max(min_prefix, 6)]
+            groups[key].append(n)
+        dup = [(k, v) for k, v in groups.items() if len(v) >= 2]
+        dup.sort(key=lambda kv: -len(kv[1]))
+        return dup[:max_groups]
+
     def limb_asset_stats(self) -> str:
         """身体资产感知：肢体总量/使用状况一行报告（零 LLM）。
 
@@ -576,8 +601,20 @@ class UnifiedOrganManager:
         parts = [f"肢体 {total} 个，用过 {used} 个，从未用过 {never} 个"]
         if top_s:
             parts.append(f"最常用: {top_s}")
+        # 同主题聚类提示——"哪些像哪些"是整合判断的原料（盘点时边看边比较）
+        try:
+            dup = self._cluster_limbs_by_theme([o.name for o in limbs])
+            for key, members in dup:
+                if len(members) >= 3:
+                    parts.append(f"同主题疑似重复: 「{key}…」×{len(members)}（如 {'、'.join(m[:12] for m in members[:3])}）")
+                elif len(members) == 2:
+                    parts.append(f"同主题: 「{key}…」×2")
+        except Exception:
+            pass
         if never > total * 0.6:
-            parts.append("大量肢体从未使用——是否整理（合并/删除/重建）由你自己决定，你用 execute_code/write_file 就能动手")
+            parts.append("大量肢体从未使用——是否整理（合并/删除/重建）由你自己决定："
+                         "用 execute_code/write_file 改完 artifacts/limbs/ 后，"
+                         "调 refresh_limbs 工具立即生效")
         return "；".join(parts)
 
     def propose_all_actions(

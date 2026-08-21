@@ -42,16 +42,21 @@ def _episode_digest(ep) -> str:
 class MemoryScheduler:
     """读侧记忆调度器：mind 决策前主动调度相关记忆。"""
 
-    def __init__(self, retrieval, episodic, llm_client=None):
+    def __init__(self, retrieval, episodic, llm_client=None, external_client=None):
         self.retrieval = retrieval
         self.episodic = episodic
         self.llm = llm_client
+        # 外部记忆服务（实验供给源，D）：有配置时优先从服务取相关记忆，
+        # 本地语义池+LLM 裁决自动退为回退。服务细节见 memory/external_memory.py
+        self.external = external_client
         self.stats = {
             "dispatches": 0,
             "query_angles": 0,
             "llm_judgments": 0,
             "llm_failures": 0,
             "memories_surfaced": 0,
+            "external_recalls": 0,
+            "external_hits": 0,
         }
 
     # ---- 1. 查询角度（零 LLM）----
@@ -151,6 +156,30 @@ class MemoryScheduler:
                 break
         return picked
 
+    @staticmethod
+    def _grep_patterns(query: str, limit: int = 10) -> List[str]:
+        """从查询派生 grep 变体（基准经验：单次 grep 召回弱，~10 次变体才达 98.9%）。
+
+        变体策略：全句 → 标点分段 → 长词优先，去重保序。
+        """
+        import re as _re
+        q = str(query or "").strip()
+        if not q:
+            return []
+        pats: List[str] = []
+        if len(q) >= 4:
+            pats.append(q)
+        segs = [s for s in _re.split(r"[，。！？；：、\s,.!?;:()\[\]（）【】]+", q) if len(s) >= 2]
+        pats.extend(segs[:4])
+        for w in sorted(segs, key=len, reverse=True):
+            if w not in pats:
+                pats.append(w)
+        out: List[str] = []
+        for p in pats:
+            if p not in out:
+                out.append(p)
+        return out[:limit]
+
     # ---- 主入口 ----
 
     def dispatch(self, context: Dict[str, Any], tick: int) -> List[Tuple[Any, str, str]]:
@@ -160,6 +189,44 @@ class MemoryScheduler:
         # 多角度语义检索（零 LLM）
         angles = self._query_angles(context)
         self.stats["query_angles"] += len(angles)
+
+        # 外部记忆服务优先（实验供给源）：服务有结果时本 tick 的供给来自它，
+        # 本地语义池/LLM 裁决跳过；服务失败或为空则自动走本地路径
+        if self.external is not None and angles:
+            self.stats["external_recalls"] += 1
+            ext_rows = self.external.recall(angles[0], top_k=4)
+            if not ext_rows:
+                # 多轮 grep 回退（基准经验：~10 次变体才达 98.9% 召回）。
+                # grep 零 LLM 零延迟，变体跑满不贵；逐模式试，凑够即停。
+                try:
+                    seen = set()
+                    ext_rows = []
+                    patterns = self._grep_patterns(angles[0])
+                    for pat in patterns:
+                        for r in self.external.grep(pat, top_k=3):
+                            if r["summary"] not in seen:
+                                seen.add(r["summary"])
+                                ext_rows.append(r)
+                        if len(ext_rows) >= 6:
+                            break
+                    if ext_rows:
+                        self.stats["grep_fallbacks"] = self.stats.get("grep_fallbacks", 0) + 1
+                        self.stats["grep_attempts"] = self.stats.get("grep_attempts", 0) + len(patterns[:10])
+                except Exception:
+                    ext_rows = []
+            if ext_rows:
+                self.stats["external_hits"] += 1
+                result: List[Tuple[Any, str, str]] = [
+                    (None, "记忆网络联想", r["summary"]) for r in ext_rows]
+                for ep in self._floor_memories(tick):
+                    t = getattr(ep, "tick", None)
+                    if t not in {getattr(r2[0], "tick", None) for r2 in result}:
+                        result.append((ep, "近因/高显著保底", _episode_digest(ep)))
+                self.stats["memories_surfaced"] += len(result)
+                logger.info(f"[SCHEDULER] t{tick} 外部记忆供给 {len(ext_rows)} 条: "
+                            + " | ".join(r["summary"][:40] for r in ext_rows[:3]))
+                return result[:6]
+
         pool: List[Any] = []
         seen_ticks = set()
         for q in angles:

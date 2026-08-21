@@ -1252,6 +1252,16 @@ class ActionExecutor:
                     "cost": CostVector(cpu_tokens=100)}
 
     def _execute_agentic_loop(self, task: str, max_rounds: int = 15) -> Dict[str, Any]:
+        # 身体现实化（2028-08 写错，2026-08）：资源高压时轮数减半——
+        # 不是模拟疲惫，是真的跑不动那么多步
+        try:
+            _lvl = getattr(self.life_loop, "_somatic_level", "normal")
+            if _lvl == "high":
+                max_rounds = max(4, max_rounds // 2)
+            elif _lvl == "critical":
+                max_rounds = 2
+        except Exception:
+            pass
         """通用 agentic 执行循环——LLM 驱动的多步骤工具调用。
 
         这是 Hermes / Claude Code 模式的核心：
@@ -1280,6 +1290,10 @@ class ActionExecutor:
             {"type": "function", "function": {"name": "execute_code", "description": "执行 Python 代码", "parameters": {"type": "object", "properties": {"code": {"type": "string", "description": "Python 代码"}}, "required": ["code"]}}},
             {"type": "function", "function": {"name": "read_own_logs", "description": "读取自己的运行日志", "parameters": {"type": "object", "properties": {"lines": {"type": "integer", "description": "读取行数"}}, "required": []}}},
             {"type": "function", "function": {"name": "system_stats", "description": "查看系统资源状态", "parameters": {"type": "object", "properties": {}}, "required": []}},
+            {"type": "function", "function": {"name": "refresh_limbs", "description": "整理完肢体（删除/合并 artifacts/limbs 下的文件）后重扫注册表，立即生效", "parameters": {"type": "object", "properties": {}}, "required": []}},
+            {"type": "function", "function": {"name": "system_manage", "description": "真实资源管理：内存紧张时自救。action 可选: gc(垃圾回收) / trim_cache(记忆缓存瘦身,磁盘记忆保留) / suspend_limb(挂起指定肢体,name 参数) / resume_limbs(恢复挂起肢体)", "parameters": {"type": "object", "properties": {"action": {"type": "string", "description": "gc|trim_cache|suspend_limb|resume_limbs"}, "name": {"type": "string", "description": "suspend_limb 时的肢体名"}}, "required": ["action"]}}},
+            {"type": "function", "function": {"name": "memory_recall", "description": "主动回忆：语义搜索你的记忆网络，找到与查询相关的过去经历", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "想回忆什么"}}, "required": ["query"]}}},
+            {"type": "function", "function": {"name": "memory_grep", "description": "精确文本搜索记忆：对具体名字/工具名/专有名词的精确匹配", "parameters": {"type": "object", "properties": {"pattern": {"type": "string", "description": "要精确匹配的文本"}}, "required": ["pattern"]}}},
         ]
 
         # 构建 messages（任务 context，全程保留）

@@ -226,6 +226,9 @@ class GlobalState:
     value_learning_enabled: bool = True
     last_value_learning_tick: int = 0
     value_learning_interval: int = 50  # 每50tick检查一次是否需要学习
+    # 性格权重漂移（2026-08 价值学习v2）：维度效用 EMA 驱动的 bias 偏移，
+    # 持续带来真实效用的维度获得更高话语权——经历压缩成人格
+    bias_drift: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert state to dictionary for serialization."""
@@ -277,6 +280,7 @@ class GlobalState:
             "value_learning_enabled": self.value_learning_enabled,
             "last_value_learning_tick": self.last_value_learning_tick,
             "value_learning_interval": self.value_learning_interval,
+            "bias_drift": self.bias_drift or {},
         }
 
     def update_body(self, dt: float):
@@ -460,4 +464,5 @@ class GlobalState:
             value_learning_enabled=data.get("value_learning_enabled", True),
             last_value_learning_tick=data.get("last_value_learning_tick", 0),
             value_learning_interval=data.get("value_learning_interval", 50),
+            bias_drift=data.get("bias_drift", {}) or {},
         )
